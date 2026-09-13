@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingSupportInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-meterreadingsupportinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">MeterReadingSupportInfoAcquisitionImpl.java</span></div><h1>MeterReadingSupportInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingSupportInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingSupportInfoAcquisitionOutput;
+
+/** 検針支援情報取得サービス実装。 */
+public class MeterReadingSupportInfoAcquisitionImpl implements MeterReadingSupportInfoAcquisition {
+
+    private final KenssieDataAccess kenssieDataAccess;
+
+    private final String meterInstallationCode;
+
+    private final String readingOnlyCode;
+
+    private final String readingContactCode;
+
+    private final List&lt;String&gt; targetCodes;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param kenssieDataAccess 検針支援 データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public MeterReadingSupportInfoAcquisitionImpl(
+<span class="fc" id="L33">            KenssieDataAccess kenssieDataAccess, CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L34">        this.kenssieDataAccess = Objects.requireNonNull(kenssieDataAccess, &quot;kenssieDataAccess&quot;);</span>
+<span class="fc" id="L35">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L36">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L38">        this.meterInstallationCode =</span>
+<span class="fc" id="L39">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport.TYPE,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport
+                                .SPECIAL_GAS_METER_MOUNTING_POSITION);
+<span class="fc" id="L44">        this.readingOnlyCode =</span>
+<span class="fc" id="L45">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport.TYPE,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport
+                                .INFORMATION_EXCLUSIVELY_FOR_METER_READING_OPERATIONS);
+<span class="fc" id="L50">        this.readingContactCode =</span>
+<span class="fc" id="L51">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport.TYPE,
+                        ConstantLookupKeys.Cirius.MeterReadingSupport
+                                .METER_READING_BUSINESS_CONTACT_INFORMATION);
+<span class="fc" id="L56">        this.targetCodes = List.of(meterInstallationCode, readingOnlyCode, readingContactCode);</span>
+<span class="fc" id="L57">    }</span>
+
+    @Override
+    public MeterReadingSupportInfoAcquisitionOutput execute(Long gasMtstNo) {
+<span class="fc" id="L61">        List&lt;KenssieRecord&gt; records =</span>
+<span class="fc" id="L62">                kenssieDataAccess.findAllByGmtSetNoAndKnsnSienBrCd(gasMtstNo, targetCodes);</span>
+<span class="fc" id="L63">        return toOutput(records);</span>
+    }
+
+    /**
+     * 概要: KENSSIE レコード一覧から検針支援情報の出力DTOを組み立てる。 主な仕様: -
+     * 各支援分類コード（メーター設置位置/検針業務専用情報/業務連絡先）ごとに先頭一致レコードを採用する。 -
+     * 業務連絡先情報が存在する場合は第2項目へ業務連絡先、第3項目へ検針業務専用情報を設定する。 - 業務連絡先情報が存在しない場合は第2項目へ検針業務専用情報を設定し、第3項目は null
+     * とする。 既知の制約: - 引数 records は null を許容しない。 - レコード要素が null、または分類コードが null/空白のみの場合は当該要素を無視する。
+     *
+     * @param records KENSSIE の取得結果一覧
+     * @return 検針支援情報取得の出力DTO
+     */
+    private MeterReadingSupportInfoAcquisitionOutput toOutput(List&lt;KenssieRecord&gt; records) {
+<span class="fc" id="L76">        Objects.requireNonNull(records, &quot;records&quot;);</span>
+
+<span class="fc" id="L78">        String gmtItiInf = null;</span>
+<span class="fc" id="L79">        String knsnSienInf2Candidate = null;</span>
+<span class="fc" id="L80">        String knsnSienInf1Candidate = null;</span>
+
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (KenssieRecord record : records) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (record == null) {</span>
+<span class="nc" id="L84">                continue;</span>
+            }
+
+<span class="fc" id="L87">            String code = normalize(record.knsnSienBrCd());</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (code == null) {</span>
+<span class="nc" id="L89">                continue;</span>
+            }
+
+<span class="fc bfc" id="L92" title="All 4 branches covered.">            if (gmtItiInf == null &amp;&amp; code.equals(meterInstallationCode)) {</span>
+<span class="fc" id="L93">                gmtItiInf = record.torokuNaiyoMx();</span>
+<span class="fc" id="L94">                continue;</span>
+            }
+<span class="fc bfc" id="L96" title="All 4 branches covered.">            if (knsnSienInf2Candidate == null &amp;&amp; code.equals(readingOnlyCode)) {</span>
+<span class="fc" id="L97">                knsnSienInf2Candidate = record.torokuNaiyoMx();</span>
+<span class="fc" id="L98">                continue;</span>
+            }
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">            if (knsnSienInf1Candidate == null &amp;&amp; code.equals(readingContactCode)) {</span>
+<span class="fc" id="L101">                knsnSienInf1Candidate = record.torokuNaiyoMx();</span>
+            }
+<span class="fc" id="L103">        }</span>
+
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (knsnSienInf1Candidate != null) {</span>
+<span class="fc" id="L106">            return new MeterReadingSupportInfoAcquisitionOutput(</span>
+                    gmtItiInf, knsnSienInf1Candidate, knsnSienInf2Candidate);
+        }
+
+<span class="fc" id="L110">        return new MeterReadingSupportInfoAcquisitionOutput(gmtItiInf, knsnSienInf2Candidate, null);</span>
+    }
+
+    /**
+     * 概要: 文字列を trim して空値を null に正規化する。 主な仕様: - 入力値が null の場合は null を返却する。 - trim 後の値が空文字の場合は null
+     * を返却する。 - それ以外の場合は trim 後の文字列を返却する。 既知の制約: - 先頭/末尾空白の除去は Java 標準の trim の仕様に従う。
+     *
+     * @param value 正規化対象の文字列
+     * @return 正規化後の文字列（空値は null）
+     */
+    private static String normalize(String value) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L122">            return null;</span>
+        }
+<span class="fc" id="L124">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

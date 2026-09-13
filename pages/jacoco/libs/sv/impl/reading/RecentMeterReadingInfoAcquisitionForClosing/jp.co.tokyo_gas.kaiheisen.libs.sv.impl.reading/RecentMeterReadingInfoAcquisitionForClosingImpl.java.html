@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecentMeterReadingInfoAcquisitionForClosingImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-recentmeterreadinginfoacquisitionforclosing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">RecentMeterReadingInfoAcquisitionForClosingImpl.java</span></div><h1>RecentMeterReadingInfoAcquisitionForClosingImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.TemporalAdjusters;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisitionForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisitionForClosingOutput;
+
+/** 直近検針情報取得（閉栓）サービス実装。 */
+public class RecentMeterReadingInfoAcquisitionForClosingImpl
+        implements RecentMeterReadingInfoAcquisitionForClosing {
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final GasmtrkDataAccess gasmtrkDataAccess;
+
+    private final GasUsageForBillingDerivation gasUsageForBillingDerivation;
+
+    private final RequestContext requestContext;
+
+    private final String relocationClosureReason;
+
+    private final String noRegressionSegment;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞データアクセス
+     * @param gasmtrkDataAccess ガスメーター＜小売＞データアクセス
+     * @param gasUsageForBillingDerivation TG導管ガス使用量（料金計算用）取得サービス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public RecentMeterReadingInfoAcquisitionForClosingImpl(
+            GmtsetkDataAccess gmtsetkDataAccess,
+            GasmtrkDataAccess gasmtrkDataAccess,
+            GasUsageForBillingDerivation gasUsageForBillingDerivation,
+            RequestContext requestContext,
+<span class="fc" id="L58">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L59">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L60">        this.gasmtrkDataAccess = Objects.requireNonNull(gasmtrkDataAccess, &quot;gasmtrkDataAccess&quot;);</span>
+<span class="fc" id="L61">        this.gasUsageForBillingDerivation =</span>
+<span class="fc" id="L62">                Objects.requireNonNull(gasUsageForBillingDerivation, &quot;gasUsageForBillingDerivation&quot;);</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L66">        this.relocationClosureReason =</span>
+<span class="fc" id="L67">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.RELOCATION_CLOSURE);
+<span class="fc" id="L71">        this.noRegressionSegment =</span>
+<span class="fc" id="L72">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.TYPE,
+                        ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.NONE);
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * 閉栓向けの直近検針情報を取得する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 閉栓向け直近検針情報
+     */
+    @Override
+    public RecentMeterReadingInfoAcquisitionForClosingOutput execute(Long gasMtstNo) {
+<span class="fc" id="L86">        LocalDateTime systemDatetime =</span>
+                requestContext
+<span class="fc" id="L88">                        .getSystemDatetime()</span>
+<span class="fc" id="L89">                        .orElseThrow(</span>
+                                () -&gt;
+<span class="fc" id="L91">                                        new IllegalStateException(</span>
+                                                &quot;RequestContext.systemDatetime is required&quot;));
+
+<span class="fc" id="L94">        LocalDate monthEndDate = systemDatetime.toLocalDate().with(TemporalAdjusters.lastDayOfMonth());</span>
+
+<span class="fc" id="L96">        GmtsetkRecord gmtsetkRecord =</span>
+                gmtsetkDataAccess
+<span class="fc" id="L98">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, systemDatetime.toLocalDate())</span>
+<span class="fc" id="L99">                        .orElseThrow(() -&gt; dataInconsistencyForGmtsetk(gasMtstNo, systemDatetime.toLocalDate()));</span>
+
+<span class="fc" id="L101">        GasmtrkRecord gasmtrkRecord = requireGasmtrk(gasMtstNo);</span>
+
+<span class="fc" id="L103">        GasUsageForBillingDerivationOutput output =</span>
+<span class="fc" id="L104">                gasUsageForBillingDerivation.execute(</span>
+                        gasMtstNo,
+                        monthEndDate,
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                        gasmtrkRecord.sjskHticSu() == null ? null : gasmtrkRecord.sjskHticSu() - 1L,</span>
+                        relocationClosureReason,
+                        noRegressionSegment,
+<span class="fc" id="L110">                        gmtsetkRecord.gmtKhsJtkb(),</span>
+<span class="fc" id="L111">                        0,</span>
+<span class="fc" id="L112">                        gasmtrkRecord.sjsuMincSu(),</span>
+<span class="fc" id="L113">                        gasmtrkRecord.sjskHticSu(),</span>
+                        BigDecimal.ZERO,
+                        new KnsKkaTseiMaeJh(null, null, Boolean.FALSE));
+
+<span class="fc" id="L117">        return new RecentMeterReadingInfoAcquisitionForClosingOutput(</span>
+<span class="fc" id="L118">                output.znkiKnkkInf(), output.skinKnkkInf());</span>
+    }
+
+    /**
+     * ガスメーター＜小売＞を必須で取得する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return ガスメーター＜小売＞
+     */
+    private GasmtrkRecord requireGasmtrk(Long gasMtstNo) {
+<span class="fc" id="L128">        List&lt;GasmtrkRecord&gt; gasmtrkRecords =</span>
+<span class="fc" id="L129">                gasmtrkDataAccess.findAllByTtkGmsbNoAndGmtThkgYmd(gasMtstNo, null);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!gasmtrkRecords.isEmpty()) {</span>
+<span class="fc" id="L131">            return gasmtrkRecords.getFirst();</span>
+        }
+<span class="fc" id="L133">        throw dataInconsistencyForGasmtrk(gasMtstNo);</span>
+    }
+
+    /**
+     * GMTSETK 0件時のデータ不整合例外を生成する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準日
+     * @return データ不整合例外
+     */
+    private DataInconsistencyException dataInconsistencyForGmtsetk(
+            Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L145">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L146">                gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L147">                GmtsetkDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L149">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L150">                        .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+    }
+
+    /**
+     * GASMTRK 0件時のデータ不整合例外を生成する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return データ不整合例外
+     */
+    private DataInconsistencyException dataInconsistencyForGasmtrk(Long gasMtstNo) {
+<span class="fc" id="L160">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L161">                gasmtrkDataAccess.tableName(),</span>
+                GasmtrkDataAccess.CallSpecs.FIND_ALL_BY_TTK_GMSB_NO_AND_GMT_THKG_YMD
+<span class="fc" id="L163">                        .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L165">                        .put(&quot;ttkGmsbNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L166">                        .put(&quot;gmtThkgYmd&quot;, null));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

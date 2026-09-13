@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferReceptionRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-transferreceptionregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">TransferReceptionRegistrationImpl.java</span></div><h1>TransferReceptionRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.IdouktkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.write.IdouktkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferReceptionRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferReceptionRegistrationIdouktkInsInf;
+
+/**
+ * SV-240（異動受付登録）の実装。
+ */
+public final class TransferReceptionRegistrationImpl implements TransferReceptionRegistration {
+
+    static final String SERVICE_USER_ID = &quot;KHSS240&quot;;
+
+<span class="fc" id="L22">    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private final IdouktkDataAccess idouktkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param idouktkDataAccess 異動受付 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public TransferReceptionRegistrationImpl(
+            IdouktkDataAccess idouktkDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L40">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L41">        this.idouktkDataAccess = Objects.requireNonNull(idouktkDataAccess, &quot;idouktkDataAccess&quot;);</span>
+<span class="fc" id="L42">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L43">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L44">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public void execute(TransferReceptionRegistrationIdouktkInsInf idouktkInsInf) {
+<span class="fc" id="L49">        Objects.requireNonNull(idouktkInsInf, &quot;idouktkInsInf&quot;);</span>
+
+<span class="fc" id="L51">        requireCorrelationId();</span>
+<span class="fc" id="L52">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L53">        requireSystemDatetime();</span>
+
+<span class="fc" id="L55">        LocalTime reportTime = toReportTime(idouktkInsInf.idoHkokuJkk());</span>
+<span class="fc" id="L56">        Integer nextSequenceNo = idouktkDataAccess</span>
+<span class="fc" id="L57">                .findByOkyakuNoAndIdohHkkYmdAndIdoHkokuJkk(</span>
+<span class="fc" id="L58">                        idouktkInsInf.cstNo(),</span>
+<span class="fc" id="L59">                        idouktkInsInf.ihkYmd(),</span>
+                        reportTime)
+<span class="fc" id="L61">                .map(sequenceNo -&gt; sequenceNo + 1)</span>
+<span class="fc" id="L62">                .orElse(1);</span>
+
+<span class="fc" id="L64">        IdouktkWriteRecord record = new IdouktkWriteRecord(</span>
+<span class="fc" id="L65">                idouktkInsInf.cstNo(),</span>
+<span class="fc" id="L66">                idouktkInsInf.ihkYmd(),</span>
+                reportTime,
+                nextSequenceNo,
+<span class="fc" id="L69">                idouktkInsInf.idoHkkGymCd(),</span>
+<span class="fc" id="L70">                idouktkInsInf.idoHkNySbCd(),</span>
+<span class="fc" id="L71">                idouktkInsInf.idoUserNamKn(),</span>
+<span class="fc" id="L72">                idouktkInsInf.idoUserNamKj(),</span>
+<span class="fc" id="L73">                idouktkInsInf.usNHjiSybCd(),</span>
+<span class="fc" id="L74">                idouktkInsInf.usNHjiHyjCd(),</span>
+<span class="fc" id="L75">                idouktkInsInf.usNKjhKhiCd(),</span>
+<span class="fc" id="L76">                idouktkInsInf.jgshCd(),</span>
+<span class="fc" id="L77">                idouktkInsInf.kCd(),</span>
+<span class="fc" id="L78">                idouktkInsInf.skbCd(),</span>
+<span class="fc" id="L79">                idouktkInsInf.riySubsysJCd(),</span>
+<span class="fc" id="L80">                idouktkInsInf.tanmatuNo(),</span>
+<span class="fc" id="L81">                idouktkInsInf.hkoksEmpNo(),</span>
+<span class="fc" id="L82">                idouktkInsInf.hkoksEmpNam(),</span>
+<span class="fc" id="L83">                idouktkInsInf.syokyNo(),</span>
+<span class="fc" id="L84">                idouktkInsInf.uktkKeiroCd(),</span>
+<span class="fc" id="L85">                idouktkInsInf.syokaiTsyCd(),</span>
+<span class="fc" id="L86">                idouktkInsInf.nwKsyCd(),</span>
+<span class="fc" id="L87">                idouktkInsInf.idohYmd(),</span>
+<span class="fc" id="L88">                idouktkInsInf.kStKnsnJoho(),</span>
+<span class="fc" id="L89">                idouktkInsInf.sStKnsnJoho(),</span>
+<span class="fc" id="L90">                idouktkInsInf.hkzSsyMryYmd(),</span>
+<span class="fc" id="L91">                idouktkInsInf.hkgSsyMryYmd(),</span>
+<span class="fc" id="L92">                idouktkInsInf.gasKyksybCd(),</span>
+<span class="fc" id="L93">                idouktkInsInf.tjhkTrksCd(),</span>
+<span class="fc" id="L94">                idouktkInsInf.hkkNaiyoAr(),</span>
+<span class="fc" id="L95">                idouktkInsInf.teiseiFilAr());</span>
+<span class="fc" id="L96">        idouktkDataAccess.insert(record, AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L97">    }</span>
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L100">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L102">                requireHukkSysShbt());</span>
+    }
+
+    private void requireCorrelationId() {
+<span class="fc" id="L106">        requestContext.getCorrelationId()</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L108">    }</span>
+
+    private String requireHukkSysShbt() {
+<span class="fc" id="L111">        return requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L112">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    private void requireSystemDatetime() {
+<span class="fc" id="L116">        requestContext.getSystemDatetime()</span>
+<span class="pc" id="L117">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L118">    }</span>
+
+    private static LocalTime toReportTime(Integer reportTime) {
+<span class="fc" id="L121">        return LocalTime.parse(&quot;%06d&quot;.formatted(reportTime), TIME_FORMATTER);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

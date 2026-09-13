@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MtsetkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-mtsetk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.mtsetk</a> &gt; <span class="el_source">MtsetkDataAccessImpl.java</span></div><h1>MtsetkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.mtsetk;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-048（C001/D001/R001-R004/U001）の SQL 振る舞いを模した MTSETK インメモリ実装。 */
+public class MtsetkDataAccessImpl extends DataAccessBase implements MtsetkDataAccess {
+
+<span class="fc" id="L36">    private static final ReflectiveInMemoryRowMapper&lt;MtsetkColumn, MtsetkRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L37">            ReflectiveInMemoryRowMapper.create(MtsetkColumn.class, MtsetkRecord.class);</span>
+
+<span class="fc" id="L39">    private static final AutoNeutralValueResolver&lt;MtsetkColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L40">            AutoNeutralValueResolver.create(MtsetkColumn.class, MtsetkRecord.class);</span>
+
+<span class="fc" id="L42">    private static final LocalDate COMPLEMENT_YMD = LocalDate.MIN;</span>
+
+<span class="fc" id="L44">    private final List&lt;EnumMap&lt;MtsetkColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;MtsetkWriteRecord, MtsetkColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;MtsetkWriteRecord, MtsetkColumn&gt; updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public MtsetkDataAccessImpl() {
+<span class="fc" id="L56">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L57">    }</span>
+
+    MtsetkDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L60">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L61">    }</span>
+
+    MtsetkDataAccessImpl(
+<span class="fc" id="L64">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L65">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L66">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L67">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L68">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(MtsetkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L70">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        MtsetkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L73">    }</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param record 追加する行
+     * @return このインスタンス
+     */
+    public MtsetkDataAccessImpl addRow(MtsetkRecord record) {
+<span class="fc" id="L82">        EnumMap&lt;MtsetkColumn, Object&gt; values =</span>
+<span class="fc" id="L83">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L84">        NEUTRAL_VALUE_RESOLVER.complement(values, MtsetkWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L85">        rows.add(values);</span>
+<span class="fc" id="L86">        return this;</span>
+    }
+
+    @Override
+    public int insert(MtsetkWriteRecord record, AuditContext context) {
+<span class="nc" id="L91">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L92">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="nc" id="L94">        rows.add(</span>
+<span class="nc" id="L95">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="nc" id="L98">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                MtsetkColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="nc" id="L103">        return 1;</span>
+    }
+
+    @Override
+    public int deleteByMtstNoAndTkysYmd(Long mtstNo, LocalDate tkysYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L108">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L109">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L110">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+                row -&gt;
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                        Objects.equals(row.get(MtsetkColumn.MTST_NO), safeMtstNo)</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L115">                                        normalizeYmd(</span>
+<span class="fc" id="L116">                                                (LocalDate) row.get(MtsetkColumn.TKYS_YMD)),</span>
+                                        safeTkysYmd),
+                MtsetkColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+<span class="fc" id="L120">                MtsetkDataAccess.CallSpecs.DELETE_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                () -&gt;
+<span class="nc" id="L122">                        new DataInconsistencyException(</span>
+                                &quot;MTSETK&quot;,
+<span class="nc" id="L124">                                MtsetkDataAccess.CallSpecs.DELETE_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                                &quot;{}&quot;),
+                safeMtstNo,
+                safeTkysYmd);
+    }
+
+    @Override
+    public Optional&lt;MtsetkRecord&gt; findByMtstNoAndTkysYmd(Long mtstNo, LocalDate tkysYmd) {
+<span class="fc" id="L132">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L133">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L134">        return rows.stream()</span>
+<span class="fc" id="L135">                .filter(</span>
+                        r -&gt;
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                                Objects.equals(r.get(MtsetkColumn.MTST_NO), safeMtstNo)</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L139">                                                normalizeYmd(</span>
+                                                        (LocalDate)
+<span class="fc" id="L141">                                                                r.get(MtsetkColumn.TKYS_YMD)),</span>
+                                                safeTkysYmd))
+<span class="fc" id="L143">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L144">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;MtsetkRecord&gt; findAllByMtstNoAndTkysYmdAndTyenYmd(
+            Long mtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L150">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L151">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L152">        return rows.stream()</span>
+<span class="fc" id="L153">                .filter(r -&gt; Objects.equals(r.get(MtsetkColumn.MTST_NO), safeMtstNo))</span>
+<span class="fc" id="L154">                .filter(</span>
+                        r -&gt; {
+<span class="fc" id="L156">                            LocalDate tkysYmd =</span>
+<span class="fc" id="L157">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TKYS_YMD));</span>
+<span class="fc" id="L158">                            LocalDate tyenYmd =</span>
+<span class="fc" id="L159">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TYEN_YMD));</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                            return !tkysYmd.isAfter(safeKnskKjnYmd)</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                                    &amp;&amp; !tyenYmd.isBefore(safeKnskKjnYmd);</span>
+                        })
+<span class="fc" id="L163">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L164">                .toList();</span>
+    }
+
+    @Override
+    public long countByMtstNoAndTkysYmdAndTyenYmd(Long mtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L169">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L170">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L171">        return rows.stream()</span>
+<span class="fc" id="L172">                .filter(r -&gt; Objects.equals(r.get(MtsetkColumn.MTST_NO), safeMtstNo))</span>
+<span class="fc" id="L173">                .filter(</span>
+                        r -&gt; {
+<span class="fc" id="L175">                            LocalDate tkysYmd =</span>
+<span class="fc" id="L176">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TKYS_YMD));</span>
+<span class="fc" id="L177">                            LocalDate tyenYmd =</span>
+<span class="fc" id="L178">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TYEN_YMD));</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                            return !tkysYmd.isAfter(safeKnskKjnYmd)</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                                    &amp;&amp; !tyenYmd.isBefore(safeKnskKjnYmd);</span>
+                        })
+<span class="fc" id="L182">                .count();</span>
+    }
+
+    @Override
+    public Optional&lt;MtsetkRecord&gt; findByMtstNoAndTkysYmdAndTyenYmd(
+            Long mtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L188">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L189">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L190">        return rows.stream()</span>
+<span class="fc" id="L191">                .filter(r -&gt; Objects.equals(r.get(MtsetkColumn.MTST_NO), safeMtstNo))</span>
+<span class="fc" id="L192">                .filter(</span>
+                        r -&gt; {
+<span class="fc" id="L194">                            LocalDate tkysYmd =</span>
+<span class="fc" id="L195">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TKYS_YMD));</span>
+<span class="fc" id="L196">                            LocalDate tyenYmd =</span>
+<span class="fc" id="L197">                                    normalizeYmd((LocalDate) r.get(MtsetkColumn.TYEN_YMD));</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                            return !tkysYmd.isAfter(safeKnskKjnYmd)</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                                    &amp;&amp; !tyenYmd.isBefore(safeKnskKjnYmd);</span>
+                        })
+<span class="fc" id="L201">                .sorted(</span>
+<span class="fc" id="L202">                        Comparator.&lt;EnumMap&lt;MtsetkColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L203">                                r -&gt; normalizeYmd((LocalDate) r.get(MtsetkColumn.TKYS_YMD)),</span>
+<span class="fc" id="L204">                                Comparator.reverseOrder()))</span>
+<span class="fc" id="L205">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L206">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByMtstNoAndTkysYmdAndRecUpdJnjNo(
+            MtsetkWriteRecord record,
+            Set&lt;MtsetkColumn&gt; targetColumns,
+            MtsetkUpdateKey updateKey,
+            AuditContext context) {
+<span class="nc" id="L215">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L216">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="nc" id="L217">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="nc" id="L219">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                row -&gt;
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                        Objects.equals(row.get(MtsetkColumn.MTST_NO), updateKey.mtstNo())</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">                                &amp;&amp; Objects.equals(row.get(MtsetkColumn.TKYS_YMD), updateKey.tkysYmd()),</span>
+                row -&gt;
+<span class="nc" id="L225">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="nc" id="L229">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        MtsetkColumn.class, values),
+                                                context,
+                                                clock,
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="nc" id="L235">                                                        ? (Integer) row.get(MtsetkColumn.REC_UPD_JNJ_NO)</span>
+<span class="nc" id="L236">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="nc" id="L237">                updateSupport::apply,</span>
+                MtsetkColumn.REC_UPD_JNJ_NO,
+<span class="nc" id="L239">                updateKey.recUpdJnjNo(),</span>
+<span class="nc" id="L240">                MtsetkDataAccess.CallSpecs.UPDATE_BY_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+<span class="nc" id="L241">                updateKey.mtstNo(),</span>
+<span class="nc" id="L242">                updateKey.tkysYmd());</span>
+    }
+
+    private static Long safeMtstNo(Long value, String paramName) {
+<span class="fc" id="L246">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L250">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static LocalDate normalizeYmd(LocalDate value) {
+<span class="fc" id="L254">        return WhereParamGuard.complement(value, &quot;ymd&quot;, COMPLEMENT_YMD);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

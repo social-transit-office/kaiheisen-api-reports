@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingTargetMeterReadingAndRelatedInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-closingtargetmeterreadingandrelatedinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">ClosingTargetMeterReadingAndRelatedInfoAcquisitionImpl.java</span></div><h1>ClosingTargetMeterReadingAndRelatedInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ClosingTargetMeterReadingAndRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionForDedicatedMeterOrigin;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionForDedicatedMeterOriginOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionForOriginMeterDedicated;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionForOriginMeterDedicatedOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GmtsetdSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaMtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SnyInf;
+
+/**
+ * 概要: SV-122（閉栓対象メーターに紐づく元メーターと専用メーターの検針結果＆検針関連情報取得）の実装クラス。
+ * 主な仕様:
+ * - 直列ガスメーター設置状態区分に応じて元メーター分岐、専用メーター分岐、処理なし分岐を切り替える。
+ * - 元メーター分岐では DA-033-R007 で専用メーター候補を取得し、各件に対して SV-151 を呼び出して出力を構成する。
+ * - 専用メーター分岐では SV-152 を呼び出して元メーター情報を構成する。
+ * 既知の制約:
+ * - systemDatetime は RequestContext から取得する。
+ * - public 引数の null ガードは SV 規約に従い実装しない。
+ */
+public final class ClosingTargetMeterReadingAndRelatedInfoAcquisitionImpl
+        implements ClosingTargetMeterReadingAndRelatedInfoAcquisition {
+
+    private final MeterReadingResultAcquisitionForOriginMeterDedicated originMeterDedicatedService;
+
+    private final MeterReadingResultAcquisitionForDedicatedMeterOrigin dedicatedMeterOriginService;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String originalGasMeterStatus;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String openingStatus;
+
+    private final String securityClosureReason;
+
+    private final String disasterClosureReason;
+
+    /**
+     * 概要: 依存サービスと必須定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - 依存 SV / DA / RequestContext / 定数サービスの null を許容せず fail-fast する。
+     * - J0244、02100、J0273 の必須判定値を保持する。
+     *
+     * @param originMeterDedicatedService SV-151
+     * @param dedicatedMeterOriginService SV-152
+     * @param gmtsetdDataAccess DA-033
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public ClosingTargetMeterReadingAndRelatedInfoAcquisitionImpl(
+            MeterReadingResultAcquisitionForOriginMeterDedicated originMeterDedicatedService,
+            MeterReadingResultAcquisitionForDedicatedMeterOrigin dedicatedMeterOriginService,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L75">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L76">        this.originMeterDedicatedService = Objects.requireNonNull(</span>
+                originMeterDedicatedService,
+                &quot;originMeterDedicatedService&quot;);
+<span class="fc" id="L79">        this.dedicatedMeterOriginService = Objects.requireNonNull(</span>
+                dedicatedMeterOriginService,
+                &quot;dedicatedMeterOriginService&quot;);
+<span class="fc" id="L82">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L83">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L84">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L85">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L86">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L90">        this.dedicatedGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L94">        this.openingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L98">        this.securityClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE);
+<span class="fc" id="L102">        this.disasterClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * 概要: SV-122 を実行し、閉栓対象メーターに紐づく元メーター系・専用メーター系の検針結果と関連情報を返却する。
+     * 主な仕様:
+     * - 元ガスメーターの場合は DA-033-R007 と SV-151 を利用する。
+     * - 専用ガスメーターの場合は SV-152 を利用する。
+     * - それ以外は処理なしとして空の出力を返す。
+     */
+    @Override
+    public ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput execute(
+            String ckrtGmscJtkb,
+            String szcGkkCd,
+            String szcCmazCd,
+            String szcMchCd,
+            Long mtgMtstNo,
+            Long gasMtstNo,
+            String gmtKhsJtkb,
+            String hesnJysb,
+            String kngmStbJtkb,
+            LocalDate hssgYmd) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L128">            return executeForOriginMeter(</span>
+                    szcGkkCd,
+                    szcCmazCd,
+                    szcMchCd,
+                    mtgMtstNo,
+                    gasMtstNo,
+                    hssgYmd,
+<span class="fc" id="L135">                                        requireSystemDatetime().toLocalDate());</span>
+        }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (dedicatedGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L138">            return executeForDedicatedMeter(kngmStbJtkb, mtgMtstNo);</span>
+        }
+<span class="fc" id="L140">        return emptyOutput();</span>
+    }
+
+    private ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput executeForOriginMeter(
+            String szcGkkCd,
+            String szcCmazCd,
+            String szcMchCd,
+            Long mtgMtstNo,
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            LocalDate searchDate) {
+<span class="fc" id="L151">        List&lt;GmtsetdRecord&gt; dedicatedMeterRecords = gmtsetdDataAccess</span>
+<span class="fc" id="L152">                .findAllBySzcGkkCdAndSzcCmazCdAndSzcMchCdAndMtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                        szcGkkCd,
+                        szcCmazCd,
+                        szcMchCd,
+                        gasMtstNo,
+                        gasMtstNo,
+                        searchDate);
+
+<span class="fc" id="L160">        boolean openingDedicatedMeterExists = false;</span>
+<span class="fc" id="L161">        boolean futureClosingDateExists = false;</span>
+<span class="fc" id="L162">        boolean restrictedClosureReasonExists = false;</span>
+<span class="fc" id="L163">        boolean dedicatedMeterReadAfterClosingExists = false;</span>
+<span class="fc" id="L164">        boolean dedicatedContractExists = false;</span>
+<span class="fc" id="L165">        boolean dedicatedUsageAgreementExists = false;</span>
+<span class="fc" id="L166">        Long dedicatedUsageAgreementMeterLocationNumber = null;</span>
+<span class="fc" id="L167">        List&lt;SkinKnkkInf&gt; recentMeterReadingList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L168">        List&lt;SnyInf&gt; dedicatedMeterInfoList = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (GmtsetdRecord dedicatedMeterRecord : dedicatedMeterRecords) {</span>
+<span class="fc" id="L171">            dedicatedMeterInfoList.add(mapSnyInf(dedicatedMeterRecord));</span>
+<span class="fc" id="L172">            openingDedicatedMeterExists |= openingStatus.equals(dedicatedMeterRecord.gmtKhsJtkb());</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            futureClosingDateExists |= dedicatedMeterRecord.hesnYmd() != null</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                    &amp;&amp; dedicatedMeterRecord.hesnYmd().isAfter(hssgYmd);</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            restrictedClosureReasonExists |= securityClosureReason.equals(dedicatedMeterRecord.hesnJysb())</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                    || disasterClosureReason.equals(dedicatedMeterRecord.hesnJysb());</span>
+
+<span class="fc" id="L178">            MeterReadingResultAcquisitionForOriginMeterDedicatedOutput childOutput =</span>
+<span class="fc" id="L179">                    originMeterDedicatedService.execute(</span>
+<span class="fc" id="L180">                            dedicatedMeterRecord.kngmStbJtkb(),</span>
+<span class="fc" id="L181">                            dedicatedMeterRecord.gasMtstNo(),</span>
+                            hssgYmd);
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            if (childOutput.skinKnkkInf() != null) {</span>
+<span class="fc" id="L184">                recentMeterReadingList.add(childOutput.skinKnkkInf());</span>
+            }
+<span class="fc" id="L186">            dedicatedMeterReadAfterClosingExists |= Boolean.TRUE.equals(childOutput.snyHsngKnsFlg());</span>
+<span class="fc" id="L187">            dedicatedContractExists |= Boolean.TRUE.equals(childOutput.snyKyktFlg());</span>
+<span class="fc" id="L188">            dedicatedUsageAgreementExists |= Boolean.TRUE.equals(childOutput.snySyryKytiTyuFlg());</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (dedicatedUsageAgreementMeterLocationNumber == null</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                    &amp;&amp; childOutput.snySyryKytiTyuMtstno() != null) {</span>
+<span class="fc" id="L191">                dedicatedUsageAgreementMeterLocationNumber = childOutput.snySyryKytiTyuMtstno();</span>
+            }
+<span class="fc" id="L193">        }</span>
+
+<span class="fc" id="L195">        return new ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput(</span>
+<span class="fc" id="L196">                openingDedicatedMeterExists,</span>
+<span class="fc" id="L197">                futureClosingDateExists,</span>
+<span class="fc" id="L198">                restrictedClosureReasonExists,</span>
+                new KnsKkaSnyInf(
+<span class="fc" id="L200">                        List.copyOf(recentMeterReadingList),</span>
+<span class="fc" id="L201">                        dedicatedMeterReadAfterClosingExists,</span>
+<span class="fc" id="L202">                        dedicatedContractExists,</span>
+<span class="fc" id="L203">                        dedicatedUsageAgreementExists,</span>
+                        dedicatedUsageAgreementMeterLocationNumber),
+<span class="fc" id="L205">                emptyOriginMeterInfo(),</span>
+<span class="fc" id="L206">                new GmtsetdSnyInf(List.copyOf(dedicatedMeterInfoList)));</span>
+    }
+
+    private ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput executeForDedicatedMeter(
+            String kngmStbJtkb,
+            Long mtgMtstNo) {
+<span class="fc" id="L212">        MeterReadingResultAcquisitionForDedicatedMeterOriginOutput childOutput =</span>
+<span class="fc" id="L213">                dedicatedMeterOriginService.execute(kngmStbJtkb, mtgMtstNo);</span>
+<span class="fc" id="L214">        return new ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput(</span>
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+<span class="fc" id="L218">                emptyDedicatedMeterInfo(),</span>
+                new KnsKkaMtInf(
+<span class="fc" id="L220">                        childOutput.skinKnkkInf(),</span>
+<span class="fc" id="L221">                        Boolean.TRUE.equals(childOutput.mtgSyryKytiTyuFlg()),</span>
+<span class="fc" id="L222">                        childOutput.mtgSyryKytiTyuMtstno()),</span>
+<span class="fc" id="L223">                new GmtsetdSnyInf(List.of()));</span>
+    }
+
+    private ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput emptyOutput() {
+<span class="fc" id="L227">        return new ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput(</span>
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+<span class="fc" id="L231">                emptyDedicatedMeterInfo(),</span>
+<span class="fc" id="L232">                emptyOriginMeterInfo(),</span>
+<span class="fc" id="L233">                new GmtsetdSnyInf(List.of()));</span>
+    }
+
+    private KnsKkaSnyInf emptyDedicatedMeterInfo() {
+<span class="fc" id="L237">        return new KnsKkaSnyInf(List.of(), Boolean.FALSE, Boolean.FALSE, Boolean.FALSE, null);</span>
+    }
+
+    private KnsKkaMtInf emptyOriginMeterInfo() {
+<span class="fc" id="L241">        return new KnsKkaMtInf(null, Boolean.FALSE, null);</span>
+    }
+
+    private java.time.LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L245">        return requestContext.getSystemDatetime().orElseThrow(</span>
+<span class="fc" id="L246">                () -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private SnyInf mapSnyInf(GmtsetdRecord record) {
+<span class="fc" id="L250">        return new SnyInf(</span>
+<span class="fc" id="L251">                record.gasMtstNo(),</span>
+<span class="fc" id="L252">                record.tkysYmd(),</span>
+<span class="fc" id="L253">                record.tyenYmd(),</span>
+<span class="fc" id="L254">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L255">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L256">                record.szcGkkCd(),</span>
+<span class="fc" id="L257">                record.szcCmazCd(),</span>
+<span class="fc" id="L258">                record.szcMchCd(),</span>
+<span class="fc" id="L259">                record.cbgSuj1(),</span>
+<span class="fc" id="L260">                record.cbgKn2(),</span>
+<span class="fc" id="L261">                record.cbgKn3(),</span>
+<span class="fc" id="L262">                record.cbgKn4(),</span>
+<span class="fc" id="L263">                record.bldNo(),</span>
+<span class="fc" id="L264">                record.tunoKn(),</span>
+<span class="fc" id="L265">                record.hynKn(),</span>
+<span class="fc" id="L266">                record.htuFlg(),</span>
+<span class="fc" id="L267">                record.ohmKj(),</span>
+<span class="fc" id="L268">                record.kasYmd(),</span>
+<span class="fc" id="L269">                record.hesnYmd(),</span>
+<span class="fc" id="L270">                record.kasJysb(),</span>
+<span class="fc" id="L271">                record.hesnJysb(),</span>
+<span class="fc" id="L272">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L273">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L274">                record.tksuMtscCd(),</span>
+<span class="fc" id="L275">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L276">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L277">                record.mtgMtstNo(),</span>
+<span class="fc" id="L278">                record.snstGkjYm(),</span>
+<span class="fc" id="L279">                record.snstGkjShbt(),</span>
+<span class="fc" id="L280">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L281">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L282">                record.knckKbn(),</span>
+<span class="fc" id="L283">                record.bldKbn(),</span>
+<span class="fc" id="L284">                record.akySnstFlg(),</span>
+<span class="fc" id="L285">                record.gasYtCd(),</span>
+<span class="fc" id="L286">                record.lpgKbn(),</span>
+<span class="fc" id="L287">                record.ntryKbn(),</span>
+<span class="fc" id="L288">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L289">                record.jkarSu(),</span>
+<span class="fc" id="L290">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L291">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L292">                record.knsKhFlg(),</span>
+<span class="fc" id="L293">                record.gmicTsjhMem(),</span>
+<span class="fc" id="L294">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L295">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L296">                record.niknSdksShbt(),</span>
+<span class="fc" id="L297">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L298">                record.chukThkgFlg(),</span>
+<span class="fc" id="L299">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L300">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L301">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L302">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L303">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L304">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L305">                record.smpCd(),</span>
+<span class="fc" id="L306">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L307">                record.kusYmd(),</span>
+<span class="fc" id="L308">                record.kysfYmd(),</span>
+<span class="fc" id="L309">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L310">                record.recUpdJnjNo());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

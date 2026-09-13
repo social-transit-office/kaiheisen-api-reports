@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CustomerInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-customerinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">CustomerInfoAcquisitionImpl.java</span></div><h1>CustomerInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstkInf;
+
+/**
+ * 概要: SV-164（お客さま情報取得）の実装。
+ *
+ * 主な仕様:
+ * - 公開引数として受け取るのは `kyoTrkNo`、`tgTkurKbn`、`kasJkKbn` のみである。
+ * - `hukkSysShbt`、`correlationId`、`systemDatetime` は MA 共通項目だが、本実装では public 引数に含めず RequestContext 参照も行わない。
+ *
+ * 既知の制約:
+ * - 設計上 RequestContext 管理対象の共通項目があっても、本実装の判定条件には使用しない。
+ */
+public final class CustomerInfoAcquisitionImpl implements CustomerInfoAcquisition {
+
+    private static final String AFTER_OPENING_KBN = &quot;2&quot;;
+
+    private final KiycstdDataAccess kiycstdDataAccess;
+
+    private final KiycstkDataAccess kiycstkDataAccess;
+
+    private final String tgRetailKbn;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param kiycstdDataAccessArg 契約お客さま＜導管＞データアクセス
+     * @param kiycstkDataAccessArg 契約お客さま＜小売＞データアクセス
+     * @param kaiheisenConstantServiceArg 開閉栓コンスタント取得サービス
+     */
+    public CustomerInfoAcquisitionImpl(
+            KiycstdDataAccess kiycstdDataAccessArg,
+            KiycstkDataAccess kiycstkDataAccessArg,
+<span class="fc" id="L49">            KaiheisenConstantService kaiheisenConstantServiceArg) {</span>
+<span class="fc" id="L50">        this.kiycstdDataAccess = Objects.requireNonNull(kiycstdDataAccessArg, &quot;kiycstdDataAccess&quot;);</span>
+<span class="fc" id="L51">        this.kiycstkDataAccess = Objects.requireNonNull(kiycstkDataAccessArg, &quot;kiycstkDataAccess&quot;);</span>
+<span class="fc" id="L52">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L53">                Objects.requireNonNull(kaiheisenConstantServiceArg, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L54">        this.tgRetailKbn =</span>
+<span class="fc" id="L55">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        resolvedKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TG_RETAIL);
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public CustomerInfoAcquisitionOutput execute(Long kyoTrkNo, String tgTkurKbn, String kasJkKbn) {
+<span class="fc" id="L63">        Optional&lt;KiycstdRecord&gt; kiycstdRecord = kiycstdDataAccess.findByKyoTrkNo(kyoTrkNo);</span>
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        if (kiycstdRecord.isEmpty() &amp;&amp; AFTER_OPENING_KBN.equals(kasJkKbn)) {</span>
+<span class="fc" id="L65">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L66">                    kiycstdDataAccess.tableName(),</span>
+<span class="fc" id="L67">                    KiycstdDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="fc" id="L68">                    parameterJsonBuilder(kyoTrkNo));</span>
+        }
+
+<span class="fc" id="L71">        KiycstkInf kiycstkInf = null;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (isTgRetail(tgTkurKbn)) {</span>
+<span class="fc" id="L73">            Optional&lt;KiycstkRecord&gt; kiycstkRecord = kiycstkDataAccess.findByKyoTrkNo(kyoTrkNo);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (kiycstkRecord.isEmpty()) {</span>
+<span class="fc" id="L75">                throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L76">                        kiycstkDataAccess.tableName(),</span>
+<span class="fc" id="L77">                        KiycstkDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="fc" id="L78">                        parameterJsonBuilder(kyoTrkNo));</span>
+            }
+<span class="fc" id="L80">            kiycstkInf = toKiycstkInf(kiycstkRecord.orElseThrow());</span>
+        }
+
+<span class="fc" id="L83">        return new CustomerInfoAcquisitionOutput(</span>
+<span class="fc" id="L84">                kiycstdRecord.map(CustomerInfoAcquisitionImpl::toKiycstdInf).orElse(null),</span>
+                kiycstkInf);
+    }
+
+    private boolean isTgRetail(String tgTkurKbn) {
+<span class="fc" id="L89">        return tgRetailKbn.equals(tgTkurKbn);</span>
+    }
+
+    private static FlatJsonBuilder parameterJsonBuilder(Long kyoTrkNo) {
+<span class="fc" id="L93">        return new FlatJsonBuilder().put(&quot;kyoTrkNo&quot;, kyoTrkNo);</span>
+    }
+
+    private static KiycstdInf toKiycstdInf(KiycstdRecord record) {
+<span class="fc" id="L97">        return new KiycstdInf(</span>
+<span class="fc" id="L98">                record.kyoTrkNo(),</span>
+<span class="fc" id="L99">                record.ctnmKj1(),</span>
+<span class="fc" id="L100">                record.ctnmKn1(),</span>
+<span class="fc" id="L101">                record.ctnm1HujnShbt(),</span>
+<span class="fc" id="L102">                record.ctnm1HshiShbt(),</span>
+<span class="fc" id="L103">                record.ctnmKj2(),</span>
+<span class="fc" id="L104">                record.ctnmKn2(),</span>
+<span class="fc" id="L105">                record.ctnm2HujnShbt(),</span>
+<span class="fc" id="L106">                record.ctnm2HshiShbt(),</span>
+<span class="fc" id="L107">                record.ctnmKjhkFlg(),</span>
+<span class="fc" id="L108">                record.shkiLvShbt(),</span>
+<span class="fc" id="L109">                record.yubnNo(),</span>
+<span class="fc" id="L110">                record.gkkCd(),</span>
+<span class="fc" id="L111">                record.mchCd(),</span>
+<span class="fc" id="L112">                record.cmazCd(),</span>
+<span class="fc" id="L113">                record.cbgSuj1(),</span>
+<span class="fc" id="L114">                record.cbgKn2(),</span>
+<span class="fc" id="L115">                record.cbgKn3(),</span>
+<span class="fc" id="L116">                record.cbgKn4(),</span>
+<span class="fc" id="L117">                record.bldNo(),</span>
+<span class="fc" id="L118">                record.bldnKj(),</span>
+<span class="fc" id="L119">                record.bldnKn(),</span>
+<span class="fc" id="L120">                record.bldnKjhkFlg(),</span>
+<span class="fc" id="L121">                record.jutKbn(),</span>
+<span class="fc" id="L122">                record.tunoKn(),</span>
+<span class="fc" id="L123">                record.hynKn(),</span>
+<span class="fc" id="L124">                record.htuFlg(),</span>
+<span class="fc" id="L125">                record.recUpdJnjNo());</span>
+    }
+
+    private static KiycstkInf toKiycstkInf(KiycstkRecord record) {
+<span class="fc" id="L129">        return new KiycstkInf(</span>
+<span class="fc" id="L130">                record.kyoTrkNo(),</span>
+<span class="fc" id="L131">                record.ctnmKj1(),</span>
+<span class="fc" id="L132">                record.ctnmKn1(),</span>
+<span class="fc" id="L133">                record.ctnm1HujnShbt(),</span>
+<span class="fc" id="L134">                record.ctnm1HshiShbt(),</span>
+<span class="fc" id="L135">                record.ctnmKj2(),</span>
+<span class="fc" id="L136">                record.ctnmKn2(),</span>
+<span class="fc" id="L137">                record.ctnm2HujnShbt(),</span>
+<span class="fc" id="L138">                record.ctnm2HshiShbt(),</span>
+<span class="fc" id="L139">                record.ctnmKjhkFlg(),</span>
+<span class="fc" id="L140">                record.kynmKj(),</span>
+<span class="fc" id="L141">                record.kynmKn(),</span>
+<span class="fc" id="L142">                record.kynmHujnShbt(),</span>
+<span class="fc" id="L143">                record.kynmHshiShbt(),</span>
+<span class="fc" id="L144">                record.kynmKjhkFlg(),</span>
+<span class="fc" id="L145">                record.shkiLvShbt(),</span>
+<span class="fc" id="L146">                record.yubnNo(),</span>
+<span class="fc" id="L147">                record.gkkCd(),</span>
+<span class="fc" id="L148">                record.mchCd(),</span>
+<span class="fc" id="L149">                record.cmazCd(),</span>
+<span class="fc" id="L150">                record.cbgSuj1(),</span>
+<span class="fc" id="L151">                record.cbgKn2(),</span>
+<span class="fc" id="L152">                record.cbgKn3(),</span>
+<span class="fc" id="L153">                record.cbgKn4(),</span>
+<span class="fc" id="L154">                record.bldNo(),</span>
+<span class="fc" id="L155">                record.bldnKj(),</span>
+<span class="fc" id="L156">                record.bldnKn(),</span>
+<span class="fc" id="L157">                record.bldnKjhkFlg(),</span>
+<span class="fc" id="L158">                record.jutKbn(),</span>
+<span class="fc" id="L159">                record.tunoKn(),</span>
+<span class="fc" id="L160">                record.hynKn(),</span>
+<span class="fc" id="L161">                record.htuFlg(),</span>
+<span class="fc" id="L162">                record.recUpdJnjNo());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

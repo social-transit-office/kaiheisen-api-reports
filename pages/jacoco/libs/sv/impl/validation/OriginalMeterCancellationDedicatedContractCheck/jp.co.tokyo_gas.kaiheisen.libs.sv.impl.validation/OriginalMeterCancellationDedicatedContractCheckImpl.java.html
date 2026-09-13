@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OriginalMeterCancellationDedicatedContractCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-originalmetercancellationdedicatedcontractcheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">OriginalMeterCancellationDedicatedContractCheckImpl.java</span></div><h1>OriginalMeterCancellationDedicatedContractCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OriginalMeterCancellationDedicatedContractCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OriginalMeterCancellationDedicatedContractCheckOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.MtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnyInf;
+
+/**
+ * SV-305 元メーター解約時専用メーター契約チェックの実装。
+ */
+public final class OriginalMeterCancellationDedicatedContractCheckImpl
+        implements OriginalMeterCancellationDedicatedContractCheck {
+
+    private final MtsetkDataAccess mtsetkDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String originalMeterStatus;
+
+    private final List&lt;String&gt; relatedStatusList;
+
+    /**
+     * 依存コンポーネントと必須定数を受け取って初期化する。
+     *
+     * @param mtsetkDataAccess メーター設置場所＜小売＞データアクセス
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public OriginalMeterCancellationDedicatedContractCheckImpl(
+            MtsetkDataAccess mtsetkDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            SvmstkrDataAccess svmstkrDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L60">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L61">        this.mtsetkDataAccess = Objects.requireNonNull(mtsetkDataAccess, &quot;mtsetkDataAccess&quot;);</span>
+<span class="fc" id="L62">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L64">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L65">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L66">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L67">        this.originalMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L71">        this.relatedStatusList = List.of(</span>
+<span class="fc" id="L72">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID),
+<span class="fc" id="L76">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03));
+<span class="fc" id="L80">    }</span>
+
+    /**
+     * 概要: SV-305 を実行する。
+     * 主な仕様:
+     * - `gasMtstNo` と `knskKjnYmd` を条件に小売メーター設置場所情報を取得する。
+     * - `ckrtGmscJtkb` が元メーターの場合のみ `RequestContext.systemDatetime` を使って専用メーター候補を探索し、契約有無を判定する。
+     * 既知の制約:
+     * - public 引数の null 補完や trim は行わず、必須依存や必須コンテキスト値は fail-fast とする。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return 判定結果
+     */
+    @Override
+    public OriginalMeterCancellationDedicatedContractCheckOutput execute(
+            String ckrtGmscJtkb,
+            Long gasMtstNo,
+            LocalDate knskKjnYmd) {
+<span class="fc" id="L100">        MtsetkRecord mtsetkRecord = Objects.requireNonNull(</span>
+<span class="fc" id="L101">                mtsetkDataAccess.findByMtstNoAndTkysYmd(gasMtstNo, knskKjnYmd),</span>
+                &quot;mtsetkDataAccess.findByMtstNoAndTkysYmd returned null&quot;)
+<span class="fc" id="L103">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L104">                        mtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L105">                        MtsetkDataAccess.CallSpecs.FIND_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L107">                                .put(&quot;mtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L108">                                .put(&quot;tkysYmd&quot;, knskKjnYmd)));</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!originalMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L111">            return new OriginalMeterCancellationDedicatedContractCheckOutput(</span>
+<span class="fc" id="L112">                    toMtsetkInf(mtsetkRecord),</span>
+<span class="fc" id="L113">                    List.of());</span>
+        }
+
+<span class="fc" id="L116">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L117">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L118">                .toLocalDate();</span>
+
+<span class="fc" id="L120">        List&lt;GmtsetdRecord&gt; gmtsetdRecords = Objects.requireNonNull(</span>
+                gmtsetdDataAccess
+<span class="fc" id="L122">                        .findAllBySzcGkkCdAndSzcCmazCdAndSzcMchCdAndMtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd(</span>
+<span class="fc" id="L123">                                mtsetkRecord.szcGkkCd(),</span>
+<span class="fc" id="L124">                                mtsetkRecord.szcCmazCd(),</span>
+<span class="fc" id="L125">                                mtsetkRecord.szcMchCd(),</span>
+                                gasMtstNo,
+                                gasMtstNo,
+                                systemDate),
+                &quot;gmtsetdDataAccess.findAllBySzcGkkCdAndSzcCmazCdAndSzcMchCdAnd&quot;
+                        + &quot;MtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd returned null&quot;);
+
+<span class="fc" id="L132">        List&lt;SnyInf&gt; snyInfList = gmtsetdRecords.stream()</span>
+<span class="fc" id="L133">                .map(gmtsetdRecord -&gt; new SnyInf(</span>
+<span class="fc" id="L134">                        gmtsetdRecord.gasMtstNo()))</span>
+<span class="fc" id="L135">                .toList();</span>
+
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for (GmtsetdRecord gmtsetdRecord : gmtsetdRecords) {</span>
+<span class="fc" id="L138">            Optional&lt;SvmstkrRecord&gt; relatedContract = Objects.requireNonNull(</span>
+<span class="fc" id="L139">                    svmstkrDataAccess.findByMtstNoAndRkkiKnrnJtkb(</span>
+<span class="fc" id="L140">                            gmtsetdRecord.gasMtstNo(),</span>
+                            relatedStatusList),
+                    &quot;svmstkrDataAccess.findByMtstNoAndRkkiKnrnJtkb returned null&quot;);
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (relatedContract.isPresent()) {</span>
+<span class="fc" id="L144">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000076);</span>
+            }
+<span class="fc" id="L146">        }</span>
+
+<span class="fc" id="L148">        return new OriginalMeterCancellationDedicatedContractCheckOutput(</span>
+<span class="fc" id="L149">                toMtsetkInf(mtsetkRecord),</span>
+<span class="fc" id="L150">                List.copyOf(snyInfList));</span>
+    }
+
+    private static MtsetkInf toMtsetkInf(
+            MtsetkRecord mtsetkRecord) {
+<span class="fc" id="L155">        return new MtsetkInf(</span>
+<span class="fc" id="L156">                mtsetkRecord.mtstNo(),</span>
+<span class="fc" id="L157">                mtsetkRecord.tkysYmd(),</span>
+<span class="fc" id="L158">                mtsetkRecord.tyenYmd(),</span>
+<span class="fc" id="L159">                mtsetkRecord.mtrShbt(),</span>
+<span class="fc" id="L160">                mtsetkRecord.nwjgCd(),</span>
+<span class="fc" id="L161">                mtsetkRecord.szcGkkCd(),</span>
+<span class="fc" id="L162">                mtsetkRecord.szcMchCd(),</span>
+<span class="fc" id="L163">                mtsetkRecord.szcCmazCd(),</span>
+<span class="fc" id="L164">                mtsetkRecord.cbgSuj1(),</span>
+<span class="fc" id="L165">                mtsetkRecord.cbgKn2(),</span>
+<span class="fc" id="L166">                mtsetkRecord.cbgKn3(),</span>
+<span class="fc" id="L167">                mtsetkRecord.cbgKn4(),</span>
+<span class="fc" id="L168">                mtsetkRecord.bldNo(),</span>
+<span class="fc" id="L169">                mtsetkRecord.tunoKn(),</span>
+<span class="fc" id="L170">                mtsetkRecord.hynKn(),</span>
+<span class="fc" id="L171">                mtsetkRecord.htuFlg(),</span>
+<span class="fc" id="L172">                mtsetkRecord.jutKbn());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DedicatedMeterTransportServiceContractUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-dedicatedmetertransportservicecontractupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">DedicatedMeterTransportServiceContractUpdateForRevivalImpl.java</span></div><h1>DedicatedMeterTransportServiceContractUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess.CallSpecs.FIND_ALL_BY_LOCATION_CODES_ALT_ORDER_AND_MTG_MTST_NO_AND_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess.CallSpecs.FIND_BY_TKSU_SVKY_NO_AND_KNSK_KJN_YMD_AND_TKSU_SVKY_JTKB;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TYEN_YMD_AND_TKSU_SVKK_JTKB;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.DedicatedMeterTransportServiceContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf;
+
+/**
+ * 概要: SV-111（専用メーターの託送サービス契約、託送サービス契約・ガスメーター設置場所関連更新（契約復活））の実装。
+ * 主な仕様:
+ * - 指定住所配下の専用メーター候補を検索し、ガスメーター設置場所番号ごとに重複更新を抑止する。
+ * - 対象状態の専用メーターだけを関連情報、契約情報の順に契約復活状態へ更新する。
+ */
+public final class DedicatedMeterTransportServiceContractUpdateForRevivalImpl
+        implements DedicatedMeterTransportServiceContractUpdateForRevival {
+
+    static final String SERVICE_USER_ID = &quot;KHSS111&quot;;
+
+<span class="fc" id="L47">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String applyingRelationStatus;
+
+    private final String applicableEndRelationStatus;
+
+    private final String underContractStatus;
+
+    private final String endOfContractStatus;
+
+    private final String meterPossessionStatus;
+
+    /**
+     * 必須依存と定数を初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DA
+     * @param tskgmstDataAccess 託送サービス契約・ガスメーター設置場所関連 DA
+     * @param tkssvkyDataAccess 託送サービス契約 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public DedicatedMeterTransportServiceContractUpdateForRevivalImpl(
+            final GmtsetdDataAccess gmtsetdDataAccess,
+            final TskgmstDataAccess tskgmstDataAccess,
+            final TkssvkyDataAccess tkssvkyDataAccess,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L85">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L86">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L87">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L88">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L89">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L90">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L93">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L96">        this.applyingRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L100">        this.applicableEndRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLICABLE_ENDS);
+<span class="fc" id="L104">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L108">        this.endOfContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.END_OF_CONTRACT);
+<span class="fc" id="L112">        this.meterPossessionStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.METER_POSSESSION_STATUS);
+<span class="fc" id="L116">    }</span>
+
+    @Override
+    public void execute(
+            final Long mtgMtstNo,
+            final LocalDate trkKnsYmd,
+            final GmtsetdInf gmtsetdInf) {
+<span class="fc" id="L123">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L124">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L126">        List&lt;GmtsetdRecord&gt; dedicatedMeters = gmtsetdDataAccess</span>
+<span class="fc" id="L127">                .findAllBySzcGkkCdAndSzcMchCdAndSzcCmazCdAndMtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd(</span>
+<span class="fc" id="L128">                        gmtsetdInf.szcGkkCd(),</span>
+<span class="fc" id="L129">                        gmtsetdInf.szcMchCd(),</span>
+<span class="fc" id="L130">                        gmtsetdInf.szcCmazCd(),</span>
+                        mtgMtstNo,
+<span class="fc" id="L132">                        gmtsetdInf.gasMtstNo(),</span>
+                        trkKnsYmd);
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (dedicatedMeters.isEmpty()) {</span>
+<span class="fc" id="L135">            throw createGmtsetdMissingException(mtgMtstNo, trkKnsYmd, gmtsetdInf);</span>
+        }
+
+<span class="fc" id="L138">        Long lastGasMtstNo = null;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (GmtsetdRecord dedicatedMeter : dedicatedMeters) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            if (Objects.equals(lastGasMtstNo, dedicatedMeter.gasMtstNo())) {</span>
+<span class="fc" id="L141">                continue;</span>
+            }
+<span class="fc" id="L143">            lastGasMtstNo = dedicatedMeter.gasMtstNo();</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (!meterPossessionStatus.equals(dedicatedMeter.kngmStbJtkb())) {</span>
+<span class="fc" id="L146">                continue;</span>
+            }
+
+<span class="fc" id="L149">            TskgmstRecord relationRecord = tskgmstDataAccess</span>
+<span class="fc" id="L150">                    .findByGasMtstNoAndTyenYmdAndTksuSvkkJtkb(</span>
+<span class="fc" id="L151">                            dedicatedMeter.gasMtstNo(),</span>
+                            trkKnsYmd,
+                            applicableEndRelationStatus)
+<span class="fc" id="L154">                    .orElseThrow(() -&gt; createRelationMissingException(dedicatedMeter.gasMtstNo(), trkKnsYmd));</span>
+
+<span class="fc" id="L156">            int updatedRelationCount = tskgmstDataAccess</span>
+<span class="fc" id="L157">                    .updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+<span class="fc" id="L158">                            buildTskgmstWriteRecord(relationRecord),</span>
+<span class="fc" id="L159">                            Set.of(TskgmstColumn.TKSU_SVKK_JTKB, TskgmstColumn.TYEN_YMD),</span>
+                            new TskgmstUpdateKey(
+<span class="fc" id="L161">                                    relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L162">                                    relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L163">                                    relationRecord.skno(),</span>
+<span class="fc" id="L164">                                    relationRecord.recUpdJnjNo()),</span>
+                            auditContext);
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (updatedRelationCount == 0) {</span>
+<span class="fc" id="L167">                throw createRelationUpdateException(relationRecord, decodedOriginFunctionId);</span>
+            }
+
+<span class="fc" id="L170">            TkssvkyRecord contractRecord = tkssvkyDataAccess</span>
+<span class="fc" id="L171">                    .findByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(</span>
+<span class="fc" id="L172">                            relationRecord.tksuSvkyNo(),</span>
+                            trkKnsYmd,
+                            endOfContractStatus)
+<span class="fc" id="L175">                    .orElseThrow(() -&gt; createContractMissingException(relationRecord.tksuSvkyNo(), trkKnsYmd));</span>
+
+<span class="fc" id="L177">            int updatedContractCount = tkssvkyDataAccess</span>
+<span class="fc" id="L178">                    .updateByTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+<span class="fc" id="L179">                            buildTkssvkyWriteRecord(contractRecord),</span>
+<span class="fc" id="L180">                            Set.of(</span>
+                                    TkssvkyColumn.TKSU_SVKY_JTKB,
+                                    TkssvkyColumn.TKSU_SVKE_JYSB,
+                                    TkssvkyColumn.TYEN_YMD),
+                            new TkssvkySknoJnjUpdateKey(
+<span class="fc" id="L185">                                    contractRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L186">                                    contractRecord.skno(),</span>
+<span class="fc" id="L187">                                    contractRecord.recUpdJnjNo()),</span>
+                            auditContext);
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (updatedContractCount == 0) {</span>
+<span class="fc" id="L190">                throw createContractUpdateException(contractRecord, decodedOriginFunctionId);</span>
+            }
+<span class="fc" id="L192">        }</span>
+<span class="fc" id="L193">    }</span>
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L196">        String hukkSysShbt = requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L197">                () -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L198">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        if (decodedOriginFunctionId == null) {</span>
+<span class="nc" id="L202">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L207">        return decodedOriginFunctionId;</span>
+    }
+
+    private RuntimeException createGmtsetdMissingException(
+            final Long mtgMtstNo,
+            final LocalDate trkKnsYmd,
+            final GmtsetdInf gmtsetdInf) {
+<span class="fc" id="L214">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L215">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L216">                gmtsetdFindDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L218">                        .put(&quot;szcGkkCd&quot;, gmtsetdInf.szcGkkCd())</span>
+<span class="fc" id="L219">                        .put(&quot;szcMchCd&quot;, gmtsetdInf.szcMchCd())</span>
+<span class="fc" id="L220">                        .put(&quot;szcCmazCd&quot;, gmtsetdInf.szcCmazCd())</span>
+<span class="fc" id="L221">                        .put(&quot;mtgMtstNo&quot;, mtgMtstNo)</span>
+<span class="fc" id="L222">                        .put(&quot;gasMtstNo&quot;, gmtsetdInf.gasMtstNo())</span>
+<span class="fc" id="L223">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd));</span>
+    }
+
+    private RuntimeException createRelationMissingException(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L229">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L230">                tskgmstDataAccess.tableName(),</span>
+<span class="fc" id="L231">                relationFindDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L233">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L234">                        .put(&quot;tyenYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L235">                        .put(&quot;tksuSvkkJtkb&quot;, applicableEndRelationStatus));</span>
+    }
+
+    private RuntimeException createRelationUpdateException(
+            final TskgmstRecord relationRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L241">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L242">                tskgmstDataAccess.tableName(),</span>
+<span class="fc" id="L243">                relationUpdateDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L245">                        .put(&quot;gasMtstNo&quot;, relationRecord.gasMtstNo())</span>
+<span class="fc" id="L246">                        .put(&quot;tksuSvkyNo&quot;, relationRecord.tksuSvkyNo())</span>
+<span class="fc" id="L247">                        .put(&quot;skno&quot;, relationRecord.skno())</span>
+<span class="fc" id="L248">                        .put(&quot;recUpdJnjNo&quot;, relationRecord.recUpdJnjNo())</span>
+<span class="fc" id="L249">                        .put(&quot;tksuSvkkJtkb&quot;, applyingRelationStatus)</span>
+<span class="fc" id="L250">                        .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L251">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L252">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private RuntimeException createContractMissingException(
+            final Long tksuSvkyNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L258">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L259">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L260">                contractFindDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L262">                        .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L263">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L264">                        .put(&quot;tksuSvkyJtkb&quot;, endOfContractStatus));</span>
+    }
+
+    private RuntimeException createContractUpdateException(
+            final TkssvkyRecord contractRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L270">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L271">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L272">                contractUpdateDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L274">                        .put(&quot;tksuSvkyNo&quot;, contractRecord.tksuSvkyNo())</span>
+<span class="fc" id="L275">                        .put(&quot;skno&quot;, contractRecord.skno())</span>
+<span class="fc" id="L276">                        .put(&quot;recUpdJnjNo&quot;, contractRecord.recUpdJnjNo())</span>
+<span class="fc" id="L277">                        .put(&quot;tksuSvkyJtkb&quot;, underContractStatus)</span>
+<span class="fc" id="L278">                        .put(&quot;tksuSvkeJysb&quot;, null)</span>
+<span class="fc" id="L279">                        .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L280">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L281">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private String gmtsetdFindDaIdentifier() {
+<span class="fc" id="L285">        return FIND_ALL_BY_LOCATION_CODES_ALT_ORDER_AND_MTG_MTST_NO_AND_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD</span>
+<span class="fc" id="L286">                .identifier();</span>
+    }
+
+    private String relationFindDaIdentifier() {
+<span class="fc" id="L290">        return FIND_BY_GAS_MTST_NO_AND_TYEN_YMD_AND_TKSU_SVKK_JTKB.identifier();</span>
+    }
+
+    private String relationUpdateDaIdentifier() {
+<span class="fc" id="L294">        return UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier();</span>
+    }
+
+    private String contractFindDaIdentifier() {
+<span class="fc" id="L298">        return FIND_BY_TKSU_SVKY_NO_AND_KNSK_KJN_YMD_AND_TKSU_SVKY_JTKB.identifier();</span>
+    }
+
+    private String contractUpdateDaIdentifier() {
+<span class="fc" id="L302">        return UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier();</span>
+    }
+
+    private TskgmstWriteRecord buildTskgmstWriteRecord(final TskgmstRecord relationRecord) {
+<span class="fc" id="L306">        return new TskgmstWriteRecord(</span>
+<span class="fc" id="L307">                relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L308">                relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L309">                relationRecord.skno(),</span>
+                applyingRelationStatus,
+<span class="fc" id="L311">                relationRecord.tkysYmd(),</span>
+                MAX_DATE);
+    }
+
+    private TkssvkyWriteRecord buildTkssvkyWriteRecord(final TkssvkyRecord contractRecord) {
+<span class="fc" id="L316">        return new TkssvkyWriteRecord(</span>
+<span class="fc" id="L317">                contractRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L318">                contractRecord.skno(),</span>
+                underContractStatus,
+<span class="fc" id="L320">                contractRecord.tksuSvksJysb(),</span>
+                null,
+<span class="fc" id="L322">                contractRecord.tkysYmd(),</span>
+                MAX_DATE,
+<span class="fc" id="L324">                contractRecord.hesnYtiYmd(),</span>
+<span class="fc" id="L325">                contractRecord.tkykShbt(),</span>
+<span class="fc" id="L326">                contractRecord.tksuKijsCd(),</span>
+<span class="fc" id="L327">                contractRecord.sutiKskhFlg(),</span>
+<span class="fc" id="L328">                contractRecord.syoKyoTrno());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

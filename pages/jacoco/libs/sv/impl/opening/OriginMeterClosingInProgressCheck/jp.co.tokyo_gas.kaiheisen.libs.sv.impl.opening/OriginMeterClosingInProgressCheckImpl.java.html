@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OriginMeterClosingInProgressCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-originmeterclosinginprogresscheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OriginMeterClosingInProgressCheckImpl.java</span></div><h1>OriginMeterClosingInProgressCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OriginMeterClosingInProgressCheck;
+
+/**
+ * 概要: SV-179（元メーター閉栓中チェック）の実装クラス。
+ * 主な仕様:
+ * - 直列ガスメーター設置状態区分が専用メーターであることを CIRIUS 定数で判定する。
+ * - 元メーターのガスメーター開閉栓状態区分が開栓中以外の場合に開栓共通エラー 020100025 を送出する。
+ * - 上記条件に一致しない場合は何も返さず正常終了する。
+ * 既知の制約:
+ * - 入力値の null 許可/不許可や前後空白補正は上位層責務とし、本クラスでは追加の正規化を行わない。
+ * - 必須定数が未登録の場合はコンストラクタ初期化時点で例外送出となり、インスタンス生成に失敗する。
+ */
+public final class OriginMeterClosingInProgressCheckImpl
+        implements OriginMeterClosingInProgressCheck {
+
+    /** 専用ガスメーターを表す直列ガスメーター設置状態区分。 */
+    private final String dedicatedGasMeterStatus;
+
+    /** 開栓中を表すガスメーター開閉栓状態区分。 */
+    private final String openingStatus;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - 直列ガスメーター設置状態区分 J0244 の「専用ガスメーター」を必須解決して保持する。
+     * - ガスメーター開閉栓状態区分 02100 の「開栓中」を必須解決して保持する。
+     * - CIRIUS 定数取得サービスの null は許容せず、fail-fast で検知する。
+     * 既知の制約:
+     * - 必須定数が未登録の場合は遅延評価せず、コンストラクタ実行時点で fail-fast として例外を送出する。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public OriginMeterClosingInProgressCheckImpl(
+<span class="fc" id="L42">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L43">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L44">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L45">        this.dedicatedGasMeterStatus =</span>
+<span class="fc" id="L46">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L50">        this.openingStatus =</span>
+<span class="fc" id="L51">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * 概要: 元メーター閉栓中判定を実行する。
+     * 主な仕様:
+     * - 直列ガスメーター設置状態区分が専用メーターで、元メーターのガスメーター開閉栓状態区分が開栓中以外のときに業務例外を送出する。
+     * - それ以外の組み合わせでは正常終了する。
+     * 既知の制約:
+     * - correlationId、hukkSysShbt、systemDatetime は SV 規約に従い公開引数へ含めない。
+     * - public 引数の null ガードは追加せず、上位バリデーション済み前提で評価する。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param gmtKhsJtkb 元メーターのガスメーター開閉栓状態区分
+     */
+    @Override
+    public void execute(final String ckrtGmscJtkb, final String gmtKhsJtkb) {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (dedicatedGasMeterStatus.equals(ckrtGmscJtkb)</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                &amp;&amp; !openingStatus.equals(gmtKhsJtkb)) {</span>
+<span class="fc" id="L73">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100025);</span>
+        }
+<span class="fc" id="L75">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

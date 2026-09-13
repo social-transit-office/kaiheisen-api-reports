@@ -1,0 +1,637 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractInfoAtOpeningDateAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractinfoatopeningdateacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractInfoAtOpeningDateAcquisitionImpl.java</span></div><h1>ContractInfoAtOpeningDateAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ComprehensiveMeterJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ComprehensiveMeterJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoAtOpeningDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoAtOpeningDateAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateItensakInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateSvsihkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf;
+
+/** 開栓日時点契約情報取得サービス実装クラス. */
+public final class ContractInfoAtOpeningDateAcquisitionImpl
+        implements ContractInfoAtOpeningDateAcquisition {
+
+    /** 開栓時総合メーター判定サービス. */
+    private final ComprehensiveMeterJudgmentAtOpening
+            comprehensiveMeterJudgmentAtOpening;
+
+    /** サービス契約・メーター設置場所関連データアクセス. */
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    /** サービス契約データアクセス. */
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    /** 移転先管理データアクセス. */
+    private final ItensakDataAccess itensakDataAccess;
+
+    /** サービス契約・支払契約関連データアクセス. */
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    /** 支払契約データアクセス. */
+    private final SihakyDataAccess sihakyDataAccess;
+
+    /** 東京ガス小売事業者コード. */
+    private final String tokyoGasRetailerCode;
+
+    /** 料金計算関連状態区分の有効値. */
+    private final String chargeCalculationRelatedStatusRelatedValid;
+
+    /** 料金計算関連状態区分の終了待ち値. */
+    private final String chargeCalculationRelatedStatusRelatedEndWait;
+
+    /** 契約中のサービス契約状態. */
+    private final String serviceContractStatusUnderContract;
+
+    /** 適用中の支払契約状態. */
+    private final String paymentContractStatusApplying;
+
+    /** 無効の支払契約状態. */
+    private final String paymentContractStatusInvalid;
+
+    /** 移転先取消フラグの未設定値. */
+    private final String transferDestinationCancellationFlagNoConcept;
+
+    /** 専用ガスメーター設置状態. */
+    private final String dedicatedGasMeterInstallationStatus;
+
+    /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /**
+     * コンストラクタ.
+     *
+     * @param comprehensiveMeterJudgmentAtOpeningArg 開栓時総合メーター判定サービス
+     * @param svmstkrDataAccessArg サービス契約・メーター設置場所関連データアクセス
+     * @param svckyaDataAccessArg サービス契約データアクセス
+     * @param itensakDataAccessArg 移転先管理データアクセス
+     * @param svsihkrDataAccessArg サービス契約・支払契約関連データアクセス
+     * @param sihakyDataAccessArg 支払契約データアクセス
+     * @param dependenciesArg リクエスト/定数サービス依存
+     */
+    public ContractInfoAtOpeningDateAcquisitionImpl(
+            final ComprehensiveMeterJudgmentAtOpening
+                    comprehensiveMeterJudgmentAtOpeningArg,
+            final SvmstkrDataAccess svmstkrDataAccessArg,
+            final SvckyaDataAccess svckyaDataAccessArg,
+            final ItensakDataAccess itensakDataAccessArg,
+            final SvsihkrDataAccess svsihkrDataAccessArg,
+            final SihakyDataAccess sihakyDataAccessArg,
+<span class="fc" id="L103">            final ContractInfoAtOpeningDependencies dependenciesArg) {</span>
+<span class="fc" id="L104">        this.comprehensiveMeterJudgmentAtOpening =</span>
+<span class="fc" id="L105">                Objects.requireNonNull(</span>
+                        comprehensiveMeterJudgmentAtOpeningArg,
+                        &quot;comprehensiveMeterJudgmentAtOpening&quot;);
+<span class="fc" id="L108">        this.svmstkrDataAccess =</span>
+<span class="fc" id="L109">                Objects.requireNonNull(</span>
+                        svmstkrDataAccessArg,
+                        &quot;svmstkrDataAccess&quot;);
+<span class="fc" id="L112">        this.svckyaDataAccess =</span>
+<span class="fc" id="L113">                Objects.requireNonNull(</span>
+                        svckyaDataAccessArg,
+                        &quot;svckyaDataAccess&quot;);
+<span class="fc" id="L116">        this.itensakDataAccess =</span>
+<span class="fc" id="L117">                Objects.requireNonNull(</span>
+                        itensakDataAccessArg,
+                        &quot;itensakDataAccess&quot;);
+<span class="fc" id="L120">        this.svsihkrDataAccess =</span>
+<span class="fc" id="L121">                Objects.requireNonNull(</span>
+                        svsihkrDataAccessArg,
+                        &quot;svsihkrDataAccess&quot;);
+<span class="fc" id="L124">        this.sihakyDataAccess =</span>
+<span class="fc" id="L125">                Objects.requireNonNull(</span>
+                        sihakyDataAccessArg,
+                        &quot;sihakyDataAccess&quot;);
+<span class="fc" id="L128">        ContractInfoAtOpeningDependencies dependencies =</span>
+<span class="fc" id="L129">                Objects.requireNonNull(</span>
+                        dependenciesArg,
+                        &quot;dependencies&quot;);
+<span class="fc" id="L132">        this.requestContext =</span>
+<span class="fc" id="L133">                Objects.requireNonNull(</span>
+<span class="fc" id="L134">                        dependencies.requestContext(),</span>
+                        &quot;requestContext&quot;);
+
+<span class="fc" id="L137">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L138">                Objects.requireNonNull(</span>
+<span class="fc" id="L139">                        dependencies.ciriusConstantService(),</span>
+                        &quot;ciriusConstantService&quot;);
+<span class="fc" id="L141">        this.tokyoGasRetailerCode =</span>
+<span class="fc" id="L142">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                        ConstantLookupKeys.Cirius.RetailerCode
+                                .TOKYO_GAS_CO_LTD);
+<span class="fc" id="L147">        this.chargeCalculationRelatedStatusRelatedValid =</span>
+<span class="fc" id="L148">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L154">        this.chargeCalculationRelatedStatusRelatedEndWait =</span>
+<span class="fc" id="L155">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L161">        this.serviceContractStatusUnderContract =</span>
+<span class="fc" id="L162">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .ServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L168">        this.paymentContractStatusApplying =</span>
+<span class="fc" id="L169">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .PaymentContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .PaymentContractStatus.APPLYING);
+<span class="fc" id="L175">        this.paymentContractStatusInvalid =</span>
+<span class="fc" id="L176">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .PaymentContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .PaymentContractStatus.INVALID);
+<span class="fc" id="L182">        this.transferDestinationCancellationFlagNoConcept =</span>
+<span class="fc" id="L183">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .TransferDestinationCancellationFlag.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .TransferDestinationCancellationFlag
+                                .NO_CONCEPT);
+<span class="fc" id="L190">        this.dedicatedGasMeterInstallationStatus =</span>
+<span class="fc" id="L191">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius
+                                .SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius
+                                .SeriesGasMeterInstallationStatus
+                                .DEDICATED_GAS_METER);
+<span class="fc" id="L198">    }</span>
+
+        /**
+         * 概要: 開栓作業日時点の契約情報を取得する.
+         * 主な仕様:
+         * - 託送供給依頼事業者コードが東京ガス以外の場合は、
+         *   後続依存を呼び出さず直列専用通過メーターフラグのみ判定して返却する。
+         * - 東京ガス分岐では DA-041-R013 で
+         *   サービス契約・メーター設置場所関連情報を取得し、0件時は例外にせず空の契約情報で返却する。
+         * - DA-041-R013 で取得できた場合は SV-170、DA-038-R009、
+         *   DA-004-R003、DA-044-R004、DA-075-R004 を順に評価し、取得結果を出力 DTO へ詰め替える。
+         * 既知の制約:
+         * - RequestContext の systemDatetime が未設定の場合は
+         *   fail-fast する。
+         * - サービス契約、支払契約関連、支払契約が取得必須の箇所で
+         *   0件だった場合は DataInconsistencyException を送出する。
+         * - 引数の null/blank の妥当性判断は上位層責務とし、本実装では追加の必須チェックを行わない。
+         *
+         * @param gasMtstNo ガスメーター設置場所番号
+         * @param kasgYmd 開栓作業年月日
+         * @param tksuKijsCd 託送供給依頼事業者コード
+         * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+         * @param kasJysb 開栓事由種別
+         * @return 開栓日時点契約情報取得結果
+         */
+    @Override
+    public ContractInfoAtOpeningDateAcquisitionOutput execute(
+            final Long gasMtstNo,
+            final LocalDate kasgYmd,
+            final String tksuKijsCd,
+            final String ckrtGmscJtkb,
+            final String kasJysb) {
+<span class="fc" id="L230">        boolean snyTkmtFlg = isDedicatedGasMeter(ckrtGmscJtkb);</span>
+<span class="fc" id="L231">        List&lt;String&gt; rkkiKnrnJtkbList =</span>
+<span class="fc" id="L232">                List.of(</span>
+                        chargeCalculationRelatedStatusRelatedValid,
+                        chargeCalculationRelatedStatusRelatedEndWait);
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (!isTokyoGasRetailer(tksuKijsCd)) {</span>
+<span class="fc" id="L236">            return emptyContractInfoAtOpeningOutput(snyTkmtFlg);</span>
+        }
+
+<span class="fc" id="L239">        SvmstkrRecord svmstkrRecord =</span>
+                svmstkrDataAccess
+<span class="fc" id="L241">                        .findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(</span>
+                                gasMtstNo,
+                                kasgYmd,
+                                rkkiKnrnJtkbList)
+<span class="fc" id="L245">                        .orElse(null);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if (svmstkrRecord == null) {</span>
+<span class="fc" id="L247">            return emptyContractInfoAtOpeningOutput(snyTkmtFlg);</span>
+        }
+
+<span class="fc" id="L250">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L251">        ComprehensiveMeterJudgmentAtOpeningOutput comprehensiveOutput =</span>
+<span class="fc" id="L252">                comprehensiveMeterJudgmentAtOpening.execute(</span>
+<span class="fc" id="L253">                        svmstkrRecord.mtstNo(),</span>
+<span class="fc" id="L254">                        svmstkrRecord.svkyNo(),</span>
+                        kasJysb,
+<span class="fc" id="L256">                        svmstkrRecord.rkkiSttYmd(),</span>
+<span class="fc" id="L257">                        svmstkrRecord.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L258">                        svmstkrRecord.rkkiEndYmd());</span>
+<span class="fc" id="L259">        SvckyaRecord svckyaRecord = findSvckyaRecord(svmstkrRecord.svkyNo());</span>
+<span class="fc" id="L260">        ContractInfoAtOpeningDateItensakInf itensakInf =</span>
+<span class="fc" id="L261">                findItensakInf(</span>
+                        gasMtstNo,
+<span class="fc" id="L263">                        svmstkrRecord.svkyNo());</span>
+<span class="fc" id="L264">        SvsihkrRecord svsihkrRecord =</span>
+<span class="fc" id="L265">                findSvsihkrRecord(</span>
+<span class="fc" id="L266">                        svmstkrRecord.svkyNo(),</span>
+<span class="fc" id="L267">                        systemDatetime.toLocalDate());</span>
+<span class="fc" id="L268">        SihakyRecord sihakyRecord =</span>
+<span class="fc" id="L269">                findSihakyRecord(</span>
+<span class="fc" id="L270">                        svsihkrRecord.sihKiyNo(),</span>
+<span class="fc" id="L271">                        systemDatetime.toLocalDate());</span>
+
+<span class="fc" id="L273">        return new ContractInfoAtOpeningDateAcquisitionOutput(</span>
+<span class="fc" id="L274">                toSvmstkrInf(svmstkrRecord),</span>
+<span class="fc" id="L275">                toSvckyaInf(svckyaRecord),</span>
+                itensakInf,
+<span class="fc" id="L277">                toSvsihkrInf(svsihkrRecord),</span>
+<span class="fc" id="L278">                toSihakyInf(sihakyRecord),</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                comprehensiveOutput == null</span>
+<span class="nc" id="L280">                        ? null</span>
+<span class="fc" id="L281">                        : comprehensiveOutput.suguHtkFlg(),</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">                comprehensiveOutput == null</span>
+<span class="nc" id="L283">                        ? null</span>
+<span class="fc" id="L284">                        : comprehensiveOutput.kzksyAtkCd(),</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                false,</span>
+<span class="fc" id="L286">                itensakInf != null);</span>
+    }
+
+    private boolean isTokyoGasRetailer(final String tksuKijsCd) {
+<span class="fc" id="L290">        return tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+    }
+
+    private ContractInfoAtOpeningDateAcquisitionOutput emptyContractInfoAtOpeningOutput(
+            final boolean snyTkmtFlg) {
+<span class="fc" id="L295">        return new ContractInfoAtOpeningDateAcquisitionOutput(</span>
+<span class="fc" id="L296">                emptySvmstkrInf(),</span>
+<span class="fc" id="L297">                emptySvckyaInf(),</span>
+<span class="fc" id="L298">                emptyItensakInf(),</span>
+<span class="fc" id="L299">                emptySvsihkrInf(),</span>
+<span class="fc" id="L300">                emptySihakyInf(),</span>
+                Boolean.FALSE,
+                null,
+<span class="fc" id="L303">                snyTkmtFlg,</span>
+                Boolean.FALSE);
+    }
+
+    private static SvmstkrInf emptySvmstkrInf() {
+<span class="fc" id="L308">        return new SvmstkrInf(</span>
+                null,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static SvckyaInf emptySvckyaInf() {
+<span class="fc" id="L322">        return new SvckyaInf(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static ContractInfoAtOpeningDateItensakInf emptyItensakInf() {
+<span class="fc" id="L364">        return new ContractInfoAtOpeningDateItensakInf(</span>
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static ContractInfoAtOpeningDateSvsihkrInf emptySvsihkrInf() {
+<span class="fc" id="L373">        return new ContractInfoAtOpeningDateSvsihkrInf(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                null);
+    }
+
+    private static ContractInfoAtOpeningDateSihakyInf emptySihakyInf() {
+<span class="fc" id="L392">        return new ContractInfoAtOpeningDateSihakyInf(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null);
+    }
+
+    private boolean isDedicatedGasMeter(final String ckrtGmscJtkb) {
+<span class="fc" id="L414">        return dedicatedGasMeterInstallationStatus.equals(ckrtGmscJtkb);</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L418">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L419">                .orElseThrow(</span>
+                        () -&gt;
+<span class="fc" id="L421">                                new IllegalStateException(</span>
+                                        &quot;RequestContext.systemDatetime is&quot;
+                                                + &quot; required&quot;));
+    }
+
+    private SvckyaRecord findSvckyaRecord(final Long svkyNo) {
+<span class="fc" id="L427">        List&lt;SvckyaRecord&gt; svckyaRecords =</span>
+<span class="fc" id="L428">                svckyaDataAccess.findAllBySvkyNoAndSvkyJtkb(</span>
+                        svkyNo,
+                        serviceContractStatusUnderContract);
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        if (svckyaRecords.isEmpty()) {</span>
+<span class="fc" id="L432">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L433">                    svckyaDataAccess.tableName(),</span>
+                    SvckyaDataAccess.CallSpecs
+                            .FIND_ALL_BY_SVKY_NO_AND_SVKY_JTKB
+<span class="fc" id="L436">                            .identifier(),</span>
+<span class="fc" id="L437">                    parameterJsonForSvckya(svkyNo));</span>
+        }
+<span class="fc" id="L439">        return svckyaRecords.stream()</span>
+<span class="fc" id="L440">                .max(</span>
+<span class="fc" id="L441">                        Comparator.comparing(</span>
+                                SvckyaRecord::skno,
+<span class="fc" id="L443">                                Comparator.nullsLast(Integer::compareTo)))</span>
+<span class="fc" id="L444">                .orElseThrow();</span>
+    }
+
+    private ContractInfoAtOpeningDateItensakInf findItensakInf(
+            final Long gasMtstNo,
+            final Long svkyNo) {
+<span class="fc" id="L450">        return itensakDataAccess</span>
+<span class="fc" id="L451">                .findAllByGmtSetNoAndSyokyNoAndItenTksCd(</span>
+                        gasMtstNo,
+                        svkyNo,
+                        transferDestinationCancellationFlagNoConcept)
+<span class="fc" id="L455">                .stream()</span>
+<span class="fc" id="L456">                .findFirst()</span>
+<span class="fc" id="L457">                .map(ContractInfoAtOpeningDateAcquisitionImpl::toItensakInf)</span>
+<span class="fc" id="L458">                .orElse(null);</span>
+    }
+
+    private SvsihkrRecord findSvsihkrRecord(
+            final Long svkyNo,
+            final LocalDate systemDate) {
+<span class="fc" id="L464">        String svsihkrCallSpecIdentifier =</span>
+                SvsihkrDataAccess.CallSpecs
+                        .FIND_BY_SVKY_NO_AND_TKYS_YMD_AND_SIH_KIY_JTKB
+<span class="fc" id="L467">                        .identifier();</span>
+<span class="fc" id="L468">        return svsihkrDataAccess</span>
+<span class="fc" id="L469">                .findBySvkyNoAndTkysYmdAndSihKiyJtkb(</span>
+                        svkyNo,
+                        systemDate,
+                        paymentContractStatusApplying)
+<span class="fc" id="L473">                .orElseThrow(</span>
+                        () -&gt;
+<span class="fc" id="L475">                                DataInconsistencySupport.create(</span>
+<span class="fc" id="L476">                                        svsihkrDataAccess.tableName(),</span>
+                                        svsihkrCallSpecIdentifier,
+<span class="fc" id="L478">                                        parameterJsonForSvsihkr(</span>
+                                                svkyNo,
+                                                systemDate)));
+    }
+
+    private SihakyRecord findSihakyRecord(
+            final Long sihKiyNo,
+            final LocalDate systemDate) {
+<span class="fc" id="L486">        String sihakyCallSpecIdentifier =</span>
+                SihakyDataAccess.CallSpecs
+                        .FIND_BY_SIH_KIY_NO_AND_TKYS_YMD_AND_NOT_SIH_KIY_JTKB
+<span class="fc" id="L489">                        .identifier();</span>
+<span class="fc" id="L490">        return sihakyDataAccess</span>
+<span class="fc" id="L491">                .findBySihKiyNoAndTkysYmdAndNotSihKiyJtkb(</span>
+                        sihKiyNo,
+                        systemDate,
+                        paymentContractStatusInvalid)
+<span class="fc" id="L495">                .orElseThrow(</span>
+                        () -&gt;
+<span class="fc" id="L497">                                DataInconsistencySupport.create(</span>
+<span class="fc" id="L498">                                        sihakyDataAccess.tableName(),</span>
+                                        sihakyCallSpecIdentifier,
+<span class="fc" id="L500">                                        parameterJsonForSihaky(</span>
+                                                sihKiyNo,
+                                                systemDate)));
+    }
+
+    private static SvmstkrInf toSvmstkrInf(final SvmstkrRecord record) {
+                // Shared opening model keeps recUpdJnjNo for other SVs, but SV-166 returns up to hishYtiYmd.
+<span class="fc" id="L507">        return new SvmstkrInf(</span>
+<span class="fc" id="L508">                record.mtstNo(),</span>
+<span class="fc" id="L509">                record.svkyNo(),</span>
+<span class="fc" id="L510">                record.skno(),</span>
+<span class="fc" id="L511">                record.suguKbn(),</span>
+<span class="fc" id="L512">                record.sknrFlg(),</span>
+<span class="fc" id="L513">                record.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L514">                record.rkkiSttYmd(),</span>
+<span class="fc" id="L515">                record.rkkiEndYmd(),</span>
+<span class="fc" id="L516">                record.hishYtiYmd(),</span>
+                null);
+    }
+
+    private static SvckyaInf toSvckyaInf(final SvckyaRecord record) {
+                // Shared opening model keeps audit/exclusive fields, but SV-166 does not expose them.
+<span class="fc" id="L522">        return new SvckyaInf(</span>
+<span class="fc" id="L523">                record.svkyNo(),</span>
+<span class="fc" id="L524">                record.skno(),</span>
+<span class="fc" id="L525">                record.kyttSkno(),</span>
+<span class="fc" id="L526">                record.kyttTsno(),</span>
+<span class="fc" id="L527">                record.svkyJtkb(),</span>
+<span class="fc" id="L528">                record.svkySttJysb(),</span>
+<span class="fc" id="L529">                record.ksbTkyJysb(),</span>
+<span class="fc" id="L530">                record.svkyEndJysb(),</span>
+<span class="fc" id="L531">                record.rkkiSttYmd(),</span>
+<span class="fc" id="L532">                record.rkkiEndYmd(),</span>
+<span class="fc" id="L533">                record.ksbSttYmd(),</span>
+<span class="fc" id="L534">                record.ksbEndYmd(),</span>
+<span class="fc" id="L535">                record.ksbStytYmd(),</span>
+<span class="fc" id="L536">                record.ksbEnytYmd(),</span>
+<span class="fc" id="L537">                record.kykYtiYmd(),</span>
+<span class="fc" id="L538">                record.svcRyksYmd(),</span>
+<span class="fc" id="L539">                record.svkyTiktYmd(),</span>
+<span class="fc" id="L540">                record.ksbTiktYmd(),</span>
+<span class="fc" id="L541">                record.szirHtyoYmd(),</span>
+<span class="fc" id="L542">                record.sqtiKiyNo(),</span>
+<span class="fc" id="L543">                record.syoKyoTrno(),</span>
+<span class="fc" id="L544">                record.kysKyoTrno(),</span>
+<span class="fc" id="L545">                record.byssUmFlg(),</span>
+<span class="fc" id="L546">                record.shziKbn(),</span>
+<span class="fc" id="L547">                record.kiyShbt(),</span>
+<span class="fc" id="L548">                record.gasYtCd(),</span>
+<span class="fc" id="L549">                record.sziKziKbn(),</span>
+<span class="fc" id="L550">                record.rknKhumFlg(),</span>
+<span class="fc" id="L551">                record.kkysSisnJtkb(),</span>
+<span class="fc" id="L552">                record.kiyKnrkCd(),</span>
+<span class="fc" id="L553">                record.syaKbn(),</span>
+<span class="fc" id="L554">                record.tsziKysbNo(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static ContractInfoAtOpeningDateItensakInf toItensakInf(final ItensakRecord record) {
+<span class="fc" id="L564">        return new ContractInfoAtOpeningDateItensakInf(</span>
+<span class="fc" id="L565">                record.gmtSetNo(),</span>
+<span class="fc" id="L566">                record.syokyNo(),</span>
+<span class="fc" id="L567">                record.itenSakSeqNo(),</span>
+<span class="fc" id="L568">                record.tsykIraiJkCd(),</span>
+<span class="fc" id="L569">                record.recUpdJnjNo());</span>
+    }
+
+    private static ContractInfoAtOpeningDateSvsihkrInf toSvsihkrInf(final SvsihkrRecord record) {
+<span class="fc" id="L573">        return new ContractInfoAtOpeningDateSvsihkrInf(</span>
+<span class="fc" id="L574">                record.sihKiyNo(),</span>
+<span class="fc" id="L575">                record.svkyNo(),</span>
+<span class="fc" id="L576">                record.skno(),</span>
+<span class="fc" id="L577">                record.tkysYmd(),</span>
+<span class="fc" id="L578">                record.tyenYmd(),</span>
+<span class="fc" id="L579">                record.sihKiyJtkb(),</span>
+<span class="fc" id="L580">                record.snskSvkyNo(),</span>
+<span class="fc" id="L581">                record.ikskSttYm(),</span>
+<span class="fc" id="L582">                record.ikskEndYm(),</span>
+<span class="fc" id="L583">                record.ikskGrpNo(),</span>
+<span class="fc" id="L584">                record.tdssSbtShbt(),</span>
+<span class="fc" id="L585">                record.gsnKhFlg(),</span>
+<span class="fc" id="L586">                record.gsptShbt(),</span>
+<span class="fc" id="L587">                record.sikTmngShbt(),</span>
+<span class="fc" id="L588">                record.shziKbn());</span>
+    }
+
+    private static ContractInfoAtOpeningDateSihakyInf toSihakyInf(final SihakyRecord record) {
+<span class="fc" id="L592">        return new ContractInfoAtOpeningDateSihakyInf(</span>
+<span class="fc" id="L593">                record.sihKiyNo(),</span>
+<span class="fc" id="L594">                record.skno(),</span>
+<span class="fc" id="L595">                record.tkysYmd(),</span>
+<span class="fc" id="L596">                record.tyenYmd(),</span>
+<span class="fc" id="L597">                record.sihKiyJtkb(),</span>
+<span class="fc" id="L598">                record.sihHuhuShbt(),</span>
+<span class="fc" id="L599">                record.sikSvcShbt(),</span>
+<span class="fc" id="L600">                record.sikKibNo(),</span>
+<span class="fc" id="L601">                record.yggsTkyShbt(),</span>
+<span class="fc" id="L602">                record.thsCdNo(),</span>
+<span class="fc" id="L603">                record.sikCycsNo(),</span>
+<span class="fc" id="L604">                record.sikKrno(),</span>
+<span class="fc" id="L605">                record.shtiSqddKbn(),</span>
+<span class="fc" id="L606">                record.jduKykShbt(),</span>
+<span class="fc" id="L607">                record.jduKykYmd(),</span>
+<span class="fc" id="L608">                record.shsyKyoTrno(),</span>
+<span class="fc" id="L609">                record.byssUmFlg(),</span>
+<span class="fc" id="L610">                record.skshHyjsKrno());</span>
+    }
+
+    private FlatJsonBuilder parameterJsonForSvckya(final Long svkyNo) {
+<span class="fc" id="L614">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L615">                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L616">                .put(&quot;svkyJtkb&quot;, serviceContractStatusUnderContract);</span>
+    }
+
+    private FlatJsonBuilder parameterJsonForSvsihkr(
+            final Long svkyNo,
+            final LocalDate systemDate) {
+<span class="fc" id="L622">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L623">                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L624">                .put(&quot;tkysYmd&quot;, systemDate)</span>
+<span class="fc" id="L625">                .put(&quot;sihKiyJtkb&quot;, paymentContractStatusApplying);</span>
+    }
+
+    private FlatJsonBuilder parameterJsonForSihaky(
+            final Long sihKiyNo,
+            final LocalDate systemDate) {
+<span class="fc" id="L631">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L632">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L633">                .put(&quot;tkysYmd&quot;, systemDate)</span>
+<span class="fc" id="L634">                .put(&quot;sihKiyJtkb&quot;, paymentContractStatusInvalid);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

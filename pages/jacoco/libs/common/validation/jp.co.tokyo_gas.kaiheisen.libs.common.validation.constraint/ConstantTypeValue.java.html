@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConstantTypeValue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-validation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.validation.constraint</a> &gt; <span class="el_source">ConstantTypeValue.java</span></div><h1>ConstantTypeValue.java</h1><pre class="source lang-java linenums">/**
+ * @file ConstantTypeValue.java
+ * 概要: コンスタント種別一覧に存在する値であることを検証するカスタムアノテーション。
+ * 主な仕様:
+ * - type 属性でコンスタント種別コードを指定する。
+ * - source 属性に応じて KaiheisenConstantService または CiriusConstantService を用いて許可値を動的に取得・検証する。
+ * 既知の制限事項:
+ * - BeanValidationRequestDtoValidator が定数参照元に応じたサービスを解決できる前提。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.validation.constraint;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.model.CiriusConstantListItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.model.KaiheisenConstantItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+
+/**
+ * コンスタント種別一覧に存在する値であることを検証するカスタムアノテーション。
+ *
+ * &lt;p&gt;使用例: {@code @ConstantTypeValue(type = &quot;KH001&quot;) String hukkSysShbt}
+ *
+ * @since 1.0.0
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.RECORD_COMPONENT, ElementType.FIELD, ElementType.PARAMETER})
+public @interface ConstantTypeValue {
+
+    /**
+     * 定数参照元。
+     */
+<span class="fc" id="L42">    enum Source {</span>
+        /** 開閉栓独自定数。 */
+<span class="fc" id="L44">        KAIHEISEN,</span>
+        /** CIRIUS 定数。 */
+<span class="fc" id="L46">        CIRIUS</span>
+    }
+
+    /**
+     * コンスタント種別コード。
+     */
+    String type();
+
+    /**
+     * 定数参照元。未指定時は開閉栓独自定数を参照する。
+     */
+    Source source() default Source.KAIHEISEN;
+
+    /**
+     * エラーコード。デフォルトはコード一覧存在チェックバリデーションエラー。
+     */
+    String errorCode() default ErrorCodeConstants.ERROR_CODE_010000028;
+
+    /**
+     * ConstantTypeValue 検証ロジック。
+     */
+    final class Rule implements ConstraintRule&lt;ConstantTypeValue&gt; {
+        private Rule() {
+        }
+
+<span class="fc" id="L71">        private static final Rule INSTANCE = new Rule();</span>
+
+        /**
+         * シングルトンインスタンスを返す。
+         *
+         * @return Rule インスタンス
+         */
+        public static Rule instance() {
+<span class="fc" id="L79">            return INSTANCE;</span>
+        }
+
+        @Override
+        public Optional&lt;ValidationError&gt; validate(Object value, ConstantTypeValue annotation, String fieldName) {
+<span class="nc" id="L84">            throw new UnsupportedOperationException(</span>
+                &quot;Use validate(Object, ConstantTypeValue, String, KaiheisenConstantService, &quot;
+                    + &quot;CiriusConstantService) instead&quot;);
+        }
+
+        /**
+         * コンスタント種別の値存在を検証する。
+         *
+         * @param value 対象値
+         * @param annotation アノテーション
+         * @param fieldName フィールド名
+         * @param kaiheisenConstantService 開閉栓コンスタントサービス
+         * @param ciriusConstantService CIRIUS コンスタントサービス
+         * @return 違反時は ValidationError を含む Optional、正常時は empty
+         */
+        public Optional&lt;ValidationError&gt; validate(
+                Object value,
+                ConstantTypeValue annotation,
+                String fieldName,
+                KaiheisenConstantService kaiheisenConstantService,
+                CiriusConstantService ciriusConstantService) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (!(value instanceof String text)) {</span>
+<span class="fc" id="L106">                return Optional.empty();</span>
+            }
+<span class="fc" id="L108">            String normalized = text.trim();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (normalized.isEmpty()) {</span>
+<span class="fc" id="L110">                return Optional.empty();</span>
+            }
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            return switch (annotation.source()) {</span>
+<span class="fc" id="L113">                case KAIHEISEN -&gt; validateKaiheisen(</span>
+                        normalized,
+                        annotation,
+                        fieldName,
+                        kaiheisenConstantService);
+<span class="fc" id="L118">                case CIRIUS -&gt; validateCirius(</span>
+                        normalized,
+                        annotation,
+                        fieldName,
+                        ciriusConstantService);
+            };
+        }
+
+        private Optional&lt;ValidationError&gt; validateKaiheisen(
+                String normalized,
+                ConstantTypeValue annotation,
+                String fieldName,
+                KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L131">            List&lt;KaiheisenConstantItem&gt; items = kaiheisenConstantService.listActiveByType(annotation.type());</span>
+<span class="fc" id="L132">            boolean found = items.stream().anyMatch(item -&gt; normalized.equals(item.value()));</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (found) {</span>
+<span class="fc" id="L134">                return Optional.empty();</span>
+            }
+<span class="fc" id="L136">            String allowedValues = items.stream()</span>
+<span class="fc" id="L137">                    .map(KaiheisenConstantItem::value)</span>
+<span class="fc" id="L138">                    .collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc" id="L139">            return Optional.of(ValidationError.of(</span>
+<span class="fc" id="L140">                    annotation.errorCode(),</span>
+                    fieldName,
+<span class="fc" id="L142">                    annotation.type(),</span>
+                    allowedValues));
+        }
+
+        private Optional&lt;ValidationError&gt; validateCirius(
+                String normalized,
+                ConstantTypeValue annotation,
+                String fieldName,
+                CiriusConstantService ciriusConstantService) {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (ciriusConstantService == null) {</span>
+<span class="nc" id="L152">                throw new IllegalStateException(</span>
+                        &quot;CiriusConstantService is required for ConstantTypeValue source=CIRIUS&quot;);
+            }
+<span class="fc" id="L155">            List&lt;CiriusConstantListItem&gt; items = ciriusConstantService.listActiveByTypeCode(annotation.type());</span>
+<span class="fc" id="L156">            boolean found = items.stream().anyMatch(item -&gt; normalized.equals(item.code()));</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (found) {</span>
+<span class="fc" id="L158">                return Optional.empty();</span>
+            }
+<span class="fc" id="L160">            String allowedValues = items.stream()</span>
+<span class="fc" id="L161">                    .map(CiriusConstantListItem::code)</span>
+<span class="fc" id="L162">                    .collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc" id="L163">            return Optional.of(ValidationError.of(</span>
+<span class="fc" id="L164">                    annotation.errorCode(),</span>
+                    fieldName,
+<span class="fc" id="L166">                    annotation.type(),</span>
+                    allowedValues));
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

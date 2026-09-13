@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentHistoryDetailCodeImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmenthistorydetailcode</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentHistoryDetailCodeImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentHistoryDetailCodeImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkk.IsrkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkk.IsrkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentHistoryDetailCode;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput;
+
+/**
+ * 概要: SV-097（閉栓取消実施可否判定：異動・作業履歴業務詳細コード）のサービス実装。
+ * 主な仕様:
+ * - 小売・導管の異動・作業履歴を取得し、取消系業務詳細コードは返却値を null 化する。
+ * - 小売履歴が取消系業務詳細コードの場合は全項目 null を返却し、導管履歴取得および業務エラー判定を行わない。
+ * - 導管履歴が未取得または取消系業務詳細コードの場合は、導管返却値を null 化して処理を終了し、業務エラー判定を行わない。
+ * - 業務エラー判定は、導管履歴が 1 件かつ取消系業務詳細コードではない場合に、小売履歴の業務コードと取消対象業務コードの組み合わせで実施する。
+ * 既知の制約:
+ * - 業務判定には DA-102-R002 の取得業務コードを用いる。
+ * - 小売履歴が未取得の場合は業務コード null として扱う。
+ * - systemDatetime は RequestContext から取得し、検索年月日に変換する。
+ */
+public final class ClosingCancelFeasibilityJudgmentHistoryDetailCodeImpl
+        implements ClosingCancelFeasibilityJudgmentHistoryDetailCode {
+
+<span class="fc" id="L38">    private static final List&lt;String&gt; RETAIL_HISTORY_DETAIL_CODES = List.of(</span>
+        TransferWorkHistoryWorkDetailCodeRetail.RELOCATION_CLOSURE_CCBG6301,
+        TransferWorkHistoryWorkDetailCodeRetail.UNUSED_CLOSURE_CCBG6302,
+        TransferWorkHistoryWorkDetailCodeRetail.RELOCATION_CLOSURE_CCBG6801,
+        TransferWorkHistoryWorkDetailCodeRetail.UNUSED_CLOSURE_CCBG6802,
+        TransferWorkHistoryWorkDetailCodeRetail.RELOCATION_CLOSURE_CCBG6601,
+        TransferWorkHistoryWorkDetailCodeRetail.UNUSED_CLOSURE_CCBG6604,
+        TransferWorkHistoryWorkDetailCodeRetail.SUPPLY_OUTAGE_CCBG8401,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6303,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6804,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6603,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCEL_CCBG8402);
+
+<span class="fc" id="L51">    private static final List&lt;String&gt; CONDUIT_HISTORY_DETAIL_CODES = List.of(</span>
+        TransferWorkHistoryWorkDetailsCodeConduit.RELOCATION_CLOSURE_CCJG0701,
+        TransferWorkHistoryWorkDetailsCodeConduit.UNUSED_CLOSURE_CCJG0702,
+        TransferWorkHistoryWorkDetailsCodeConduit.RELOCATION_CLOSURE_CCJG0801,
+        TransferWorkHistoryWorkDetailsCodeConduit.UNUSED_CLOSURE_CCJG0802,
+        TransferWorkHistoryWorkDetailsCodeConduit.RELOCATION_CLOSURE_CCJG1001,
+        TransferWorkHistoryWorkDetailsCodeConduit.UNUSED_CLOSURE_CCJG1004,
+        TransferWorkHistoryWorkDetailsCodeConduit.SUPPLY_OUTAGE_CCJG1301,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0703,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0803,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG1003,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG1302);
+
+<span class="fc" id="L64">    private static final Set&lt;String&gt; RETAIL_CANCELLATION_DETAIL_CODES = Set.of(</span>
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6303,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6804,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6603,
+        TransferWorkHistoryWorkDetailCodeRetail.CANCEL_CCBG8402);
+
+<span class="fc" id="L70">    private static final Set&lt;String&gt; CONDUIT_CANCELLATION_DETAIL_CODES = Set.of(</span>
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0703,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0803,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG1003,
+        TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG1302);
+
+    private final IsrkkDataAccess isrkkDataAccess;
+
+    private final IsrkdDataAccess isrkdDataAccess;
+
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: 必須依存を初期化する。
+     *
+     * @param isrkkDataAccess 小売履歴データアクセス
+     * @param isrkdDataAccess 導管履歴データアクセス
+     * @param requestContext リクエストコンテキスト
+     */
+    @Inject
+    public ClosingCancelFeasibilityJudgmentHistoryDetailCodeImpl(
+            IsrkkDataAccess isrkkDataAccess,
+            IsrkdDataAccess isrkdDataAccess,
+<span class="fc" id="L93">            RequestContext requestContext) {</span>
+<span class="fc" id="L94">        this.isrkkDataAccess = Objects.requireNonNull(isrkkDataAccess, &quot;isrkkDataAccess&quot;);</span>
+<span class="fc" id="L95">        this.isrkdDataAccess = Objects.requireNonNull(isrkdDataAccess, &quot;isrkdDataAccess&quot;);</span>
+<span class="fc" id="L96">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * 概要: 異動・作業履歴業務詳細コードから閉栓取消可否を判定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkIsrrGymCd 取消対象異動・作業履歴業務コード
+     * @return 判定結果
+     */
+    @Override
+    public ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput execute(
+            Long gasMtstNo,
+            String trkIsrrGymCd) {
+<span class="fc" id="L110">        LocalDate resolvedTargetDate = resolveTargetDate();</span>
+
+<span class="fc" id="L112">        Optional&lt;IsrkkRecord&gt; retailRecord = isrkkDataAccess</span>
+<span class="fc" id="L113">                .findByArtyCstNoAndIsrrTriYmdAndIsrrGmssCd(</span>
+                gasMtstNo,
+                        resolvedTargetDate,
+                        RETAIL_HISTORY_DETAIL_CODES);
+<span class="fc" id="L117">        HistoryLookupResult retailResult = toRetailResult(retailRecord);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (retailResult.isCancellation()) {</span>
+<span class="fc" id="L119">            return new ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput(</span>
+                null,
+                null,
+                null,
+                null);
+        }
+
+<span class="fc" id="L126">        Optional&lt;IsrkdRecord&gt; conduitRecord = isrkdDataAccess</span>
+<span class="fc" id="L127">                .findByArtyCstNoAndIsrrTriYmdAndDuknIsrsCd(</span>
+                gasMtstNo,
+                        resolvedTargetDate,
+                        CONDUIT_HISTORY_DETAIL_CODES);
+<span class="fc" id="L131">        HistoryLookupResult conduitResult = toConduitResult(conduitRecord);</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">        if (conduitResult.isEmpty() || conduitResult.isCancellation()) {</span>
+<span class="fc" id="L133">            return new ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput(</span>
+<span class="fc" id="L134">                retailResult.output().businessCode(),</span>
+<span class="fc" id="L135">                retailResult.output().detailCode(),</span>
+<span class="fc" id="L136">                conduitResult.output().businessCode(),</span>
+<span class="fc" id="L137">                conduitResult.output().detailCode());</span>
+        }
+
+<span class="fc" id="L140">        validateClosingCancelTarget(</span>
+                trkIsrrGymCd,
+<span class="fc" id="L142">                retailResult.sourceBusinessCode());</span>
+
+<span class="fc" id="L144">        return new ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput(</span>
+<span class="fc" id="L145">                retailResult.output().businessCode(),</span>
+<span class="fc" id="L146">                retailResult.output().detailCode(),</span>
+<span class="fc" id="L147">                conduitResult.output().businessCode(),</span>
+<span class="fc" id="L148">                conduitResult.output().detailCode());</span>
+    }
+
+    private HistoryLookupResult toRetailResult(Optional&lt;IsrkkRecord&gt; retailRecord) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (retailRecord.isEmpty()) {</span>
+<span class="fc" id="L153">            return HistoryLookupResult.empty();</span>
+        }
+<span class="fc" id="L155">        IsrkkRecord record = retailRecord.orElseThrow();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (RETAIL_CANCELLATION_DETAIL_CODES.contains(record.isrrGmssCd())) {</span>
+<span class="fc" id="L157">            return HistoryLookupResult.cancellation(record.isrrGymCd());</span>
+        }
+<span class="fc" id="L159">        return HistoryLookupResult.active(record.isrrGymCd(), record.isrrGmssCd());</span>
+    }
+
+    private HistoryLookupResult toConduitResult(Optional&lt;IsrkdRecord&gt; conduitRecord) {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (conduitRecord.isEmpty()) {</span>
+<span class="fc" id="L164">            return HistoryLookupResult.empty();</span>
+        }
+<span class="fc" id="L166">        IsrkdRecord record = conduitRecord.orElseThrow();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (CONDUIT_CANCELLATION_DETAIL_CODES.contains(record.duknIsrsCd())) {</span>
+<span class="fc" id="L168">            return HistoryLookupResult.cancellation(record.duknIsrgCd());</span>
+        }
+<span class="fc" id="L170">        return HistoryLookupResult.active(record.duknIsrgCd(), record.duknIsrsCd());</span>
+    }
+
+    private LocalDate resolveTargetDate() {
+<span class="fc" id="L174">        return requireSystemDatetime().toLocalDate();</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L178">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L179">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+
+    private void validateClosingCancelTarget(String trkIsrrGymCd, String retailBusinessCode) {
+<span class="fc" id="L184">        if (ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                .equals(trkIsrrGymCd)) {</span>
+<span class="fc" id="L186">            if (ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                    .CLOSURE_ERROR_FOLLOW_UP_CCBG68.equals(retailBusinessCode)) {</span>
+<span class="fc" id="L188">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000064);</span>
+            }
+<span class="fc" id="L190">            if (!ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                    .equals(retailBusinessCode)</span>
+                    &amp;&amp; !ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                            .SUPPLY_OUTAGE_REPORT_RETAIL.equals(retailBusinessCode)) {</span>
+<span class="fc" id="L194">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000065);</span>
+            }
+<span class="nc" id="L196">            return;</span>
+        }
+
+<span class="fc" id="L199">        if (ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">                .CLOSURE_ERROR_FOLLOW_UP_CCBG68.equals(trkIsrrGymCd)) {</span>
+<span class="fc" id="L201">            if (ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                    .equals(retailBusinessCode)) {</span>
+<span class="fc" id="L203">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000051);</span>
+            }
+<span class="fc" id="L205">            if (!ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                    .CLOSURE_ERROR_FOLLOW_UP_CCBG68.equals(retailBusinessCode)) {</span>
+<span class="fc" id="L207">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000055);</span>
+            }
+<span class="nc" id="L209">            return;</span>
+        }
+
+<span class="fc" id="L212">        if (ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                .equals(retailBusinessCode)) {</span>
+<span class="fc" id="L214">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000051);</span>
+        }
+<span class="fc" id="L216">        if (!ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                .ONLINE_CLOSURE_REPORT_RETAIL.equals(retailBusinessCode)</span>
+                &amp;&amp; !ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+<span class="fc bfc" id="L219" title="All 2 branches covered.">                        .SUPPLY_OUTAGE_REPORT_RETAIL.equals(retailBusinessCode)) {</span>
+<span class="fc" id="L220">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000055);</span>
+        }
+<span class="fc" id="L222">    }</span>
+
+<span class="fc" id="L224">    private record HistoryCode(String businessCode, String detailCode) {</span>
+
+        private static HistoryCode empty() {
+<span class="fc" id="L227">            return new HistoryCode(null, null);</span>
+        }
+    }
+
+<span class="fc" id="L231">    private record HistoryLookupResult(</span>
+            String sourceBusinessCode,
+            HistoryCode output,
+            HistoryRecordState state) {
+
+        private static HistoryLookupResult empty() {
+<span class="fc" id="L237">            return new HistoryLookupResult(null, HistoryCode.empty(), HistoryRecordState.EMPTY);</span>
+        }
+
+        private static HistoryLookupResult cancellation(String sourceBusinessCode) {
+<span class="fc" id="L241">            return new HistoryLookupResult(</span>
+                    sourceBusinessCode,
+<span class="fc" id="L243">                    HistoryCode.empty(),</span>
+                    HistoryRecordState.CANCELLATION);
+        }
+
+        private static HistoryLookupResult active(String businessCode, String detailCode) {
+<span class="fc" id="L248">            return new HistoryLookupResult(</span>
+                    businessCode,
+                    new HistoryCode(businessCode, detailCode),
+                    HistoryRecordState.ACTIVE);
+        }
+
+        private boolean isEmpty() {
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            return state == HistoryRecordState.EMPTY;</span>
+        }
+
+        private boolean isCancellation() {
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            return state == HistoryRecordState.CANCELLATION;</span>
+        }
+    }
+
+<span class="fc" id="L263">    private enum HistoryRecordState {</span>
+<span class="fc" id="L264">        EMPTY,</span>
+<span class="fc" id="L265">        ACTIVE,</span>
+<span class="fc" id="L266">        CANCELLATION</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

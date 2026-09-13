@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationEditAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformintegrationeditatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationEditAtOpeningImpl.java</span></div><h1>BillingCollectionPlatformIntegrationEditAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationEditAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationEditAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationKiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationSihakyKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationSvckyaKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationSvsihkrKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SkkbRkySgjhInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SktsKykTrirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SktsSihTrirInf;
+
+/**
+ * 概要: SV-250（開栓時請求回収基盤連携情報編集）の実装。
+ * 主な仕様:
+ * - DA-062-R001 で契約お客さま電話番号＜小売＞を取得し、先頭 2 レコードを支払者・使用者電話情報へ反映する。
+ * - 固定値と CIRIUS 定数を組み合わせて、請求回収基盤連携用の 3 つの出力 DTO を編集する。
+ * 既知の制約:
+ * - 設計に基づき、電話情報の 3 件目以降は参照しない。
+ * - 電話番号は null 時に空文字へ補完し、電話連絡先種別と電話種別は null または空文字時に既定値へ補完する。
+ */
+public final class BillingCollectionPlatformIntegrationEditAtOpeningImpl
+        implements BillingCollectionPlatformIntegrationEditAtOpening {
+
+    private static final String EMPTY_PHONE_NUMBER = &quot;&quot;;
+
+<span class="fc" id="L36">    private static final Long FIXED_GAS_METER_LOCATION_NO = 11111111111L;</span>
+
+    private final KyotelkDataAccess kyotelkDataAccess;
+
+    private final String blankContactType;
+
+    private final String noPhoneType;
+
+    private final String paymentManagementTransferBusinessCode;
+
+    private final String contractManagementTransferBusinessCode;
+
+    private final String tokyoGasNetworkOperatorCode;
+
+    private final String noServiceSuspensionCancellationReason;
+
+    private final String gasFeeContractType;
+
+    /**
+     * 概要: SV-250 の依存と必須定数を初期化する。
+     * 主な仕様:
+     * - DA と CIRIUS 定数取得サービスを必須依存として保持する。
+     * - 戻り値編集で使用する固定 CIRIUS 定数をコンストラクタで fail-fast 解決する。
+     *
+     * @param kyotelkDataAccess 契約お客さま電話番号＜小売＞ DA
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public BillingCollectionPlatformIntegrationEditAtOpeningImpl(
+            KyotelkDataAccess kyotelkDataAccess,
+<span class="fc" id="L65">             CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L66">        this.kyotelkDataAccess = Objects.requireNonNull(kyotelkDataAccess, &quot;kyotelkDataAccess&quot;);</span>
+<span class="fc" id="L67">        Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L68">        this.blankContactType = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ContactType.TYPE,
+                ConstantLookupKeys.Cirius.ContactType.BLANK);
+<span class="fc" id="L72">        this.noPhoneType = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.PhoneType.TYPE,
+                ConstantLookupKeys.Cirius.PhoneType.NO_PHONE);
+<span class="fc" id="L76">        this.paymentManagementTransferBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_PAYMENT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L80">        this.contractManagementTransferBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_CONTRACT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L84">        this.tokyoGasNetworkOperatorCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L88">        this.noServiceSuspensionCancellationReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.NO_SERVICE_SUSPENSION_OR_CANCELLATION);
+<span class="fc" id="L92">        this.gasFeeContractType = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ContractType__N2.TYPE,
+                ConstantLookupKeys.Cirius.ContractType__N2.GAS_FEE);
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * 概要: SV-250 を実行し、請求回収基盤連携向けの 3 つの出力 DTO を編集する。
+     * 主な仕様:
+     * - `kyoTrkNo` を用いて DA-062-R001 から電話情報を取得し、支払者・使用者電話情報へ反映する。
+     * - `gasMtstNo` と各種契約入力、固定値、CIRIUS 定数を組み合わせて戻り値を組み立てる。
+     *
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所＜導管＞情報（開栓作業日時点）
+     * @param kiycstKktInf 契約お客さま情報（確定）
+     * @param svckyaKktInf サービス契約情報（確定）
+     * @param svsihkrKktInf サービス契約・支払契約関連情報（確定）
+     * @param sihakyKktInf 支払契約情報（確定）
+     * @param syoTisiUmFlg 使用者訂正有無フラグ
+     * @return 開栓時請求回収基盤連携情報編集結果
+     */
+    @Override
+    public BillingCollectionPlatformIntegrationEditAtOpeningOutput execute(
+            BillingCollectionPlatformIntegrationGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            BillingCollectionPlatformIntegrationKiycstKktInf kiycstKktInf,
+            BillingCollectionPlatformIntegrationSvckyaKktInf svckyaKktInf,
+            BillingCollectionPlatformIntegrationSvsihkrKktInf svsihkrKktInf,
+            BillingCollectionPlatformIntegrationSihakyKktInf sihakyKktInf,
+            Boolean syoTisiUmFlg) {
+<span class="fc" id="L120">        List&lt;KyotelkRecord&gt; phoneRecords = kyotelkDataAccess.findAllByKyoTrkNo(kiycstKktInf.kyoTrkNo());</span>
+<span class="fc" id="L121">        return new BillingCollectionPlatformIntegrationEditAtOpeningOutput(</span>
+<span class="fc" id="L122">                buildControlInfo(</span>
+<span class="fc" id="L123">                    sihakyKktInf.sikKrno(),</span>
+<span class="fc" id="L124">                    svckyaKktInf.sqtiKiyNo(),</span>
+<span class="fc" id="L125">                    svckyaKktInf.svkyNo(),</span>
+<span class="fc" id="L126">                    svckyaKktInf.skno(),</span>
+<span class="fc" id="L127">                    sihakyKktInf.sihKiyNo(),</span>
+<span class="fc" id="L128">                    sihakyKktInf.skno(),</span>
+<span class="fc" id="L129">                    svckyaKktInf.rkkiSttYmd(),</span>
+<span class="fc" id="L130">                    svckyaKktInf.rkkiEndYmd(),</span>
+                        syoTisiUmFlg),
+<span class="fc" id="L132">                buildPaymentInfo(</span>
+                    phoneRecords,
+<span class="fc" id="L134">                    sihakyKktInf.shsyKyoTrno(),</span>
+<span class="fc" id="L135">                    sihakyKktInf.tyenYmd(),</span>
+<span class="fc" id="L136">                    sihakyKktInf.tkysYmd()),</span>
+<span class="fc" id="L137">                buildContractInfo(</span>
+                        phoneRecords,
+<span class="fc" id="L139">                    gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L140">                    svsihkrKktInf.ikskGrpNo(),</span>
+<span class="fc" id="L141">                    svsihkrKktInf.tdssSbtShbt(),</span>
+<span class="fc" id="L142">                    svsihkrKktInf.gsptShbt(),</span>
+<span class="fc" id="L143">                    svsihkrKktInf.gsnKhFlg(),</span>
+<span class="fc" id="L144">                    svckyaKktInf.rkkiEndYmd(),</span>
+<span class="fc" id="L145">                    svckyaKktInf.svcRyksYmd(),</span>
+<span class="fc" id="L146">                    svsihkrKktInf.sikTmngShbt(),</span>
+<span class="fc" id="L147">                    sihakyKktInf.tkysYmd(),</span>
+<span class="fc" id="L148">                    svckyaKktInf.sziKziKbn(),</span>
+<span class="fc" id="L149">                    svckyaKktInf.szirHtyoYmd()));</span>
+    }
+
+    /**
+     * 概要: 請求回収基盤連携用制御情報を編集する。
+     * 主な仕様:
+     * - 設計書の固定値・入力値に従い `SkkbRkySgjhInf` を組み立てる。
+     * - 請求回収連携グループ管理番号は null、ガスメーター設置場所番号は固定値 11111111111 を設定する。
+     *
+     * @param sikKrno 請求管理番号
+     * @param sqtiKiyNo 請求対象契約番号
+     * @param svkyNo サービス契約番号
+     * @param svkySkno サービス契約世代管理番号
+     * @param sihKiyNo 支払契約番号
+     * @param sihKiySkno 支払契約世代管理番号
+     * @param rkkiSttYmd 料金計算開始年月日
+     * @param rkkiEndYmd 料金計算終了年月日
+     * @param syoTisiUmFlg 使用者訂正有無フラグ
+     * @return 請求回収基盤連携用制御情報
+     */
+    private SkkbRkySgjhInf buildControlInfo(
+            Long sikKrno,
+            String sqtiKiyNo,
+            Long svkyNo,
+            Integer svkySkno,
+            Long sihKiyNo,
+            Integer sihKiySkno,
+            LocalDate rkkiSttYmd,
+            LocalDate rkkiEndYmd,
+            Boolean syoTisiUmFlg) {
+<span class="fc" id="L179">        return new SkkbRkySgjhInf(</span>
+                null,
+                sikKrno,
+                sqtiKiyNo,
+                svkyNo,
+                svkySkno,
+                sihKiyNo,
+                sihKiySkno,
+                FIXED_GAS_METER_LOCATION_NO,
+                rkkiSttYmd,
+                rkkiEndYmd,
+                syoTisiUmFlg);
+    }
+
+    /**
+     * 概要: 請求対象支払管理登録依頼情報を編集する。
+     * 主な仕様:
+     * - DA-062-R001 の先頭 2 レコードを支払者電話情報へ反映する。
+     * - 電話番号は null 時に空文字へ補完し、電話連絡先種別と電話種別は null または空文字時に既定値へ補完する。
+     *
+     * @param phoneRecords 契約お客さま電話番号＜小売＞
+     * @param shsyKyoTrno 支払者契約お客さま登録番号
+     * @param tyenYmd 適用終了年月日
+     * @param tkysYmd 適用開始年月日
+     * @return 請求対象支払管理登録依頼情報
+     */
+    private SktsSihTrirInf buildPaymentInfo(
+            List&lt;KyotelkRecord&gt; phoneRecords,
+            Long shsyKyoTrno,
+            LocalDate tyenYmd,
+            LocalDate tkysYmd) {
+<span class="fc" id="L210">        KyotelkRecord firstPhoneRecord = phoneRecordAt(phoneRecords, 0);</span>
+<span class="fc" id="L211">        KyotelkRecord secondPhoneRecord = phoneRecordAt(phoneRecords, 1);</span>
+<span class="fc" id="L212">        return new SktsSihTrirInf(</span>
+                null,
+                null,
+                shsyKyoTrno,
+                null,
+                null,
+<span class="fc" id="L218">                contactTypeOf(firstPhoneRecord),</span>
+<span class="fc" id="L219">                contactTypeOf(secondPhoneRecord),</span>
+<span class="fc" id="L220">                phoneNumberOf(firstPhoneRecord),</span>
+<span class="fc" id="L221">                phoneNumberOf(secondPhoneRecord),</span>
+<span class="fc" id="L222">                phoneTypeOf(firstPhoneRecord),</span>
+<span class="fc" id="L223">                phoneTypeOf(secondPhoneRecord),</span>
+                paymentManagementTransferBusinessCode,
+                tyenYmd,
+                tkysYmd,
+                tokyoGasNetworkOperatorCode);
+    }
+
+    /**
+     * 概要: 請求対象契約管理登録依頼情報を編集する。
+     * 主な仕様:
+     * - DA-062-R001 の先頭 2 レコードを使用者電話情報へ反映する。
+     * - 設計書で固定指定された契約種類、異動・作業履歴業務コード、NW 事業者コードを設定する。
+     *
+     * @param phoneRecords 契約お客さま電話番号＜小売＞
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param ikskGrpNo 一括請求グループ番号
+     * @param tdssSbtShbt 単独請求先識別種別
+     * @param gsptShbt 合算パターン種別
+     * @param gsnKhFlg 合算可否フラグ
+     * @param rkkiEndYmd 料金計算終了年月日
+     * @param svcRyksYmd サービス利用開始年月日
+     * @param sikTmngShbt 請求タイミング種別
+     * @param tkysYmd 適用開始年月日
+     * @param sziKziKbn 消費税課税区分
+     * @param szirHtyoYmd 消費税率判定用年月日
+     * @return 請求対象契約管理登録依頼情報
+     */
+    private SktsKykTrirInf buildContractInfo(
+            List&lt;KyotelkRecord&gt; phoneRecords,
+            Long gasMtstNo,
+            Long ikskGrpNo,
+            String tdssSbtShbt,
+            String gsptShbt,
+            Boolean gsnKhFlg,
+            LocalDate rkkiEndYmd,
+            LocalDate svcRyksYmd,
+            String sikTmngShbt,
+            LocalDate tkysYmd,
+            String sziKziKbn,
+            LocalDate szirHtyoYmd) {
+<span class="fc" id="L263">        KyotelkRecord firstPhoneRecord = phoneRecordAt(phoneRecords, 0);</span>
+<span class="fc" id="L264">        KyotelkRecord secondPhoneRecord = phoneRecordAt(phoneRecords, 1);</span>
+<span class="fc" id="L265">        return new SktsKykTrirInf(</span>
+                noServiceSuspensionCancellationReason,
+                null,
+                ikskGrpNo,
+                null,
+                null,
+<span class="fc" id="L271">                contactTypeOf(firstPhoneRecord),</span>
+<span class="fc" id="L272">                contactTypeOf(secondPhoneRecord),</span>
+<span class="fc" id="L273">                phoneNumberOf(firstPhoneRecord),</span>
+<span class="fc" id="L274">                phoneNumberOf(secondPhoneRecord),</span>
+<span class="fc" id="L275">                phoneTypeOf(firstPhoneRecord),</span>
+<span class="fc" id="L276">                phoneTypeOf(secondPhoneRecord),</span>
+                gasMtstNo,
+                tdssSbtShbt,
+                null,
+                gsptShbt,
+                gsnKhFlg,
+                gasFeeContractType,
+                rkkiEndYmd,
+                svcRyksYmd,
+                null,
+                contractManagementTransferBusinessCode,
+                sikTmngShbt,
+                tkysYmd,
+                tokyoGasNetworkOperatorCode,
+                sziKziKbn,
+                szirHtyoYmd);
+    }
+
+    /**
+     * 概要: 指定位置の電話レコードを取得する。
+     * 主な仕様:
+     * - 対象位置にレコードが存在しない場合は null を返す。
+     *
+     * @param phoneRecords 契約お客さま電話番号＜小売＞一覧
+     * @param index 取得位置
+     * @return 指定位置のレコード、存在しない場合は null
+     */
+    private KyotelkRecord phoneRecordAt(List&lt;KyotelkRecord&gt; phoneRecords, int index) {
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (phoneRecords.size() &lt;= index) {</span>
+<span class="fc" id="L305">            return null;</span>
+        }
+<span class="fc" id="L307">        return phoneRecords.get(index);</span>
+    }
+
+    /**
+     * 概要: 電話レコードから連絡先種別を取得する。
+     * 主な仕様:
+     * - 電話連絡先種別が null または空文字の場合は CIRIUS 定数【18000 0】のコード 0 を返す。
+     * - レコードが存在しない場合も CIRIUS 定数【18000 0】のコード 0 を返す。
+     *
+     * @param record 契約お客さま電話番号＜小売＞レコード
+     * @return 連絡先種別
+     */
+    private String contactTypeOf(KyotelkRecord record) {
+<span class="fc bfc" id="L320" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L321">            return blankContactType;</span>
+        }
+<span class="fc" id="L323">        return applyNullOrEmptyFallback(record.telRrskShbt(), blankContactType);</span>
+    }
+
+    /**
+     * 概要: 電話レコードから電話番号を取得する。
+     * 主な仕様:
+     * - 電話番号が null、またはレコードが存在しない場合は空文字を返す。
+     *
+     * @param record 契約お客さま電話番号＜小売＞レコード
+     * @return 電話番号
+     */
+    private String phoneNumberOf(KyotelkRecord record) {
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L336">            return EMPTY_PHONE_NUMBER;</span>
+        }
+<span class="fc" id="L338">        return applyNullOrEmptyFallback(record.kyoTelNo(), EMPTY_PHONE_NUMBER);</span>
+    }
+
+    /**
+     * 概要: 電話レコードから電話種別を取得する。
+     * 主な仕様:
+     * - 電話種別が null または空文字の場合は CIRIUS 定数【14500 0】のコード 0 を返す。
+     * - レコードが存在しない場合も CIRIUS 定数【14500 0】のコード 0 を返す。
+     *
+     * @param record 契約お客さま電話番号＜小売＞レコード
+     * @return 電話種別
+     */
+    private String phoneTypeOf(KyotelkRecord record) {
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L352">            return noPhoneType;</span>
+        }
+<span class="fc" id="L354">        return applyNullOrEmptyFallback(record.telShbt(), noPhoneType);</span>
+    }
+
+    /**
+     * 概要: null または空文字を既定値へ補完する。
+     * 主な仕様:
+     * - 値が null または空文字の場合は既定値を返す。
+     * - それ以外の値はそのまま返す。
+     *
+     * @param value 判定対象値
+     * @param fallbackValue 補完値
+     * @return 補完後の値
+     */
+    private String applyNullOrEmptyFallback(String value, String fallbackValue) {
+<span class="fc bfc" id="L368" title="All 4 branches covered.">        if (value == null || value.isEmpty()) {</span>
+<span class="fc" id="L369">            return fallbackValue;</span>
+        }
+<span class="fc" id="L371">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

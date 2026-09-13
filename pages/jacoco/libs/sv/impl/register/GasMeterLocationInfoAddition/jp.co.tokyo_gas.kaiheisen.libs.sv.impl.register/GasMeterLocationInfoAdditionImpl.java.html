@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasMeterLocationInfoAdditionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-gasmeterlocationinfoaddition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">GasMeterLocationInfoAdditionImpl.java</span></div><h1>GasMeterLocationInfoAdditionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoAddition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkInsInf;
+
+/**
+ * 概要: SV-082 ガスメーター設置場所情報追加のサービス実装。
+ * 主な仕様:
+ * - GMTSETD、MTSETK、GMTSETK の 3 つの DA をこの順で逐次呼び出して登録する。
+ * - 正常終了時は返却値を持たずに完了する。
+ * - RequestContext から監査情報の前提値を取得し、hukkSysShbt を起点に起動機能 ID を解決する。
+ * - CIRIUS 定数で既定値を補完し、入力が null または blank の場合のみ差し替える。
+ * - 下位 DA や定数解決で発生した例外は握りつぶさずそのまま伝播する。
+ * 既知の制約:
+ * - correlationId、hukkSysShbt、systemDatetime が RequestContext に設定されていない場合は失敗する。
+ * - 監査列や更新列の実際の設定は DA 実装側の責務であり、本実装では write record の該当項目に null を渡す。
+ */
+public class GasMeterLocationInfoAdditionImpl implements GasMeterLocationInfoAddition {
+
+    static final String SERVICE_USER_ID = &quot;KHSS082&quot;;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final MtsetkDataAccess mtsetkDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String unspecifiedNewGasConstructionType;
+
+    private final String supplyCanBeStopped;
+
+    private final String noCutting;
+
+    private final String nonSampleConsumer;
+
+    private final String blankGasUsageCode;
+
+    private final String tokyoGasOperatorCode;
+
+    private final String undecidedHousing;
+
+    /**
+     * 依存オブジェクトと必須定数を初期化する。
+     *
+     * @param gmtsetdDataAccess GMTSETD データアクセス
+     * @param mtsetkDataAccess MTSETK データアクセス
+     * @param gmtsetkDataAccess GMTSETK データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public GasMeterLocationInfoAdditionImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            MtsetkDataAccess mtsetkDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L77">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L78">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L79">        this.mtsetkDataAccess = Objects.requireNonNull(mtsetkDataAccess, &quot;mtsetkDataAccess&quot;);</span>
+<span class="fc" id="L80">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L81">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L82">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L85">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L86">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L87">        this.unspecifiedNewGasConstructionType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.NewGasConstructionType.TYPE,
+                ConstantLookupKeys.Cirius.NewGasConstructionType.UNSPECIFIED);
+<span class="fc" id="L91">        this.supplyCanBeStopped = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.WhetherOrNotSupplyStoppageWorkIsPossible.TYPE,
+                ConstantLookupKeys.Cirius.WhetherOrNotSupplyStoppageWorkIsPossible.SUPPLY_CAN_BE_STOPPED);
+<span class="fc" id="L95">        this.noCutting = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.CuttingPointType.TYPE,
+                ConstantLookupKeys.Cirius.CuttingPointType.NO_CUTTING);
+<span class="fc" id="L99">        this.nonSampleConsumer = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SampleCode.TYPE,
+                ConstantLookupKeys.Cirius.SampleCode.NON_SAMPLE_CONSUMER);
+<span class="fc" id="L103">        this.blankGasUsageCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasUsageCode.TYPE,
+                ConstantLookupKeys.Cirius.GasUsageCode.BLANK);
+<span class="fc" id="L107">        this.tokyoGasOperatorCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L111">        this.undecidedHousing = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.Housing.TYPE,
+                ConstantLookupKeys.Cirius.Housing.UNDECIDED);
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * 開栓時のガスメーター設置場所情報を登録する。
+     *
+     * @param gmtsetdInsInf ガスメーター設置場所＜導管＞情報
+     * @param gmtsetkInsInf ガスメーター設置場所＜小売＞付帯情報
+     * @param mtsetkInsInf メーター設置場所＜小売＞情報
+     */
+    @Override
+        public void execute(
+            GmtsetdInsInf gmtsetdInsInf,
+            GmtsetkInsInf gmtsetkInsInf,
+            MtsetkInsInf mtsetkInsInf) {
+<span class="fc" id="L129">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L130">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+<span class="fc" id="L131">        gmtsetdDataAccess.insert(buildGmtsetdWriteRecord(gmtsetdInsInf), auditContext);</span>
+<span class="fc" id="L132">        mtsetkDataAccess.insert(buildMtsetkWriteRecord(mtsetkInsInf), auditContext);</span>
+<span class="fc" id="L133">        gmtsetkDataAccess.insert(buildGmtsetkWriteRecord(gmtsetdInsInf, gmtsetkInsInf), auditContext);</span>
+<span class="fc" id="L134">    }</span>
+
+        /**
+         * 概要: GMTSETD 登録用の write record を組み立てる。
+         * 主な仕様:
+         * - 導管向け入力を GMTSETD の登録項目へそのまま写像する。
+         * - 新設ガス工事種別、供給停止作業可否区分、抜栓切断点種別、サンプルコードは既定値補完する。
+         * - 監査列に相当する末尾の更新項目は本実装では設定せず null を渡す。
+         * 既知の制約:
+         * - 入力値の妥当性検証や桁チェックは呼び出し元および下位 DA の責務とする。
+         *
+         * @param input ガスメーター設置場所＜導管＞情報
+         * @return GMTSETD 登録用 write record
+         */
+    private GmtsetdWriteRecord buildGmtsetdWriteRecord(GmtsetdInsInf input) {
+<span class="fc" id="L149">        return new GmtsetdWriteRecord(</span>
+<span class="fc" id="L150">                input.gasMtstNo(),</span>
+<span class="fc" id="L151">                input.tkysYmd(),</span>
+<span class="fc" id="L152">                input.tyenYmd(),</span>
+<span class="fc" id="L153">                input.kngmStbJtkb(),</span>
+<span class="fc" id="L154">                input.gmtKhsJtkb(),</span>
+<span class="fc" id="L155">                input.szcGkkCd(),</span>
+<span class="fc" id="L156">                input.szcMchCd(),</span>
+<span class="fc" id="L157">                input.szcCmazCd(),</span>
+<span class="fc" id="L158">                input.cbgSuj1(),</span>
+<span class="fc" id="L159">                input.cbgKn2(),</span>
+<span class="fc" id="L160">                input.cbgKn3(),</span>
+<span class="fc" id="L161">                input.cbgKn4(),</span>
+<span class="fc" id="L162">                input.bldNo(),</span>
+<span class="fc" id="L163">                input.tunoKn(),</span>
+<span class="fc" id="L164">                input.hynKn(),</span>
+<span class="fc" id="L165">                input.htuFlg(),</span>
+<span class="fc" id="L166">                input.ohmKj(),</span>
+<span class="fc" id="L167">                input.kasYmd(),</span>
+<span class="fc" id="L168">                input.hesnYmd(),</span>
+<span class="fc" id="L169">                input.kasJysb(),</span>
+<span class="fc" id="L170">                input.hesnJysb(),</span>
+<span class="fc" id="L171">                input.tkshGmsbShbt(),</span>
+<span class="fc" id="L172">                input.gtyMtscKbn(),</span>
+<span class="fc" id="L173">                input.tksuMtscCd(),</span>
+<span class="fc" id="L174">                input.kkyuGmtKbn(),</span>
+<span class="fc" id="L175">                input.ckrtGmscJtkb(),</span>
+<span class="fc" id="L176">                input.mtgMtstNo(),</span>
+<span class="fc" id="L177">                input.snstGkjYm(),</span>
+<span class="fc" id="L178">                defaultIfBlank(input.snstGkjShbt(), unspecifiedNewGasConstructionType),</span>
+<span class="fc" id="L179">                input.tusoGmtkYmd(),</span>
+<span class="fc" id="L180">                input.gmtTkeYmd(),</span>
+<span class="fc" id="L181">                input.knckKbn(),</span>
+<span class="fc" id="L182">                input.bldKbn(),</span>
+<span class="fc" id="L183">                input.akySnstFlg(),</span>
+<span class="fc" id="L184">                input.gasYtCd(),</span>
+<span class="fc" id="L185">                input.lpgKbn(),</span>
+<span class="fc" id="L186">                input.ntryKbn(),</span>
+<span class="fc" id="L187">                input.gmtKykaShbt(),</span>
+<span class="fc" id="L188">                input.jkarSu(),</span>
+<span class="fc" id="L189">                input.gmicDbriShbt(),</span>
+<span class="fc" id="L190">                input.gmicSbriShbt(),</span>
+<span class="fc" id="L191">                input.knsKhFlg(),</span>
+<span class="fc" id="L192">                defaultIfBlank(input.kkysSgykKbn(), supplyCanBeStopped),</span>
+<span class="fc" id="L193">                input.kktkYuhrShbt(),</span>
+<span class="fc" id="L194">                defaultIfBlank(input.niknSdksShbt(), noCutting),</span>
+<span class="fc" id="L195">                input.niknTkkyYmd(),</span>
+<span class="fc" id="L196">                input.chukThkgFlg(),</span>
+<span class="fc" id="L197">                input.hesnSdnShbt(),</span>
+<span class="fc" id="L198">                input.mcnTkfnJysb(),</span>
+<span class="fc" id="L199">                input.sdtgSchFlg(),</span>
+<span class="fc" id="L200">                input.sdtgTrkrShbt(),</span>
+<span class="fc" id="L201">                input.sdtgTtkYmd(),</span>
+<span class="fc" id="L202">                input.sdtgTkfnJysb(),</span>
+<span class="fc" id="L203">                defaultIfBlank(input.smpCd(), nonSampleConsumer),</span>
+<span class="fc" id="L204">                input.ksjGhtbCd(),</span>
+<span class="fc" id="L205">                input.kusYmd(),</span>
+<span class="fc" id="L206">                input.kysfYmd(),</span>
+<span class="fc" id="L207">                input.kngmSbmsYmd(),</span>
+                null,
+<span class="fc" id="L209">                input.gmicTsjhMem());</span>
+    }
+
+        /**
+         * 概要: MTSETK 登録用の write record を組み立てる。
+         * 主な仕様:
+         * - 小売向けメーター設置場所入力を MTSETK の登録項目へ写像する。
+         * - NW 事業者コードと住宅区分は null または blank の場合に既定値補完する。
+         * - 監査列に相当する末尾の更新項目は本実装では設定せず null を渡す。
+         * 既知の制約:
+         * - 変換対象外の入力検証やコード妥当性確認は下位層へ委譲する。
+         *
+         * @param input メーター設置場所＜小売＞情報
+         * @return MTSETK 登録用 write record
+         */
+    private MtsetkWriteRecord buildMtsetkWriteRecord(MtsetkInsInf input) {
+<span class="fc" id="L225">        return new MtsetkWriteRecord(</span>
+<span class="fc" id="L226">                input.mtstNo(),</span>
+<span class="fc" id="L227">                input.tkysYmd(),</span>
+<span class="fc" id="L228">                input.tyenYmd(),</span>
+<span class="fc" id="L229">                input.mtrShbt(),</span>
+<span class="fc" id="L230">                defaultIfBlank(input.nwjgCd(), tokyoGasOperatorCode),</span>
+<span class="fc" id="L231">                input.szcGkkCd(),</span>
+<span class="fc" id="L232">                input.szcMchCd(),</span>
+<span class="fc" id="L233">                input.szcCmazCd(),</span>
+<span class="fc" id="L234">                input.cbgSuj1(),</span>
+<span class="fc" id="L235">                input.cbgKn2(),</span>
+<span class="fc" id="L236">                input.cbgKn3(),</span>
+<span class="fc" id="L237">                input.cbgKn4(),</span>
+<span class="fc" id="L238">                input.bldNo(),</span>
+<span class="fc" id="L239">                input.tunoKn(),</span>
+<span class="fc" id="L240">                input.hynKn(),</span>
+<span class="fc" id="L241">                input.htuFlg(),</span>
+<span class="fc" id="L242">                defaultIfBlank(input.jutKbn(), undecidedHousing),</span>
+                null);
+    }
+
+        /**
+         * 概要: GMTSETK 登録用の write record を組み立てる。
+         * 主な仕様:
+         * - 導管向け入力と小売向け付帯入力を組み合わせて GMTSETK の登録項目へ写像する。
+         * - 新設ガス工事種別、ガス用途コード、供給停止作業可否区分、抜栓切断点種別、
+         *   サンプルコードは null または blank の場合に既定値補完する。
+         * - 監査列に相当する末尾の更新項目は本実装では設定せず null を渡す。
+         * 既知の制約:
+         * - 導管向け入力と小売向け入力の整合性検証は本メソッドでは行わない。
+         *
+         * @param gmtsetdInsInf ガスメーター設置場所＜導管＞情報
+         * @param gmtsetkInsInf ガスメーター設置場所＜小売＞付帯情報
+         * @return GMTSETK 登録用 write record
+         */
+    private GmtsetkWriteRecord buildGmtsetkWriteRecord(
+            GmtsetdInsInf gmtsetdInsInf,
+            GmtsetkInsInf gmtsetkInsInf) {
+<span class="fc" id="L263">        return new GmtsetkWriteRecord(</span>
+<span class="fc" id="L264">                gmtsetdInsInf.gasMtstNo(),</span>
+<span class="fc" id="L265">                gmtsetdInsInf.tkysYmd(),</span>
+<span class="fc" id="L266">                gmtsetdInsInf.tyenYmd(),</span>
+<span class="fc" id="L267">                gmtsetdInsInf.kngmStbJtkb(),</span>
+<span class="fc" id="L268">                gmtsetdInsInf.ohmKj(),</span>
+<span class="fc" id="L269">                gmtsetdInsInf.gmtKhsJtkb(),</span>
+<span class="fc" id="L270">                gmtsetdInsInf.kasYmd(),</span>
+<span class="fc" id="L271">                gmtsetdInsInf.hesnYmd(),</span>
+<span class="fc" id="L272">                gmtsetdInsInf.kasJysb(),</span>
+<span class="fc" id="L273">                gmtsetdInsInf.hesnJysb(),</span>
+<span class="fc" id="L274">                gmtsetdInsInf.tkshGmsbShbt(),</span>
+<span class="fc" id="L275">                gmtsetdInsInf.gtyMtscKbn(),</span>
+<span class="fc" id="L276">                gmtsetdInsInf.tksuMtscCd(),</span>
+<span class="fc" id="L277">                gmtsetdInsInf.kkyuGmtKbn(),</span>
+<span class="fc" id="L278">                gmtsetdInsInf.ckrtGmscJtkb(),</span>
+<span class="fc" id="L279">                gmtsetdInsInf.mtgMtstNo(),</span>
+<span class="fc" id="L280">                gmtsetdInsInf.snstGkjYm(),</span>
+<span class="fc" id="L281">                defaultIfBlank(gmtsetdInsInf.snstGkjShbt(), unspecifiedNewGasConstructionType),</span>
+<span class="fc" id="L282">                gmtsetdInsInf.tusoGmtkYmd(),</span>
+<span class="fc" id="L283">                gmtsetdInsInf.gmtTkeYmd(),</span>
+<span class="fc" id="L284">                gmtsetdInsInf.knckKbn(),</span>
+<span class="fc" id="L285">                gmtsetdInsInf.bldKbn(),</span>
+<span class="fc" id="L286">                gmtsetdInsInf.akySnstFlg(),</span>
+<span class="fc" id="L287">                defaultIfBlank(gmtsetdInsInf.gasYtCd(), blankGasUsageCode),</span>
+<span class="fc" id="L288">                gmtsetdInsInf.lpgKbn(),</span>
+<span class="fc" id="L289">                gmtsetdInsInf.ntryKbn(),</span>
+<span class="fc" id="L290">                gmtsetdInsInf.gmtKykaShbt(),</span>
+<span class="fc" id="L291">                gmtsetdInsInf.jkarSu(),</span>
+<span class="fc" id="L292">                gmtsetdInsInf.gmicDbriShbt(),</span>
+<span class="fc" id="L293">                gmtsetdInsInf.gmicSbriShbt(),</span>
+<span class="fc" id="L294">                gmtsetdInsInf.knsKhFlg(),</span>
+<span class="fc" id="L295">                defaultIfBlank(gmtsetdInsInf.kkysSgykKbn(), supplyCanBeStopped),</span>
+<span class="fc" id="L296">                gmtsetdInsInf.kktkYuhrShbt(),</span>
+<span class="fc" id="L297">                defaultIfBlank(gmtsetdInsInf.niknSdksShbt(), noCutting),</span>
+<span class="fc" id="L298">                gmtsetdInsInf.niknTkkyYmd(),</span>
+<span class="fc" id="L299">                gmtsetdInsInf.chukThkgFlg(),</span>
+<span class="fc" id="L300">                gmtsetdInsInf.hesnSdnShbt(),</span>
+<span class="fc" id="L301">                gmtsetdInsInf.mcnTkfnJysb(),</span>
+<span class="fc" id="L302">                gmtsetdInsInf.sdtgSchFlg(),</span>
+<span class="fc" id="L303">                gmtsetdInsInf.sdtgTrkrShbt(),</span>
+<span class="fc" id="L304">                gmtsetdInsInf.sdtgTtkYmd(),</span>
+<span class="fc" id="L305">                gmtsetdInsInf.sdtgTkfnJysb(),</span>
+<span class="fc" id="L306">                defaultIfBlank(gmtsetdInsInf.smpCd(), nonSampleConsumer),</span>
+<span class="fc" id="L307">                gmtsetdInsInf.ksjGhtbCd(),</span>
+<span class="fc" id="L308">                gmtsetdInsInf.kusYmd(),</span>
+<span class="fc" id="L309">                gmtsetdInsInf.kysfYmd(),</span>
+<span class="fc" id="L310">                gmtsetkInsInf.kkyCitnTtno(),</span>
+<span class="fc" id="L311">                gmtsetdInsInf.kngmSbmsYmd(),</span>
+                null,
+<span class="fc" id="L313">                gmtsetdInsInf.gmicTsjhMem());</span>
+    }
+
+        /**
+         * 概要: RequestContext の報告システム種別から起動機能 ID を解決する。
+         * 主な仕様:
+         * - hukkSysShbt を取得し、開閉栓定数サービスで機能 ID 名称へ変換する。
+         * - 監査情報作成時に利用する起動機能 ID を返却する。
+         * 既知の制約:
+         * - hukkSysShbt の値設定と妥当性確認は上位層責務とし、本メソッドでは補完しない。
+         *
+         * @return 起動機能 ID
+         */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L327">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L329">                                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L330">                                                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+
+        /**
+         * 概要: 文字列が null または blank の場合に既定値へ補完する。
+         * 主な仕様:
+         * - value が null または blank の場合のみ defaultValue を返す。
+         * - value が非 blank の場合は入力値をそのまま返す。
+         * 既知の制約:
+         * - trim は行わないため、blank 判定は String.isBlank の結果に依存する。
+         *
+         * @param value 判定対象の値
+         * @param defaultValue 既定値
+         * @return 補完後の値
+         */
+    private String defaultIfBlank(String value, String defaultValue) {
+<span class="pc bpc" id="L346" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L347">            return defaultValue;</span>
+        }
+<span class="fc" id="L349">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,641 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCommonForceTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-opening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.retail.retail_tg</a> &gt; <span class="el_source">OpeningCommonForceTgRetailResource.java</span></div><h1>OpeningCommonForceTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_tg.OpeningCommonForceTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_tg.OpeningCommonForceTgRetailNewTelephoneInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_tg.OpeningCommonForceTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_tg.OpeningCommonForceTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_tg.OpeningCommonForceTgRetailTelephoneUpdateInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.filter.CorrelationIdFilter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkUpdatableColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerNameKanjiDisplayFlagAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerNameKanjiDisplayFlagAcquisitionOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-057 開栓共通処理-強制入力-小売-TG小売 API のリソース実装。
+ */
+@Path(OpeningCommonForceTgRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;開栓共通処理-強制入力-小売-TG小売&quot;, description = &quot;MA-057 開栓共通処理-強制入力-小売-TG小売 API&quot;)
+@MainService(identifier = &quot;MA-057&quot;, name = &quot;開栓共通処理-強制入力-小売-TG小売&quot;)
+public class OpeningCommonForceTgRetailResource extends BaseResource&lt;OpeningCommonForceTgRetailRequest&gt; {
+
+    static final String UPD_USER_ID = &quot;KHSM057&quot;;
+
+    static final String TKJ_MEM_BASE_UNIDENTIFIED = &quot;拠点未特定&quot;;
+
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    private final KiycstkDataAccess kiycstkDataAccess;
+
+    private final TatemonDataAccess tatemonDataAccess;
+
+    private final KseflDataAccess kseflDataAccess;
+
+    private final KasnhkDataAccess kasnhkDataAccess;
+
+    private final CustomerNameKanjiDisplayFlagAcquisition customerNameKanjiDisplayFlagAcquisition;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String followStatusNotYetStarted;
+
+    private final String openingReportStatusReporting;
+
+    private final String openingReportStatusFollowUp;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム日時プロバイダ
+     * @param kbagmstDataAccess 検針分担エリア別ガスメーター設置場所情報 DataAccess
+     * @param kiycstkDataAccess 契約お客さま＜小売＞ DataAccess
+     * @param tatemonDataAccess 建物 DataAccess
+     * @param kseflDataAccess 開栓エラーフォロー件名 DataAccess
+     * @param kasnhkDataAccess 開栓報告情報 DataAccess
+     * @param customerNameKanjiDisplayFlagAcquisition おなまえ漢字表示可否フラグ取得サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public OpeningCommonForceTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            KbagmstDataAccess kbagmstDataAccess,
+            KiycstkDataAccess kiycstkDataAccess,
+            TatemonDataAccess tatemonDataAccess,
+            KseflDataAccess kseflDataAccess,
+            KasnhkDataAccess kasnhkDataAccess,
+            CustomerNameKanjiDisplayFlagAcquisition customerNameKanjiDisplayFlagAcquisition,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L125">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L126">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L127">        this.kiycstkDataAccess = Objects.requireNonNull(kiycstkDataAccess, &quot;kiycstkDataAccess&quot;);</span>
+<span class="fc" id="L128">        this.tatemonDataAccess = Objects.requireNonNull(tatemonDataAccess, &quot;tatemonDataAccess&quot;);</span>
+<span class="fc" id="L129">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L130">        this.kasnhkDataAccess = Objects.requireNonNull(kasnhkDataAccess, &quot;kasnhkDataAccess&quot;);</span>
+<span class="fc" id="L131">        this.customerNameKanjiDisplayFlagAcquisition = Objects.requireNonNull(</span>
+                customerNameKanjiDisplayFlagAcquisition,
+                &quot;customerNameKanjiDisplayFlagAcquisition&quot;);
+<span class="fc" id="L134">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L135">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L136">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L137">        this.followStatusNotYetStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L141">        this.openingReportStatusReporting = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReportStatus.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReportStatus.REPORTING_OPENING);
+<span class="fc" id="L145">        this.openingReportStatusFollowUp = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReportStatus.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReportStatus.FOLLOW_UP_ON_OPENING);
+<span class="fc" id="L149">    }</span>
+
+    /**
+     * MA-057 を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return 相関ID を返却するレスポンス
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;開栓共通処理-強制入力-小売-TG小売&quot;,
+            description = &quot;DA-066/060/007/139/118 と SV-075 を利用して開栓フォロー登録と報告情報更新を行う。&quot;,
+            operationId = &quot;postOpeningCommonForceTgRetail&quot;)
+    @Parameter(
+            name = CorrelationIdFilter.HEADER_NAME,
+            in = ParameterIn.HEADER,
+            description = &quot;相関ID。未指定時はサーバで採番する。&quot;,
+            schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;開栓共通処理の実行結果&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = OpeningCommonForceTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public OpeningCommonForceTgRetailResponse endpoint(OpeningCommonForceTgRetailRequest request) {
+<span class="fc" id="L199">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L200">            AreaInfo areaInfo = resolveAreaInfo(request);</span>
+<span class="fc" id="L201">            CustomerInfo customerInfo = resolveCustomerInfo(request);</span>
+<span class="fc" id="L202">            String decodedFunctionId = decodeFunctionId(request.hukkSysShbt());</span>
+<span class="fc" id="L203">            AuditContext auditContext = AuditContext.of(UPD_USER_ID, decodedFunctionId);</span>
+
+<span class="fc" id="L205">            kseflDataAccess.insert(</span>
+<span class="fc" id="L206">                    toKseflWriteRecord(request, areaInfo, customerInfo),</span>
+                    auditContext);
+
+<span class="fc" id="L209">            KasnhkRecord kasnhkRecord = kasnhkDataAccess</span>
+<span class="fc" id="L210">                    .findByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndKasHukkJtkb(</span>
+<span class="fc" id="L211">                            request.gmb(),</span>
+<span class="fc" id="L212">                            parseRequestDate(request.kasgYmd()),</span>
+<span class="fc" id="L213">                            parseRequestDate(request.kasHukkYmd()),</span>
+<span class="fc" id="L214">                            toLvltAnknNo(request.sgyAnknNo()),</span>
+                            openingReportStatusReporting)
+<span class="fc" id="L216">                    .orElse(null);</span>
+
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">            if (kasnhkRecord != null) {</span>
+<span class="nc" id="L219">                kasnhkDataAccess.updateByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndRecUpdJnjNo(</span>
+<span class="nc" id="L220">                        toKasnhkUpdateRecord(kasnhkRecord),</span>
+<span class="nc" id="L221">                        java.util.Set.of(KasnhkUpdatableColumn.KAS_HUKK_JTKB),</span>
+                        new KasnhkU002UpdateKey(
+<span class="nc" id="L223">                                kasnhkRecord.gmb(),</span>
+<span class="nc" id="L224">                                kasnhkRecord.kasgYmd(),</span>
+<span class="nc" id="L225">                                kasnhkRecord.kasHukkYmd(),</span>
+<span class="nc" id="L226">                                kasnhkRecord.lvltAnknNo(),</span>
+<span class="nc" id="L227">                                kasnhkRecord.recUpdJnjNo()),</span>
+                        auditContext);
+            }
+
+<span class="fc" id="L231">            return new OpeningCommonForceTgRetailResponse(</span>
+<span class="fc" id="L232">                    resolveResponseCorrelationId());</span>
+        });
+    }
+
+    private AreaInfo resolveAreaInfo(OpeningCommonForceTgRetailRequest request) {
+<span class="fc" id="L237">        String regionCode = normalizeOptional(request.cktkCd());</span>
+<span class="fc" id="L238">        String baseCode = null;</span>
+<span class="fc" id="L239">        Long gasMtstNo = request.gasMtstNo();</span>
+<span class="pc bpc" id="L240" title="1 of 4 branches missed.">        if (gasMtstNo == null || gasMtstNo == 0L) {</span>
+<span class="fc" id="L241">            return new AreaInfo(regionCode, baseCode);</span>
+        }
+
+<span class="fc" id="L244">        LocalDate criteriaDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L245">                .map(java.time.LocalDateTime::toLocalDate)</span>
+<span class="pc" id="L246">                .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set in RequestContext&quot;));</span>
+<span class="fc" id="L247">        KbagmstRecord kbagmstRecord = kbagmstDataAccess</span>
+<span class="fc" id="L248">                .findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, toYearMonth(criteriaDate))</span>
+<span class="fc" id="L249">                .orElse(null);</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (kbagmstRecord != null) {</span>
+<span class="fc" id="L251">            return new AreaInfo(kbagmstRecord.kbabCktkCd(), kbagmstRecord.kbabKtnCd());</span>
+        }
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (regionCode == null) {</span>
+<span class="fc" id="L254">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L255">                    kbagmstDataAccess.tableName(),</span>
+<span class="fc" id="L256">                    KbagmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L258">                            .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L259">                            .put(&quot;knskKjnYm&quot;, toYearMonth(criteriaDate).toString()));</span>
+        }
+<span class="fc" id="L261">        return new AreaInfo(regionCode, baseCode);</span>
+    }
+
+    private CustomerInfo resolveCustomerInfo(OpeningCommonForceTgRetailRequest request) {
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (normalizeOptional(request.ctnmKn1()) != null) {</span>
+<span class="fc" id="L266">            return toRequestCustomerInfo(request, request.bldnKn(), request.bldnKj());</span>
+        }
+
+<span class="fc" id="L269">        KiycstkRecord kiycstkRecord = kiycstkDataAccess.findByKyoTrkNo(request.syoKyoTrno())</span>
+<span class="pc" id="L270">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="nc" id="L271">                        kiycstkDataAccess.tableName(),</span>
+<span class="nc" id="L272">                        KiycstkDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="nc" id="L273">                        new FlatJsonBuilder().put(&quot;kyoTrkNo&quot;, request.syoKyoTrno())));</span>
+
+<span class="fc" id="L275">        String buildingNo = kiycstkRecord.bldNo();</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (buildingNo == null) {</span>
+<span class="fc" id="L277">            return toCustomerInfo(kiycstkRecord, null);</span>
+        }
+
+<span class="fc" id="L280">        TatemonRecord tatemonRecord = tatemonDataAccess.findByBldNo(buildingNo)</span>
+<span class="pc" id="L281">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L282">                        tatemonDataAccess.tableName(),</span>
+<span class="fc" id="L283">                        TatemonDataAccess.CallSpecs.FIND_BY_BLD_NO.identifier(),</span>
+<span class="fc" id="L284">                        new FlatJsonBuilder().put(&quot;bldNo&quot;, buildingNo)));</span>
+
+<span class="nc" id="L286">        return toCustomerInfo(kiycstkRecord, tatemonRecord);</span>
+    }
+
+    private CustomerInfo toRequestCustomerInfo(
+            OpeningCommonForceTgRetailRequest request,
+            String buildingNameKana,
+            String buildingNameKanji) {
+<span class="fc" id="L293">        CustomerNameKanjiDisplayFlagAcquisitionOutput output =</span>
+<span class="fc" id="L294">                customerNameKanjiDisplayFlagAcquisition.execute(request.ctnmKj1());</span>
+<span class="fc" id="L295">        return new CustomerInfo(</span>
+<span class="fc" id="L296">                request.ctnmKn1(),</span>
+<span class="fc" id="L297">                request.ctnmKj1(),</span>
+<span class="fc" id="L298">                output.onmeKjhkFlg(),</span>
+<span class="fc" id="L299">                request.ctnm1HujnShbt(),</span>
+<span class="fc" id="L300">                request.ctnm1HshiShbt(),</span>
+<span class="fc" id="L301">                request.ctnmKn2(),</span>
+<span class="fc" id="L302">                request.ctnmKj2(),</span>
+<span class="fc" id="L303">                request.ctnm2HujnShbt(),</span>
+<span class="fc" id="L304">                request.ctnm2HshiShbt(),</span>
+<span class="fc" id="L305">                request.yubnNo(),</span>
+<span class="fc" id="L306">                request.gkkCd(),</span>
+<span class="fc" id="L307">                request.mchCd(),</span>
+<span class="fc" id="L308">                request.cmazCd(),</span>
+<span class="fc" id="L309">                request.cbgSuj1(),</span>
+<span class="fc" id="L310">                request.cbgKn2(),</span>
+<span class="fc" id="L311">                request.cbgKn3(),</span>
+<span class="fc" id="L312">                request.cbgKn4(),</span>
+<span class="fc" id="L313">                request.tunoKn(),</span>
+<span class="fc" id="L314">                request.hynKn(),</span>
+<span class="fc" id="L315">                request.htuFlg(),</span>
+                buildingNameKana,
+                buildingNameKanji);
+    }
+
+    private static CustomerInfo toCustomerInfo(
+            KiycstkRecord kiycstkRecord,
+            TatemonRecord tatemonRecord) {
+<span class="fc" id="L323">        return new CustomerInfo(</span>
+<span class="fc" id="L324">                kiycstkRecord.ctnmKn1(),</span>
+<span class="fc" id="L325">                kiycstkRecord.ctnmKj1(),</span>
+<span class="fc" id="L326">                kiycstkRecord.ctnmKjhkFlg(),</span>
+<span class="fc" id="L327">                kiycstkRecord.ctnm1HujnShbt(),</span>
+<span class="fc" id="L328">                kiycstkRecord.ctnm1HshiShbt(),</span>
+<span class="fc" id="L329">                kiycstkRecord.ctnmKn2(),</span>
+<span class="fc" id="L330">                kiycstkRecord.ctnmKj2(),</span>
+<span class="fc" id="L331">                kiycstkRecord.ctnm2HujnShbt(),</span>
+<span class="fc" id="L332">                kiycstkRecord.ctnm2HshiShbt(),</span>
+<span class="fc" id="L333">                kiycstkRecord.yubnNo(),</span>
+<span class="fc" id="L334">                kiycstkRecord.gkkCd(),</span>
+<span class="fc" id="L335">                kiycstkRecord.mchCd(),</span>
+<span class="fc" id="L336">                kiycstkRecord.cmazCd(),</span>
+<span class="fc" id="L337">                kiycstkRecord.cbgSuj1(),</span>
+<span class="fc" id="L338">                kiycstkRecord.cbgKn2(),</span>
+<span class="fc" id="L339">                kiycstkRecord.cbgKn3(),</span>
+<span class="fc" id="L340">                kiycstkRecord.cbgKn4(),</span>
+<span class="fc" id="L341">                kiycstkRecord.tunoKn(),</span>
+<span class="fc" id="L342">                kiycstkRecord.hynKn(),</span>
+<span class="fc" id="L343">                kiycstkRecord.htuFlg(),</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                tatemonRecord == null ? null : tatemonRecord.bldNamKn(),</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                tatemonRecord == null ? null : tatemonRecord.bldNamKj());</span>
+    }
+
+    private String decodeFunctionId(String hukkSysShbt) {
+<span class="fc" id="L349">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+
+    private KseflWriteRecord toKseflWriteRecord(
+            OpeningCommonForceTgRetailRequest request,
+            AreaInfo areaInfo,
+            CustomerInfo customerInfo) {
+<span class="fc" id="L358">        PhonePair phonePair = toPhonePair(request.telnoUpdInfList());</span>
+<span class="fc" id="L359">        return new KseflWriteRecord(</span>
+<span class="fc" id="L360">                request.gmb(),</span>
+<span class="fc" id="L361">                parseRequestDate(request.kasgYmd()),</span>
+<span class="fc" id="L362">                parseRequestDate(request.kasHukkYmd()),</span>
+<span class="fc" id="L363">                request.hukkSysShbt(),</span>
+<span class="fc" id="L364">                request.sgyAnknNo(),</span>
+                followStatusNotYetStarted,
+                null,
+<span class="fc" id="L367">                request.gasMtstNo(),</span>
+<span class="fc" id="L368">                request.syoKyoTrno(),</span>
+                &quot;&quot;,
+                null,
+<span class="fc" id="L371">                request.kasJysb(),</span>
+<span class="fc" id="L372">                request.ksenErrRyCd(),</span>
+<span class="fc" id="L373">                areaInfo.regionCode(),</span>
+<span class="fc" id="L374">                areaInfo.baseCode(),</span>
+<span class="fc" id="L375">                request.sgytNwkCd(),</span>
+<span class="fc" id="L376">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L377">                request.sagyTntEmpNmKj(),</span>
+<span class="fc" id="L378">                request.gmtShjSu(),</span>
+<span class="fc" id="L379">                customerInfo.ctnmKn1(),</span>
+<span class="fc" id="L380">                customerInfo.ctnmKj1(),</span>
+<span class="fc" id="L381">                customerInfo.ctnmKjhkFlg(),</span>
+<span class="fc" id="L382">                customerInfo.ctnm1HujnShbt(),</span>
+<span class="fc" id="L383">                customerInfo.ctnm1HshiShbt(),</span>
+<span class="fc" id="L384">                customerInfo.ctnmKn2(),</span>
+<span class="fc" id="L385">                customerInfo.ctnmKj2(),</span>
+<span class="fc" id="L386">                customerInfo.ctnm2HujnShbt(),</span>
+<span class="fc" id="L387">                customerInfo.ctnm2HshiShbt(),</span>
+<span class="fc" id="L388">                customerInfo.yubnNo(),</span>
+<span class="fc" id="L389">                customerInfo.gkkCd(),</span>
+<span class="fc" id="L390">                customerInfo.mchCd(),</span>
+<span class="fc" id="L391">                customerInfo.cmazCd(),</span>
+<span class="fc" id="L392">                customerInfo.cbgSuj1(),</span>
+<span class="fc" id="L393">                customerInfo.cbgKn2(),</span>
+<span class="fc" id="L394">                customerInfo.cbgKn3(),</span>
+<span class="fc" id="L395">                customerInfo.cbgKn4(),</span>
+<span class="fc" id="L396">                customerInfo.tunoKn(),</span>
+<span class="fc" id="L397">                customerInfo.hynKn(),</span>
+<span class="fc" id="L398">                customerInfo.htuFlg(),</span>
+<span class="fc" id="L399">                customerInfo.bldnKn(),</span>
+<span class="fc" id="L400">                customerInfo.bldnKj(),</span>
+<span class="fc" id="L401">                request.ohmKj(),</span>
+<span class="fc" id="L402">                request.utidxNo(),</span>
+<span class="fc" id="L403">                request.custmrNo(),</span>
+<span class="fc" id="L404">                request.gasYtCd(),</span>
+<span class="fc" id="L405">                phonePair.first().newTelNo(),</span>
+<span class="fc" id="L406">                phonePair.first().telShbt(),</span>
+<span class="fc" id="L407">                phonePair.first().telRrskShbt(),</span>
+<span class="fc" id="L408">                phonePair.first().telKnzShbt(),</span>
+<span class="fc" id="L409">                phonePair.first().telStsdShbt(),</span>
+<span class="fc" id="L410">                phonePair.first().telShtkYmd(),</span>
+<span class="fc" id="L411">                phonePair.first().tetsCtnmKj(),</span>
+<span class="fc" id="L412">                phonePair.first().telZkgrShbt(),</span>
+<span class="fc" id="L413">                phonePair.first().telMusdKbn(),</span>
+<span class="fc" id="L414">                phonePair.first().oldTelNo(),</span>
+<span class="fc" id="L415">                phonePair.second().newTelNo(),</span>
+<span class="fc" id="L416">                phonePair.second().telShbt(),</span>
+<span class="fc" id="L417">                phonePair.second().telRrskShbt(),</span>
+<span class="fc" id="L418">                phonePair.second().telKnzShbt(),</span>
+<span class="fc" id="L419">                phonePair.second().telStsdShbt(),</span>
+<span class="fc" id="L420">                phonePair.second().telShtkYmd(),</span>
+<span class="fc" id="L421">                phonePair.second().tetsCtnmKj(),</span>
+<span class="fc" id="L422">                phonePair.second().telZkgrShbt(),</span>
+<span class="fc" id="L423">                phonePair.second().telMusdKbn(),</span>
+<span class="fc" id="L424">                phonePair.second().oldTelNo(),</span>
+<span class="fc" id="L425">                parseRequestDate(request.kasgYmd()),</span>
+<span class="fc" id="L426">                request.gmb(),</span>
+<span class="fc" id="L427">                request.gasMtstNo(),</span>
+<span class="fc" id="L428">                request.syoKyoTrno(),</span>
+                null,
+<span class="fc" id="L430">                areaInfo.regionCode(),</span>
+                null,
+                null,
+<span class="fc" id="L433">                resolveTkjMem(areaInfo));</span>
+    }
+
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L437">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L438">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="fc" id="L439">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L440">            return generated;</span>
+        });
+    }
+
+    private String resolveTkjMem(AreaInfo areaInfo) {
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        return areaInfo.baseCode() == null ? TKJ_MEM_BASE_UNIDENTIFIED : null;</span>
+    }
+
+    private KasnhkWriteRecord toKasnhkUpdateRecord(KasnhkRecord record) {
+<span class="nc" id="L449">        return new KasnhkWriteRecord(</span>
+<span class="nc" id="L450">                record.gmb(),</span>
+<span class="nc" id="L451">                record.kasgYmd(),</span>
+<span class="nc" id="L452">                record.kasHukkYmd(),</span>
+<span class="nc" id="L453">                record.hukkSysShbt(),</span>
+<span class="nc" id="L454">                record.lvltAnknNo(),</span>
+                openingReportStatusFollowUp,
+<span class="nc" id="L456">                record.kasHukrYmd(),</span>
+<span class="nc" id="L457">                record.kasYmd(),</span>
+<span class="nc" id="L458">                record.kasgNwkCd(),</span>
+<span class="nc" id="L459">                record.cktkCd(),</span>
+<span class="nc" id="L460">                record.ktnCd(),</span>
+<span class="nc" id="L461">                record.gasMtstNo(),</span>
+<span class="nc" id="L462">                record.kassKyoTrno(),</span>
+<span class="nc" id="L463">                record.kassSvkyNo(),</span>
+<span class="nc" id="L464">                record.kassSikeNo(),</span>
+<span class="nc" id="L465">                record.tgkuHtkFlg(),</span>
+<span class="nc" id="L466">                record.kasJysb(),</span>
+<span class="nc" id="L467">                record.svkySttJysb(),</span>
+<span class="nc" id="L468">                record.ctnmKn1(),</span>
+<span class="nc" id="L469">                record.ctnmKj1(),</span>
+<span class="nc" id="L470">                record.tsigGmsbNo(),</span>
+<span class="nc" id="L471">                record.tsgkKyoTrno(),</span>
+<span class="nc" id="L472">                record.tsigKasJysb(),</span>
+<span class="nc" id="L473">                record.tsigSvksJysb(),</span>
+<span class="nc" id="L474">                record.tgonKn1(),</span>
+<span class="nc" id="L475">                record.tgonKj1(),</span>
+<span class="nc" id="L476">                record.sonKn1(),</span>
+<span class="nc" id="L477">                record.sonKj1(),</span>
+<span class="nc" id="L478">                record.son1HujnShbt(),</span>
+<span class="nc" id="L479">                record.son1HshiShbt(),</span>
+<span class="nc" id="L480">                record.sonKn2(),</span>
+<span class="nc" id="L481">                record.sonKj2(),</span>
+<span class="nc" id="L482">                record.son2HujnShbt(),</span>
+<span class="nc" id="L483">                record.son2HshiShbt(),</span>
+<span class="nc" id="L484">                record.sonKjhkFlg(),</span>
+<span class="nc" id="L485">                record.shsySkilShbt(),</span>
+<span class="nc" id="L486">                record.shsyYubnNo(),</span>
+<span class="nc" id="L487">                record.shsyGkkCd(),</span>
+<span class="nc" id="L488">                record.shsyMchCd(),</span>
+<span class="nc" id="L489">                record.shsyCmazCd(),</span>
+<span class="nc" id="L490">                record.shsyCbgSuj1(),</span>
+<span class="nc" id="L491">                record.shsyCbgKn2(),</span>
+<span class="nc" id="L492">                record.shsyCbgKn3(),</span>
+<span class="nc" id="L493">                record.shsyCbgKn4(),</span>
+<span class="nc" id="L494">                record.sbdnKj(),</span>
+<span class="nc" id="L495">                record.sbdnKn(),</span>
+<span class="nc" id="L496">                record.sbdnKjhkFlg(),</span>
+<span class="nc" id="L497">                record.shsyJutKbn(),</span>
+<span class="nc" id="L498">                record.shsyTunoKn(),</span>
+<span class="nc" id="L499">                record.shnoKn(),</span>
+<span class="nc" id="L500">                record.shnoTrumFlg(),</span>
+<span class="nc" id="L501">                record.shsyTelNo1(),</span>
+<span class="nc" id="L502">                record.shsyTelShbt1(),</span>
+<span class="nc" id="L503">                record.shsyTrrsShbt1(),</span>
+<span class="nc" id="L504">                record.shsyTknzShbt1(),</span>
+<span class="nc" id="L505">                record.shsyTssdShbt1(),</span>
+<span class="nc" id="L506">                record.shsyTstkYmd1(),</span>
+<span class="nc" id="L507">                record.shsyTtsnKj1(),</span>
+<span class="nc" id="L508">                record.shsyTezgShbt1(),</span>
+<span class="nc" id="L509">                record.shsyTemdKbn1(),</span>
+<span class="nc" id="L510">                record.shsyTelNo2(),</span>
+<span class="nc" id="L511">                record.shsyTelShbt2(),</span>
+<span class="nc" id="L512">                record.shsyTrrsShbt2(),</span>
+<span class="nc" id="L513">                record.shsyTknzShbt2(),</span>
+<span class="nc" id="L514">                record.shsyTssdShbt2(),</span>
+<span class="nc" id="L515">                record.shsyTstkYmd2(),</span>
+<span class="nc" id="L516">                record.shsyTtsnKj2(),</span>
+<span class="nc" id="L517">                record.shsyTezgShbt2(),</span>
+<span class="nc" id="L518">                record.shsyTemdKbn2(),</span>
+<span class="nc" id="L519">                record.kckzKbumFlg(),</span>
+<span class="nc" id="L520">                record.kckmBldnKj(),</span>
+<span class="nc" id="L521">                record.kckmTnhnKn(),</span>
+<span class="nc" id="L522">                record.kckmJsKj(),</span>
+<span class="nc" id="L523">                record.kckmCmbgKn(),</span>
+<span class="nc" id="L524">                record.kckmTelNo(),</span>
+<span class="nc" id="L525">                record.kckmYubnNo(),</span>
+<span class="nc" id="L526">                record.kcksJdhtCd(),</span>
+<span class="nc" id="L527">                record.kckmJdhtCd(),</span>
+<span class="nc" id="L528">                record.kcksGmsbNo(),</span>
+<span class="nc" id="L529">                record.kckmGmsbNo());</span>
+    }
+
+    private PhonePair toPhonePair(List&lt;OpeningCommonForceTgRetailTelephoneUpdateInfo&gt; telephoneUpdateInfoList) {
+<span class="fc" id="L533">        TelephoneSnapshot first = toTelephoneSnapshot(telephoneUpdateInfoList, 0);</span>
+<span class="fc" id="L534">        TelephoneSnapshot second = toTelephoneSnapshot(telephoneUpdateInfoList, 1);</span>
+<span class="fc" id="L535">        return new PhonePair(first, second);</span>
+    }
+
+    private TelephoneSnapshot toTelephoneSnapshot(
+            List&lt;OpeningCommonForceTgRetailTelephoneUpdateInfo&gt; telephoneUpdateInfoList,
+            int index) {
+<span class="pc bpc" id="L541" title="3 of 4 branches missed.">        if (telephoneUpdateInfoList == null || telephoneUpdateInfoList.size() &lt;= index) {</span>
+<span class="fc" id="L542">            return TelephoneSnapshot.empty();</span>
+        }
+<span class="nc" id="L544">        OpeningCommonForceTgRetailTelephoneUpdateInfo updateInfo = telephoneUpdateInfoList.get(index);</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">        if (updateInfo == null) {</span>
+<span class="nc" id="L546">            return TelephoneSnapshot.empty();</span>
+        }
+<span class="nc" id="L548">        OpeningCommonForceTgRetailNewTelephoneInfo newTelephoneInfo = updateInfo.newTelInf();</span>
+<span class="nc" id="L549">        return new TelephoneSnapshot(</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.kyoTelNo(),</span>
+<span class="nc bnc" id="L551" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telShbt(),</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telRrskShbt(),</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telKnzShbt(),</span>
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telStsdShbt(),</span>
+<span class="nc bnc" id="L555" title="All 2 branches missed.">                newTelephoneInfo == null ? null : parseOptionalDate(newTelephoneInfo.telShtkYmd()),</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.tetsCtnmKj(),</span>
+<span class="nc bnc" id="L557" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telZkgrShbt(),</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">                newTelephoneInfo == null ? null : newTelephoneInfo.telMusdKbn(),</span>
+<span class="nc" id="L559">                updateInfo.oldKyoTelNo());</span>
+    }
+
+    private static LocalDate parseRequestDate(String value) {
+<span class="fc" id="L563">        return parseOptionalDate(value);</span>
+    }
+
+    private static LocalDate parseOptionalDate(String value) {
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">        String normalized = value == null ? null : value.trim();</span>
+<span class="pc bpc" id="L568" title="2 of 4 branches missed.">        if (normalized == null || normalized.isEmpty()) {</span>
+<span class="nc" id="L569">            return null;</span>
+        }
+        try {
+<span class="fc" id="L572">            return LocalDate.parse(normalized);</span>
+<span class="nc" id="L573">        } catch (DateTimeParseException ignored) {</span>
+            try {
+<span class="nc" id="L575">                return OffsetDateTime.parse(normalized).toLocalDate();</span>
+<span class="nc" id="L576">            } catch (DateTimeParseException ex) {</span>
+<span class="nc" id="L577">                throw new IllegalArgumentException(&quot;date must follow RFC3339&quot;, ex);</span>
+            }
+        }
+    }
+
+    private static String toLvltAnknNo(String sgyAnknNo) {
+<span class="fc" id="L583">        return sgyAnknNo.substring(2);</span>
+    }
+
+    private static YearMonth toYearMonth(LocalDate value) {
+<span class="fc" id="L587">        return YearMonth.of(value.getYear(), value.getMonthValue());</span>
+    }
+
+<span class="fc" id="L590">    private record AreaInfo(String regionCode, String baseCode) {</span>
+    }
+
+
+
+
+<span class="fc" id="L596">    private record CustomerInfo(</span>
+            String ctnmKn1,
+            String ctnmKj1,
+            Boolean ctnmKjhkFlg,
+            String ctnm1HujnShbt,
+            String ctnm1HshiShbt,
+            String ctnmKn2,
+            String ctnmKj2,
+            String ctnm2HujnShbt,
+            String ctnm2HshiShbt,
+            String yubnNo,
+            String gkkCd,
+            String mchCd,
+            String cmazCd,
+            String cbgSuj1,
+            String cbgKn2,
+            String cbgKn3,
+            String cbgKn4,
+            String tunoKn,
+            String hynKn,
+            Boolean htuFlg,
+            String bldnKn,
+            String bldnKj) {
+    }
+
+<span class="fc" id="L621">    private record TelephoneSnapshot(</span>
+            String newTelNo,
+            String telShbt,
+            String telRrskShbt,
+            String telKnzShbt,
+            String telStsdShbt,
+            LocalDate telShtkYmd,
+            String tetsCtnmKj,
+            String telZkgrShbt,
+            String telMusdKbn,
+            String oldTelNo) {
+
+        private static TelephoneSnapshot empty() {
+<span class="fc" id="L634">            return new TelephoneSnapshot(null, null, null, null, null, null, null, null, null, null);</span>
+        }
+    }
+
+<span class="fc" id="L638">    private record PhonePair(TelephoneSnapshot first, TelephoneSnapshot second) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

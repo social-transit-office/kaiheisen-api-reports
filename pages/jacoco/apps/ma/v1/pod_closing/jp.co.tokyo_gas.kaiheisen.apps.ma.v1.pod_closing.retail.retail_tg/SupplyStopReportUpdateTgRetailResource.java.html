@@ -1,0 +1,492 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SupplyStopReportUpdateTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg</a> &gt; <span class="el_source">SupplyStopReportUpdateTgRetailResource.java</span></div><h1>SupplyStopReportUpdateTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.InterFieldValidation;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonSupplyStopRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonSupplyStopResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportUpdateTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportUpdateTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportUpdateTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleListException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCatalog;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaidDataConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaidDataConfirmationOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-025 供給停止報告更新-TG小売 API のリソース実装。
+ */
+@MainService(identifier = &quot;MA-025&quot;, name = &quot;供給停止報告更新-TG小売 API&quot;)
+@Path(SupplyStopReportUpdateTgRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;供給停止報告更新-TG小売&quot;, description = &quot;MA-025 供給停止報告更新-TG小売 API&quot;)
+public class SupplyStopReportUpdateTgRetailResource
+        extends BaseResource&lt;SupplyStopReportUpdateTgRetailRequest&gt; {
+
+    private static final String REQUIRED_ERROR_CODE = ErrorCodeConstants.ERROR_CODE_010000011;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final ItensakDataAccess itensakDataAccess;
+
+    private final PaidDataConfirmation paidDataConfirmation;
+
+    private final ClosingCommonSupplyStopDelegate closingCommonSupplyStopDelegate;
+
+    private final String activePaymentContractStatus;
+
+    private final String transferDestinationCancellationNoConcept;
+
+    private final String childConduitBusinessCode;
+
+    private final String childConduitBusinessDetailCode;
+
+    private final String childRetailBusinessCode;
+
+    private final String childRetailBusinessDetailCode;
+
+    private final String childReportRouteDivision;
+
+    private final String unpaidForPreviousAddress;
+
+    private final String unpaidForCurrentPreviousAddress;
+
+    private final String childClosingReason;
+
+    private final String remoteClosingMeansType;
+
+    /**
+     * MA-025 用の依存コンポーネントを受け取る。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエスト DTO バリデータ
+     * @param clock システム日時プロバイダ
+     * @param svsihkrDataAccess SVSIHKR DA
+     * @param gmtsetdDataAccess GMTSETD DA
+     * @param itensakDataAccess ITENSAK DA
+     * @param paidDataConfirmation SV-021
+     * @param closingCommonSupplyStopDelegate MA-067 delegate
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public SupplyStopReportUpdateTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            SvsihkrDataAccess svsihkrDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            ItensakDataAccess itensakDataAccess,
+            PaidDataConfirmation paidDataConfirmation,
+            ClosingCommonSupplyStopDelegate closingCommonSupplyStopDelegate,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L121">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L122">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L123">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L124">        this.itensakDataAccess = Objects.requireNonNull(itensakDataAccess, &quot;itensakDataAccess&quot;);</span>
+<span class="fc" id="L125">        this.paidDataConfirmation =</span>
+<span class="fc" id="L126">                Objects.requireNonNull(paidDataConfirmation, &quot;paidDataConfirmation&quot;);</span>
+<span class="fc" id="L127">        this.closingCommonSupplyStopDelegate = Objects.requireNonNull(</span>
+                closingCommonSupplyStopDelegate, &quot;closingCommonSupplyStopDelegate&quot;);
+<span class="fc" id="L129">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L130">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L131">        this.activePaymentContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L135">        this.transferDestinationCancellationNoConcept = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferDestinationCancellationFlag.TYPE,
+                ConstantLookupKeys.Cirius.TransferDestinationCancellationFlag.NO_CONCEPT);
+<span class="fc" id="L139">        this.childConduitBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L143">        this.childConduitBusinessDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.SUPPLY_OUTAGE_CCJG1301);
+<span class="fc" id="L147">        this.childRetailBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L151">        this.childRetailBusinessDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.SUPPLY_OUTAGE_CCBG8401);
+<span class="fc" id="L155">        this.childReportRouteDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.ONLINE_REPORTING_USUALLY);
+<span class="fc" id="L159">        this.unpaidForPreviousAddress = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplySuspensionReasonType.TYPE,
+                ConstantLookupKeys.Cirius.SupplySuspensionReasonType.UNPAID_FOR_PREVIOUS_ADDRESS);
+<span class="fc" id="L163">        this.unpaidForCurrentPreviousAddress = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplySuspensionReasonType.TYPE,
+                ConstantLookupKeys.Cirius.SupplySuspensionReasonType.UNPAID_FOR_CURRENT_PREVIOUS_ADDRESS);
+<span class="fc" id="L167">        this.childClosingReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L171">        this.remoteClosingMeansType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosingMeansType.TYPE,
+                ConstantLookupKeys.Cirius.ClosingMeansType.REMOTE);
+<span class="fc" id="L175">    }</span>
+
+    /**
+     * MA-025 供給停止報告更新-TG小売 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;供給停止報告更新-TG小売&quot;,
+            description = &quot;前段の DA/SV 判定を行ったうえで MA-067 へ委譲し、MA-025 の応答形式に整形する。&quot;,
+            operationId = &quot;postSupplyStopReportUpdateTgRetail&quot;)
+    @RequestBody(required = true, content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = SupplyStopReportUpdateTgRetailRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;供給停止報告更新結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = SupplyStopReportUpdateTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(
+                            anyOf = {
+                                CommonErrorResponse.class,
+                                SupplyStopReportUpdateTgRetailResponse.class
+                            })))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public SupplyStopReportUpdateTgRetailResponse endpoint(
+            SupplyStopReportUpdateTgRetailRequest request) {
+<span class="fc" id="L216">        bindCorrelationIdFromBodyIfPresent(request);</span>
+<span class="fc" id="L217">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    @Override
+    protected InterFieldValidation&lt;SupplyStopReportUpdateTgRetailRequest&gt; interFieldValidation() {
+<span class="fc" id="L222">        return request -&gt; {</span>
+<span class="fc" id="L223">            List&lt;ValidationError&gt; errors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L224">            SupplyStopReportUpdateTgRetailRequest.KkysHkkInf reportInfo = request.kkysHkkInf();</span>
+            String supplySuspensionReasonType =
+<span class="fc bfc" id="L226" title="All 2 branches covered.">                    reportInfo == null ? null : normalizeOptional(reportInfo.kkysRyuShbt());</span>
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">            if (requiresPreviousAddressGasMeterLocationNumber(supplySuspensionReasonType)</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">                    &amp;&amp; (reportInfo == null || reportInfo.mejsGmsbNo() == null)) {</span>
+<span class="fc" id="L229">                errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, &quot;kkysHkkInf.mejsGmsbNo&quot;));</span>
+            }
+<span class="fc bfc" id="L231" title="All 4 branches covered.">            if (reportInfo != null &amp;&amp; !remoteClosingMeansType.equals(reportInfo.hesnSdnShbt())) {</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">                if (normalizeOptional(reportInfo.snuTntEmpId()) == null) {</span>
+<span class="fc" id="L233">                    errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, &quot;kkysHkkInf.snuTntEmpId&quot;));</span>
+                }
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                if (normalizeOptional(reportInfo.snuTntEmpNmkj()) == null) {</span>
+<span class="fc" id="L236">                    errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, &quot;kkysHkkInf.snuTntEmpNmkj&quot;));</span>
+                }
+            }
+<span class="fc" id="L239">            return errors;</span>
+        };
+    }
+
+    SupplyStopReportUpdateTgRetailResponse handle(
+            SupplyStopReportUpdateTgRetailRequest request) {
+<span class="fc" id="L245">        Long paymentContractNo = resolvePaymentContractNo(request.svkyNo());</span>
+<span class="fc" id="L246">        Long previousPaymentContractNo = resolvePreviousPaymentContractNo(request, paymentContractNo);</span>
+<span class="fc" id="L247">        PaidDataConfirmationOutput paidDataConfirmationOutput =</span>
+<span class="fc" id="L248">                paidDataConfirmation.execute(paymentContractNo, previousPaymentContractNo);</span>
+
+        try {
+<span class="fc" id="L251">            ClosingCommonSupplyStopResponse childResponse =</span>
+<span class="fc" id="L252">                    closingCommonSupplyStopDelegate.execute(</span>
+<span class="fc" id="L253">                            toChildRequest(request));</span>
+<span class="fc" id="L254">            return toResponse(childResponse, paidDataConfirmationOutput.nyukinZmFlg());</span>
+<span class="fc" id="L255">        } catch (WebApplicationException exception) {</span>
+<span class="fc" id="L256">            ClosingCommonSupplyStopResponse childResponse = asChildResponse(exception);</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            if (childResponse == null) {</span>
+<span class="fc" id="L258">                throw exception;</span>
+            }
+<span class="fc bfc" id="L260" title="All 2 branches covered.">            if (HeisenRuleListException.ERROR_CODE.equals(childResponse.errorCode())) {</span>
+<span class="fc" id="L261">                return toResponse(childResponse, paidDataConfirmationOutput.nyukinZmFlg());</span>
+            }
+<span class="fc" id="L263">            throw badRequestResponse(toResponse(childResponse, null));</span>
+        }
+    }
+
+    private Long resolvePaymentContractNo(Long serviceContractNo) {
+<span class="fc" id="L268">        return svsihkrDataAccess</span>
+<span class="fc" id="L269">                .findAllBySvkyNoAndSihKiyJtkb(serviceContractNo, activePaymentContractStatus)</span>
+<span class="fc" id="L270">                .stream()</span>
+<span class="fc" id="L271">                .findFirst()</span>
+<span class="fc" id="L272">                .map(record -&gt; record.sihKiyNo())</span>
+<span class="fc" id="L273">                .orElseThrow(() -&gt; new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000017));</span>
+    }
+
+    private Long resolvePreviousPaymentContractNo(
+            SupplyStopReportUpdateTgRetailRequest request,
+            Long paymentContractNo) {
+<span class="fc" id="L279">        SupplyStopReportUpdateTgRetailRequest.KkysHkkInf reportInfo = request.kkysHkkInf();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        Long previousGasMeterLocationNumber = reportInfo == null ? null : reportInfo.mejsGmsbNo();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (previousGasMeterLocationNumber == null) {</span>
+<span class="fc" id="L282">            return null;</span>
+        }
+
+<span class="fc" id="L285">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="pc" id="L286">                .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set&quot;))</span>
+<span class="fc" id="L287">                .toLocalDate();</span>
+<span class="fc" id="L288">        gmtsetdDataAccess.findByGasMtstNoAndTkysYmdForR003(previousGasMeterLocationNumber, systemDate)</span>
+<span class="fc" id="L289">                .orElseThrow(() -&gt; new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000012));</span>
+
+<span class="fc" id="L291">        List&lt;jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakRecord&gt; transferRecords =</span>
+<span class="fc" id="L292">                itensakDataAccess.findAllByGmtSetNoAndItenSShrkyNoAndItenTksCd(</span>
+                        previousGasMeterLocationNumber,
+                        paymentContractNo,
+                        transferDestinationCancellationNoConcept);
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        return transferRecords.isEmpty() ? null : transferRecords.get(0).itenZShrkyNo();</span>
+    }
+
+    private ClosingCommonSupplyStopRequest toChildRequest(
+            SupplyStopReportUpdateTgRetailRequest request) {
+<span class="fc" id="L301">        SupplyStopReportUpdateTgRetailRequest.KkysHkkInf reportInfo = request.kkysHkkInf();</span>
+<span class="fc" id="L302">        return new ClosingCommonSupplyStopRequest(</span>
+                childConduitBusinessCode,
+                childConduitBusinessDetailCode,
+                childRetailBusinessCode,
+                childRetailBusinessDetailCode,
+                childReportRouteDivision,
+                null,
+<span class="fc" id="L309">                resolveReportDate(),</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.hesnYmd(),</span>
+<span class="fc" id="L311">                stringify(request.gasMtstNo()),</span>
+<span class="fc" id="L312">                stringify(request.syoKyoTrno()),</span>
+<span class="fc" id="L313">                request.gmb(),</span>
+                childClosingReason,
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                reportInfo == null ? null : stringify(reportInfo.gmtShjSu()),</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">                reportInfo == null ? null : stringify(reportInfo.gasSyry()),</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.sjskKbn(),</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.hesnSdnShbt(),</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.kkysRyuShbt(),</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">                reportInfo == null ? null : stringify(reportInfo.mejsGmsbNo()),</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.hukkUsrId(),</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.hukkUnmKj(),</span>
+                null,
+<span class="fc bfc" id="L324" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.snuTntEmpId(),</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                reportInfo == null ? null : reportInfo.snuTntEmpNmkj(),</span>
+<span class="fc bfc" id="L326" title="All 4 branches covered.">                reportInfo == null ? null : reportInfo.rirekiMemo(),</span>
+                new ClosingCommonSupplyStopRequest.WarnKknInf(
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">                        reportInfo != null &amp;&amp; Boolean.TRUE.equals(reportInfo.kknnFlg()),</span>
+<span class="fc" id="L329">                        request.knmaCkaKknnFlg()),</span>
+                new ClosingCommonSupplyStopRequest.HseflKeyInf(null, null, null, null),
+                null,
+<span class="fc" id="L332">                request.hukkSysShbt(),</span>
+<span class="fc" id="L333">                request.systemDatetime());</span>
+    }
+
+    private String resolveReportDate() {
+<span class="fc" id="L337">        return requestContext.getSystemDatetime()</span>
+<span class="pc" id="L338">                .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set&quot;))</span>
+<span class="fc" id="L339">                .toLocalDate()</span>
+<span class="fc" id="L340">                .toString();</span>
+    }
+
+    private boolean requiresPreviousAddressGasMeterLocationNumber(String supplySuspensionReasonType) {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        return unpaidForPreviousAddress.equals(supplySuspensionReasonType)</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">                || unpaidForCurrentPreviousAddress.equals(supplySuspensionReasonType);</span>
+    }
+
+    private String stringify(Object value) {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L350">            return null;</span>
+        }
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (value instanceof BigDecimal decimalValue) {</span>
+<span class="fc" id="L353">            return decimalValue.toPlainString();</span>
+        }
+<span class="fc" id="L355">        return value.toString();</span>
+    }
+
+    private void bindCorrelationIdFromBodyIfPresent(SupplyStopReportUpdateTgRetailRequest request) {
+<span class="pc bpc" id="L359" title="2 of 6 branches missed.">        if (request == null || request.correlationId() == null || request.correlationId().isBlank()) {</span>
+<span class="fc" id="L360">            return;</span>
+        }
+<span class="fc" id="L362">        requestContext.setCorrelationId(request.correlationId());</span>
+<span class="fc" id="L363">    }</span>
+
+    private SupplyStopReportUpdateTgRetailResponse toResponse(
+            ClosingCommonSupplyStopResponse childResponse,
+            Boolean paidFlag) {
+<span class="fc" id="L368">        return new SupplyStopReportUpdateTgRetailResponse(</span>
+<span class="fc" id="L369">                normalizeUsageWarningInfo(childResponse),</span>
+<span class="fc" id="L370">                normalizeGeneralWarningInfo(childResponse),</span>
+<span class="fc" id="L371">                toUncollectedFlag(paidFlag),</span>
+<span class="fc" id="L372">                childResponse.correlationId(),</span>
+<span class="fc" id="L373">                childResponse.errorCode(),</span>
+<span class="fc" id="L374">                childResponse.errorDescription(),</span>
+<span class="fc" id="L375">                normalizeErrorDetailList(childResponse),</span>
+<span class="fc" id="L376">                resolveCiriusMessageId(childResponse),</span>
+<span class="fc" id="L377">                resolveCiriusEmbeddedStringList(childResponse));</span>
+    }
+
+    private Boolean toUncollectedFlag(Boolean paidFlag) {
+<span class="fc bfc" id="L381" title="All 4 branches covered.">        return paidFlag == null ? null : !paidFlag;</span>
+    }
+
+    private SupplyStopReportUpdateTgRetailResponse.MessageIdListInf normalizeMessageIdList(
+            ClosingCommonSupplyStopResponse.MessageIdListInf messageIdListInf) {
+<span class="pc bpc" id="L386" title="1 of 4 branches missed.">        if (messageIdListInf == null || messageIdListInf.crsMsgIdList() == null) {</span>
+<span class="fc" id="L387">            return null;</span>
+        }
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (messageIdListInf.crsMsgIdList().isEmpty()) {</span>
+<span class="fc" id="L390">            return null;</span>
+        }
+<span class="fc" id="L392">        return new SupplyStopReportUpdateTgRetailResponse.MessageIdListInf(</span>
+<span class="fc" id="L393">                messageIdListInf.crsMsgIdList());</span>
+    }
+
+    private SupplyStopReportUpdateTgRetailResponse.MessageIdListInf normalizeUsageWarningInfo(
+            ClosingCommonSupplyStopResponse response) {
+<span class="fc" id="L398">        ClosingCommonSupplyStopResponse.MessageIdListInf usageWarningInfo =</span>
+<span class="fc" id="L399">                response.syryWarnInf();</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        if (!isWarningResponse(response)) {</span>
+<span class="fc" id="L401">            return normalizeMessageIdList(usageWarningInfo);</span>
+        }
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        if (usageWarningInfo == null) {</span>
+<span class="nc" id="L404">            return null;</span>
+        }
+<span class="fc" id="L406">        return new SupplyStopReportUpdateTgRetailResponse.MessageIdListInf(</span>
+<span class="fc" id="L407">                usageWarningInfo.crsMsgIdList());</span>
+    }
+
+    private SupplyStopReportUpdateTgRetailResponse.MessageIdListInf normalizeGeneralWarningInfo(
+            ClosingCommonSupplyStopResponse response) {
+<span class="fc" id="L412">        ClosingCommonSupplyStopResponse.MessageIdListInf generalWarningInfo =</span>
+<span class="fc" id="L413">                response.ippnWarnInf();</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (!isWarningResponse(response)) {</span>
+<span class="fc" id="L415">            return normalizeMessageIdList(generalWarningInfo);</span>
+        }
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        if (generalWarningInfo == null) {</span>
+<span class="fc" id="L418">            return null;</span>
+        }
+<span class="fc" id="L420">        return new SupplyStopReportUpdateTgRetailResponse.MessageIdListInf(</span>
+<span class="fc" id="L421">                generalWarningInfo.crsMsgIdList());</span>
+    }
+
+    private boolean isWarningResponse(ClosingCommonSupplyStopResponse response) {
+<span class="fc" id="L425">        return HeisenRuleListException.ERROR_CODE.equals(response.errorCode());</span>
+    }
+
+    private List&lt;String&gt; normalizeErrorDetailList(ClosingCommonSupplyStopResponse response) {
+<span class="pc bpc" id="L429" title="1 of 4 branches missed.">        if (response.errorCode() == null || response.errorCode().isBlank()) {</span>
+<span class="fc" id="L430">            return null;</span>
+        }
+<span class="fc" id="L432">        return response.errorDetailList();</span>
+    }
+
+    private String resolveCiriusMessageId(ClosingCommonSupplyStopResponse response) {
+<span class="pc bpc" id="L436" title="1 of 4 branches missed.">        if (response.errorCode() == null || response.errorCode().isBlank()) {</span>
+<span class="fc" id="L437">            return null;</span>
+        }
+<span class="fc" id="L439">        return ErrorCatalog.resolveCiriusMessageId(response.errorCode());</span>
+    }
+
+    private List&lt;String&gt; resolveCiriusEmbeddedStringList(ClosingCommonSupplyStopResponse response) {
+<span class="pc bpc" id="L443" title="1 of 4 branches missed.">        if (response.errorCode() == null || response.errorCode().isBlank()) {</span>
+<span class="fc" id="L444">            return null;</span>
+        }
+<span class="fc bfc" id="L446" title="All 2 branches covered.">        if (ErrorCodeConstants.ERROR_CODE_020200026.equals(response.errorCode())</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">                &amp;&amp; response.errGmsbNo() != null) {</span>
+<span class="fc" id="L448">            return List.of(formatGasMeterLocationNumber(response.errGmsbNo()));</span>
+        }
+<span class="fc bfc" id="L450" title="All 2 branches covered.">        if (ErrorCodeConstants.ERROR_CODE_020200042.equals(response.errorCode())</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">                &amp;&amp; response.snstSyoRyo() != null) {</span>
+<span class="fc" id="L452">            return List.of(formatUsageAmount(response.snstSyoRyo()));</span>
+        }
+<span class="fc" id="L454">        return null;</span>
+    }
+
+    private String formatGasMeterLocationNumber(Long gasMeterLocationNumber) {
+<span class="fc" id="L458">        String zeroFilled = String.format(&quot;%011d&quot;, gasMeterLocationNumber);</span>
+<span class="fc" id="L459">        return zeroFilled.substring(0, 4)</span>
+                + &quot;-&quot;
+<span class="fc" id="L461">                + zeroFilled.substring(4, 7)</span>
+                + &quot;-&quot;
+<span class="fc" id="L463">                + zeroFilled.substring(7);</span>
+    }
+
+    private String formatUsageAmount(Double calculatedUsageAmount) {
+<span class="fc" id="L467">        return BigDecimal.valueOf(calculatedUsageAmount)</span>
+<span class="fc" id="L468">                .setScale(4, RoundingMode.HALF_UP)</span>
+<span class="fc" id="L469">                .toPlainString();</span>
+    }
+
+    private ClosingCommonSupplyStopResponse asChildResponse(WebApplicationException exception) {
+<span class="fc" id="L473">        Response response = exception.getResponse();</span>
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">        if (response == null) {</span>
+<span class="nc" id="L475">            return null;</span>
+        }
+<span class="fc" id="L477">        Object entity = response.getEntity();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        return entity instanceof ClosingCommonSupplyStopResponse childResponse</span>
+<span class="fc" id="L479">                ? childResponse</span>
+<span class="fc" id="L480">                : null;</span>
+    }
+
+    private WebApplicationException badRequestResponse(
+            SupplyStopReportUpdateTgRetailResponse response) {
+<span class="fc" id="L485">        return new WebApplicationException(</span>
+<span class="fc" id="L486">                Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="fc" id="L487">                        .type(MediaType.APPLICATION_JSON_TYPE)</span>
+<span class="fc" id="L488">                        .entity(response)</span>
+<span class="fc" id="L489">                        .build());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

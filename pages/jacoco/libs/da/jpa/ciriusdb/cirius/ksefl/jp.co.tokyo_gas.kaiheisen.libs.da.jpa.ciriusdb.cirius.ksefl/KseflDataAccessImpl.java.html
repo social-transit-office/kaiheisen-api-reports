@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KseflDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-ksefl</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.ksefl</a> &gt; <span class="el_source">KseflDataAccessImpl.java</span></div><h1>KseflDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.ksefl;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** KSEFL データアクセスの JPA 実装。 */
+public class KseflDataAccessImpl extends DataAccessBase implements KseflDataAccess {
+
+    private static final String TABLE_NAME = &quot;KSEFL&quot;;
+
+    private static final String U001_WHERE_CLAUSE =
+            &quot;GMB = ? AND KASG_YMD = ? AND KAS_HUKK_YMD = ? AND HUKK_SYS_SHBT = ? AND SGY_ANKN_NO = ?&quot;;
+
+    private static final String U002_WHERE_CLAUSE =
+            &quot;GMB = ? AND KASG_YMD = ? AND KAS_HUKK_YMD = ? AND SGY_ANKN_NO = ?&quot;;
+
+<span class="fc" id="L45">    private static final ReflectiveRecordEntityMapper&lt;KseflRecord, KseflEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L46">            ReflectiveRecordEntityMapper.create(KseflRecord.class, KseflEntity.class);</span>
+
+<span class="fc" id="L48">    private static final ReflectiveRecordEntityMapper&lt;KseflWriteRecord, KseflEntity&gt; WRITE_MAPPER =</span>
+<span class="fc" id="L49">            ReflectiveRecordEntityMapper.create(KseflWriteRecord.class, KseflEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;KseflEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;KseflWriteRecord, KseflEntity, KseflColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;KseflWriteRecord, KseflEntity, KseflColumn&gt;
+            updateSupport;
+
+    /**
+     * JPA ベースの KSEFL データアクセスを生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param criteriaBuilderFactory Blaze Persistence CriteriaBuilderFactory
+     */
+    public KseflDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L74">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L79">    }</span>
+
+    KseflDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L85">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L86">    }</span>
+
+    KseflDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L92">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L93">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L94">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L95">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L96">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L97">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(KseflEntity.class);</span>
+<span class="fc" id="L98">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L100">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KseflWriteDefinition.INSTANCE,
+                        KseflEntity.class,
+<span class="fc" id="L106">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L107">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KseflWriteDefinition.INSTANCE,
+                        KseflEntity.class,
+<span class="fc" id="L113">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L114">    }</span>
+
+    @Override
+    public int insert(KseflWriteRecord record, AuditContext context) {
+<span class="fc" id="L118">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L119">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L120">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L123">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L124">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdAndKasgYmdAndFlwStCd(
+            String flttCktkCdFrom,
+            String flttCktkCdTo,
+            String flttKtnCd,
+            String kasErryCd,
+            LocalDate kasgYmd,
+            String flwStCd) {
+<span class="fc" id="L135">        String safeFlttCktkCdFrom =</span>
+<span class="fc" id="L136">                WhereParamGuard.fixedLengthNotNull(flttCktkCdFrom, &quot;flttCktkCdFrom&quot;, 3);</span>
+<span class="fc" id="L137">        String safeFlttCktkCdTo =</span>
+<span class="fc" id="L138">                WhereParamGuard.fixedLengthNotNull(flttCktkCdTo, &quot;flttCktkCdTo&quot;, 3);</span>
+<span class="fc" id="L139">        String safeKasErryCd =</span>
+<span class="fc" id="L140">                WhereParamGuard.fixedLengthNotNull(kasErryCd, &quot;kasErryCd&quot;, 2);</span>
+<span class="fc" id="L141">        BigDecimal safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L142">        String safeFlwStCd =</span>
+<span class="fc" id="L143">                WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+
+<span class="fc" id="L145">        var builder = criteriaBuilderFactory.create(entityManager, KseflEntity.class);</span>
+<span class="fc" id="L146">        JpaWhere.between(builder, &quot;flttCktkCd&quot;, safeFlttCktkCdFrom, safeFlttCktkCdTo);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (flttKtnCd != null) {</span>
+<span class="fc" id="L148">            String blankFlttKtnCd =</span>
+<span class="fc" id="L149">                    WhereParamGuard.fixedLengthNotNull(&quot;&quot;, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L150">            JpaWhere.in(</span>
+                    builder,
+                    &quot;flttKtnCd&quot;,
+<span class="fc" id="L153">                    List.of(</span>
+<span class="fc" id="L154">                            WhereParamGuard.fixedLengthNotNull(flttKtnCd, &quot;flttKtnCd&quot;, 1),</span>
+                            blankFlttKtnCd));
+        }
+<span class="fc" id="L157">        JpaWhere.eq(builder, &quot;kasErryCd&quot;, safeKasErryCd);</span>
+<span class="fc" id="L158">        JpaWhere.ge(builder, &quot;kasgYmd&quot;, safeKasgYmd);</span>
+<span class="fc" id="L159">        JpaWhere.eq(builder, &quot;flwStCd&quot;, safeFlwStCd);</span>
+<span class="fc" id="L160">        builder.orderByAsc(&quot;kasgYmd&quot;)</span>
+<span class="fc" id="L161">                .orderByAsc(&quot;kasHukkYmd&quot;)</span>
+<span class="fc" id="L162">                .orderByAsc(&quot;kasgNwkCd&quot;)</span>
+<span class="fc" id="L163">                .orderByAsc(&quot;gmb&quot;);</span>
+<span class="fc" id="L164">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L165">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdOrKasErryCdAndKasgYmdAndFlwStCd(
+            String flttCktkCdFrom,
+            String flttCktkCdTo,
+            String flttKtnCd,
+            String kasErryCd,
+            LocalDate kasgYmd,
+            String flwStCd) {
+<span class="fc" id="L176">        String safeFlttCktkCdFrom =</span>
+<span class="fc" id="L177">                WhereParamGuard.fixedLengthNotNull(flttCktkCdFrom, &quot;flttCktkCdFrom&quot;, 3);</span>
+<span class="fc" id="L178">        String safeFlttCktkCdTo =</span>
+<span class="fc" id="L179">                WhereParamGuard.fixedLengthNotNull(flttCktkCdTo, &quot;flttCktkCdTo&quot;, 3);</span>
+<span class="fc" id="L180">        String safeKasErryCd =</span>
+<span class="fc" id="L181">                WhereParamGuard.fixedLengthNotNull(kasErryCd, &quot;kasErryCd&quot;, 2);</span>
+<span class="fc" id="L182">        BigDecimal kasgYmdValue = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L183">        String safeFlwStCd =</span>
+<span class="fc" id="L184">                WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+
+<span class="fc" id="L186">        var builder = criteriaBuilderFactory.create(entityManager, KseflEntity.class);</span>
+<span class="fc" id="L187">        JpaWhere.between(builder, &quot;flttCktkCd&quot;, safeFlttCktkCdFrom, safeFlttCktkCdTo);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (flttKtnCd != null) {</span>
+<span class="fc" id="L189">            String blankFlttKtnCd =</span>
+<span class="fc" id="L190">                    WhereParamGuard.fixedLengthNotNull(&quot;&quot;, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L191">            JpaWhere.in(</span>
+                    builder,
+                    &quot;flttKtnCd&quot;,
+<span class="fc" id="L194">                    List.of(</span>
+<span class="fc" id="L195">                            WhereParamGuard.fixedLengthNotNull(flttKtnCd, &quot;flttKtnCd&quot;, 1),</span>
+                            blankFlttKtnCd));
+        }
+<span class="fc" id="L198">        var orBuilder = builder.whereOr();</span>
+<span class="fc" id="L199">        orBuilder.where(&quot;kasErryCd&quot;).notEq(safeKasErryCd);</span>
+<span class="fc" id="L200">        orBuilder.whereAnd()</span>
+<span class="fc" id="L201">                .where(&quot;kasErryCd&quot;).eq(safeKasErryCd)</span>
+<span class="fc" id="L202">                .where(&quot;kasgYmd&quot;).le(kasgYmdValue)</span>
+<span class="fc" id="L203">                .endAnd();</span>
+<span class="fc" id="L204">        orBuilder.endOr();</span>
+<span class="fc" id="L205">        JpaWhere.eq(builder, &quot;flwStCd&quot;, safeFlwStCd);</span>
+
+<span class="fc" id="L207">        builder.orderByAsc(&quot;kasgYmd&quot;)</span>
+<span class="fc" id="L208">                .orderByAsc(&quot;kasHukkYmd&quot;)</span>
+<span class="fc" id="L209">                .orderByAsc(&quot;kasgNwkCd&quot;)</span>
+<span class="fc" id="L210">                .orderByAsc(&quot;gmb&quot;);</span>
+<span class="fc" id="L211">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L212">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByGmbAndFlwStCdAndKasgYmdAndTsigKasgYmd(
+            String gmb, String flwStCd, LocalDate kasgYmd, LocalDate tsigKsgYmd) {
+<span class="fc" id="L218">        String safeGmb = WhereParamGuard.fixedLengthNotNull(gmb, &quot;gmb&quot;, 15);</span>
+<span class="fc" id="L219">        String safeFlwStCd = WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+<span class="fc" id="L220">        BigDecimal kasgYmdValue = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+
+<span class="fc" id="L222">        BigDecimal tsigKasgYmdValue = safeYmd(tsigKsgYmd, &quot;tsigKsgYmd&quot;);</span>
+<span class="fc" id="L223">        var builder = criteriaBuilderFactory.create(entityManager, KseflEntity.class);</span>
+<span class="fc" id="L224">        JpaWhere.eq(builder, &quot;gmb&quot;, safeGmb);</span>
+<span class="fc" id="L225">        JpaWhere.eq(builder, &quot;flwStCd&quot;, safeFlwStCd);</span>
+
+        // ((KASG_YMD = kasgYmd AND TSIG_KASG_YMD = 0) OR (TSIG_KASG_YMD = tsigKsgYmd AND TSIG_KASG_YMD &lt;&gt; 0))
+<span class="fc" id="L228">        var orBuilder = builder.whereOr();</span>
+<span class="fc" id="L229">        orBuilder.whereAnd()</span>
+<span class="fc" id="L230">                .where(&quot;kasgYmd&quot;).eq(kasgYmdValue)</span>
+<span class="fc" id="L231">                .where(&quot;tsigKasgYmd&quot;).eq(BigDecimal.ZERO)</span>
+<span class="fc" id="L232">                .endAnd();</span>
+<span class="fc" id="L233">        orBuilder.whereAnd()</span>
+<span class="fc" id="L234">                .where(&quot;tsigKasgYmd&quot;).eq(tsigKasgYmdValue)</span>
+<span class="fc" id="L235">                .where(&quot;tsigKasgYmd&quot;).notEq(BigDecimal.ZERO)</span>
+<span class="fc" id="L236">                .endAnd();</span>
+<span class="fc" id="L237">        orBuilder.endOr();</span>
+
+<span class="fc" id="L239">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L240">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;KseflRecord&gt; findByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNo(
+            String gmb, LocalDate kasgYmd, LocalDate kasHukkYmd, String sgyAnknNo) {
+<span class="fc" id="L246">        String safeGmb = WhereParamGuard.fixedLengthNotNull(gmb, &quot;gmb&quot;, 15);</span>
+<span class="fc" id="L247">        BigDecimal safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L248">        BigDecimal safeKasHukkYmd = safeYmd(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L249">        String safeSgyAnknNo = WhereParamGuard.fixedLengthNotNull(sgyAnknNo, &quot;sgyAnknNo&quot;, 10);</span>
+
+<span class="fc" id="L251">        var builder = criteriaBuilderFactory.create(entityManager, KseflEntity.class);</span>
+<span class="fc" id="L252">        JpaWhere.eq(builder, &quot;gmb&quot;, safeGmb);</span>
+<span class="fc" id="L253">        JpaWhere.eq(builder, &quot;kasgYmd&quot;, safeKasgYmd);</span>
+<span class="fc" id="L254">        JpaWhere.eq(builder, &quot;kasHukkYmd&quot;, safeKasHukkYmd);</span>
+<span class="fc" id="L255">        JpaWhere.eq(builder, &quot;sgyAnknNo&quot;, safeSgyAnknNo);</span>
+<span class="fc" id="L256">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L257">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByGmbAndFlwStCd(String gmb, String flwStCd) {
+<span class="fc" id="L262">        String safeGmb = WhereParamGuard.fixedLengthNotNull(gmb, &quot;gmb&quot;, 15);</span>
+<span class="fc" id="L263">        String safeFlwStCd = WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+
+<span class="fc" id="L265">        var builder = criteriaBuilderFactory.create(entityManager, KseflEntity.class);</span>
+<span class="fc" id="L266">        JpaWhere.eq(builder, &quot;gmb&quot;, safeGmb);</span>
+<span class="fc" id="L267">        JpaWhere.eq(builder, &quot;flwStCd&quot;, safeFlwStCd);</span>
+<span class="fc" id="L268">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L269">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;KseflRecord&gt; findByPK(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String hukkSysShbt,
+            String sgyAnknNo) {
+<span class="fc" id="L279">        Objects.requireNonNull(gmb, &quot;gmb&quot;);</span>
+<span class="fc" id="L280">        Objects.requireNonNull(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L281">        Objects.requireNonNull(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L282">        Objects.requireNonNull(hukkSysShbt, &quot;hukkSysShbt&quot;);</span>
+<span class="fc" id="L283">        Objects.requireNonNull(sgyAnknNo, &quot;sgyAnknNo&quot;);</span>
+
+<span class="fc" id="L285">        KseflId id = new KseflId(</span>
+                gmb,
+<span class="fc" id="L287">                JpaDbWriteValues.ymd(kasgYmd),</span>
+<span class="fc" id="L288">                JpaDbWriteValues.ymd(kasHukkYmd),</span>
+                hukkSysShbt,
+                sgyAnknNo);
+<span class="fc" id="L291">        KseflEntity entity = entityManager.find(KseflEntity.class, id);</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">        if (entity == null) {</span>
+<span class="fc" id="L293">            return Optional.empty();</span>
+        }
+<span class="fc" id="L295">        return Optional.of(READ_MAPPER.toRecord(entity));</span>
+    }
+
+    @Override
+    public int updateByGmbAndKasgYmdAndKasHukkYmdAndHukkSysShbtAndSgyAnknNoAndRecUpdJnjNo(
+            KseflWriteRecord record,
+            Set&lt;KseflColumn&gt; targetColumns,
+            KseflU001UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L304">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L305">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L306">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L307">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L309">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L310">        String safeGmb = WhereParamGuard.fixedLengthNotNull(updateKey.gmb(), &quot;gmb&quot;, 15);</span>
+<span class="fc" id="L311">        BigDecimal safeKasgYmd = safeYmd(updateKey.kasgYmd(), &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L312">        BigDecimal safeKasHukkYmd = safeYmd(updateKey.kasHukkYmd(), &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L313">        String safeHukkSysShbt =</span>
+<span class="fc" id="L314">                WhereParamGuard.fixedLengthNotNull(updateKey.hukkSysShbt(), &quot;hukkSysShbt&quot;, 1);</span>
+<span class="fc" id="L315">        String safeSgyAnknNo =</span>
+<span class="fc" id="L316">                WhereParamGuard.fixedLengthNotNull(updateKey.sgyAnknNo(), &quot;sgyAnknNo&quot;, 10);</span>
+<span class="fc" id="L317">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L321">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L322">                                auditColumnAccessBinder.bind(entity), context, clock,</span>
+                                currentRecUpdJnjNo),
+<span class="fc" id="L324">                PreparedWhere.of(</span>
+                        U001_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L327">                            int nextIndex = JpaBind.set(query, startIndex, safeGmb);</span>
+<span class="fc" id="L328">                            nextIndex = JpaBind.set(query, nextIndex, safeKasgYmd);</span>
+<span class="fc" id="L329">                            nextIndex = JpaBind.set(query, nextIndex, safeKasHukkYmd);</span>
+<span class="fc" id="L330">                            nextIndex = JpaBind.set(query, nextIndex, safeHukkSysShbt);</span>
+<span class="fc" id="L331">                            return JpaBind.set(query, nextIndex, safeSgyAnknNo);</span>
+                        },
+                        safeGmb,
+                        safeKasgYmd,
+                        safeKasHukkYmd,
+                        safeHukkSysShbt,
+                        safeSgyAnknNo),
+<span class="fc" id="L338">                updateKey.recUpdJnjNo(),</span>
+                KseflDataAccess.CallSpecs
+                        .UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_HUKK_SYS_SHBT_AND_SGY_ANKN_NO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L341">                        .identifier());</span>
+    }
+
+    @Override
+    public int updateByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNoAndRecUpdJnjNo(
+            KseflWriteRecord record,
+            Set&lt;KseflColumn&gt; targetColumns,
+            KseflU002UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L350">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L351">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L352">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L353">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L355">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L359">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L360">                                auditColumnAccessBinder.bind(entity), context, clock,</span>
+<span class="fc" id="L361">                                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0)),</span>
+<span class="fc" id="L362">                u002Where(updateKey),</span>
+<span class="fc" id="L363">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L364">                KseflDataAccess.CallSpecs.UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_SGY_ANKN_NO_AND_REC_UPD_JNJ_NO.identifier());</span>
+    }
+
+    private PreparedWhere u002Where(KseflU002UpdateKey updateKey) {
+<span class="fc" id="L368">        String safeGmb = WhereParamGuard.fixedLengthNotNull(updateKey.gmb(), &quot;gmb&quot;, 15);</span>
+<span class="fc" id="L369">        BigDecimal safeKasgYmd = safeYmd(updateKey.kasgYmd(), &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L370">        BigDecimal safeKasHukkYmd = safeYmd(updateKey.kasHukkYmd(), &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L371">        String safeSgyAnknNo =</span>
+<span class="fc" id="L372">                WhereParamGuard.fixedLengthNotNull(updateKey.sgyAnknNo(), &quot;sgyAnknNo&quot;, 10);</span>
+<span class="fc" id="L373">        return PreparedWhere.of(</span>
+                U002_WHERE_CLAUSE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L376">                    int nextIndex = JpaBind.set(query, startIndex, safeGmb);</span>
+<span class="fc" id="L377">                    nextIndex = JpaBind.set(query, nextIndex, safeKasgYmd);</span>
+<span class="fc" id="L378">                    nextIndex = JpaBind.set(query, nextIndex, safeKasHukkYmd);</span>
+<span class="fc" id="L379">                    return JpaBind.set(query, nextIndex, safeSgyAnknNo);</span>
+                },
+                safeGmb,
+                safeKasgYmd,
+                safeKasHukkYmd,
+                safeSgyAnknNo);
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L388">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L389">                JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

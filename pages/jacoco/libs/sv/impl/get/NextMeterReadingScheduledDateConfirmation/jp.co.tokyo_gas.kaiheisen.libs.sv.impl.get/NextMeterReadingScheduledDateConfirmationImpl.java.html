@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NextMeterReadingScheduledDateConfirmationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-nextmeterreadingscheduleddateconfirmation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">NextMeterReadingScheduledDateConfirmationImpl.java</span></div><h1>NextMeterReadingScheduledDateConfirmationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ntknsk.NtknskDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ntknsk.NtknskRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.NextMeterReadingScheduledDateConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.NextMeterReadingScheduledDateConfirmationOutput;
+
+/** 次回検針予定日確定処理サービス実装。 */
+public class NextMeterReadingScheduledDateConfirmationImpl
+        implements NextMeterReadingScheduledDateConfirmation {
+
+    private final NtknskDataAccess ntknskDataAccess;
+
+    private final String designatedDateNotSpecified;
+
+    private final String designatedBatchNotSpecified;
+
+    private final String meterReadingMethodPhone;
+
+    private final String meterReadingMethodSumame;
+
+    private final String nwOperatorTokyoGas;
+
+    private final String utilityGas;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param ntknskDataAccess 検針日程＜小売＞データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public NextMeterReadingScheduledDateConfirmationImpl(
+<span class="fc" id="L42">            NtknskDataAccess ntknskDataAccess, CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L43">        this.ntknskDataAccess = ntknskDataAccess;</span>
+
+<span class="fc" id="L45">        this.designatedDateNotSpecified =</span>
+<span class="fc" id="L46">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.DesignatedMeterReadingDate.TYPE,
+                        ConstantLookupKeys.Cirius.DesignatedMeterReadingDate.NOT_SPECIFIED);
+<span class="fc" id="L50">        this.designatedBatchNotSpecified =</span>
+<span class="fc" id="L51">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.DesignatedMeterReadingBatchNumber.TYPE,
+                        ConstantLookupKeys.Cirius.DesignatedMeterReadingBatchNumber.NOT_SPECIFIED);
+<span class="fc" id="L55">        this.meterReadingMethodPhone =</span>
+<span class="fc" id="L56">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.MeterReadingMethod.TYPE,
+                        ConstantLookupKeys.Cirius.MeterReadingMethod.PHONE);
+<span class="fc" id="L60">        this.meterReadingMethodSumame =</span>
+<span class="fc" id="L61">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.MeterReadingMethod.TYPE,
+                        ConstantLookupKeys.Cirius.MeterReadingMethod.SUMAME);
+<span class="fc" id="L65">        this.nwOperatorTokyoGas =</span>
+<span class="fc" id="L66">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                        ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L70">        this.utilityGas =</span>
+<span class="fc" id="L71">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.Utility.TYPE,
+                        ConstantLookupKeys.Cirius.Utility.GAS);
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * 検針方法、検針回分番号等をもとに定例検針予定年月日を返却する。
+     *
+     * @param knsTishYmd 検針対象年月日
+     * @param stkbKbn 指定検針日区分
+     * @param knsHuhuKbn 検針方法区分
+     * @param shtiKskbNo 指定検針回分番号
+     * @param tkkbNo 定例検針回分番号
+     * @return 次回検針予定日確定処理結果
+     */
+    @Override
+    public NextMeterReadingScheduledDateConfirmationOutput execute(
+            LocalDate knsTishYmd,
+            String stkbKbn,
+            String knsHuhuKbn,
+            String shtiKskbNo,
+            String tkkbNo) {
+<span class="fc" id="L94">        LocalDate kymYmdFr = knsTishYmd.withDayOfMonth(1);</span>
+<span class="fc" id="L95">        LocalDate kymYmdTo = knsTishYmd.with(TemporalAdjusters.lastDayOfMonth());</span>
+
+<span class="fc" id="L97">        SearchResult searchResult =</span>
+<span class="fc" id="L98">                findScheduledRecords(kymYmdFr, kymYmdTo, stkbKbn, knsHuhuKbn, shtiKskbNo, tkkbNo);</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (searchResult.records().isEmpty()) {</span>
+<span class="fc" id="L101">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L102">                    ntknskDataAccess.tableName(),</span>
+<span class="fc" id="L103">                    searchResult.callSpec().identifier(),</span>
+<span class="fc" id="L104">                    searchResult.parameterJsonBuilder());</span>
+        }
+<span class="fc" id="L106">        return new NextMeterReadingScheduledDateConfirmationOutput(</span>
+<span class="fc" id="L107">                searchResult.records().getFirst().tkytYmd());</span>
+    }
+
+    /**
+     * 概要: 入力値に応じてDA-126を呼び分ける。 主な仕様: - 指定検針日区分・検針方法区分・指定検針回分番号の組み合わせで分岐する。 - 返却値は各DAの検索結果をそのまま返す。
+     * 既知の制約: - 入力の妥当性チェックは上位層で実施済みである前提とする。
+     *
+     * @param kymYmdFr 暦年月日From
+     * @param kymYmdTo 暦年月日To
+     * @param stkbKbn 指定検針日区分
+     * @param knsHuhuKbn 検針方法区分
+     * @param shtiKskbNo 指定検針回分番号
+     * @param tkkbNo 定例検針回分番号
+     * @return DA-126検索結果
+     */
+    private SearchResult findScheduledRecords(
+            LocalDate kymYmdFr,
+            LocalDate kymYmdTo,
+            String stkbKbn,
+            String knsHuhuKbn,
+            String shtiKskbNo,
+            String tkkbNo) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (designatedDateNotSpecified.equals(stkbKbn)) {</span>
+<span class="fc" id="L130">            return findWhenDesignatedDateNotSpecified(</span>
+                    kymYmdFr, kymYmdTo, knsHuhuKbn, shtiKskbNo, tkkbNo);
+        }
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (isPhoneOrSumame(knsHuhuKbn)) {</span>
+<span class="fc" id="L134">            return new SearchResult(</span>
+                    NtknskDataAccess.CallSpecs
+                            .FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_SHTI_EKSD_KBN_AND_SHTI_EKSD_KBN2,
+<span class="fc" id="L137">                    baseParameterJsonBuilder(kymYmdFr, kymYmdTo).put(&quot;shtiEksdKbn&quot;, stkbKbn),</span>
+                    ntknskDataAccess
+<span class="fc" id="L139">                            .findAllByKymYmdAndNwjgCdAndUtltKbnAndShtiEksdKbnAndShtiEksdKbn2(</span>
+                                    kymYmdFr, kymYmdTo, nwOperatorTokyoGas, utilityGas, stkbKbn));
+        }
+<span class="fc" id="L142">        return new SearchResult(</span>
+                NtknskDataAccess.CallSpecs
+                        .FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_SHTI_HKSD_KBN_AND_SHTI_HKSD_KBN2,
+<span class="fc" id="L145">                baseParameterJsonBuilder(kymYmdFr, kymYmdTo).put(&quot;shtiHksdKbn&quot;, stkbKbn),</span>
+<span class="fc" id="L146">                ntknskDataAccess.findAllByKymYmdAndNwjgCdAndUtltKbnAndShtiHksdKbnAndShtiHksdKbn2(</span>
+                        kymYmdFr, kymYmdTo, nwOperatorTokyoGas, utilityGas, stkbKbn));
+    }
+
+    /**
+     * 概要: 指定検針日区分が指定なしの場合のDA呼び分けを行う。 主な仕様: - 検針方法区分が電話/スマメの場合はDA-126-R002またはDA-126-R004を呼び出す。 -
+     * 検針方法区分がそれ以外の場合はDA-126-R001を呼び出す。 既知の制約: - 2.d系仕様に従い、指定検針回分番号はDA-126-R001のtkkbNoへ設定する。
+     *
+     * @param kymYmdFr 暦年月日From
+     * @param kymYmdTo 暦年月日To
+     * @param knsHuhuKbn 検針方法区分
+     * @param shtiKskbNo 指定検針回分番号
+     * @param tkkbNo 定例検針回分番号
+     * @return DA-126検索結果
+     */
+    private SearchResult findWhenDesignatedDateNotSpecified(
+            LocalDate kymYmdFr,
+            LocalDate kymYmdTo,
+            String knsHuhuKbn,
+            String shtiKskbNo,
+            String tkkbNo) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (isPhoneOrSumame(knsHuhuKbn)) {</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (designatedBatchNotSpecified.equals(shtiKskbNo)) {</span>
+<span class="fc" id="L169">                return new SearchResult(</span>
+                        NtknskDataAccess.CallSpecs
+                                .FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_TREK_SSKB_NO_AND_TREK_SDKB_NO,
+<span class="fc" id="L172">                        baseParameterJsonBuilder(kymYmdFr, kymYmdTo)</span>
+<span class="fc" id="L173">                                .put(&quot;trekSskbNo&quot;, tkkbNo)</span>
+<span class="fc" id="L174">                                .put(&quot;trekSdkbNo&quot;, tkkbNo),</span>
+                        ntknskDataAccess
+<span class="fc" id="L176">                                .findAllByKymYmdAndNwjgCdAndUtltKbnAndTrekSskbNoAndTrekSdkbNo(</span>
+                                        kymYmdFr,
+                                        kymYmdTo,
+                                        nwOperatorTokyoGas,
+                                        utilityGas,
+                                        tkkbNo,
+                                        tkkbNo));
+            }
+<span class="fc" id="L184">            return new SearchResult(</span>
+                    NtknskDataAccess.CallSpecs
+                            .FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_SHTI_EKKB_NO,
+<span class="fc" id="L187">                    baseParameterJsonBuilder(kymYmdFr, kymYmdTo).put(&quot;shtiEkkbNo&quot;, shtiKskbNo),</span>
+<span class="fc" id="L188">                    ntknskDataAccess.findAllByKymYmdAndNwjgCdAndUtltKbnAndShtiEkkbNo(</span>
+                            kymYmdFr, kymYmdTo, nwOperatorTokyoGas, utilityGas, shtiKskbNo));
+        }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (designatedBatchNotSpecified.equals(shtiKskbNo)) {</span>
+<span class="fc" id="L192">            return new SearchResult(</span>
+                    NtknskDataAccess.CallSpecs
+                            .FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_TKKB_NO,
+<span class="fc" id="L195">                    baseParameterJsonBuilder(kymYmdFr, kymYmdTo).put(&quot;tkkbNo&quot;, tkkbNo),</span>
+<span class="fc" id="L196">                    ntknskDataAccess.findAllByKymYmdAndNwjgCdAndUtltKbnAndTkkbNo(</span>
+                            kymYmdFr, kymYmdTo, nwOperatorTokyoGas, utilityGas, tkkbNo));
+        }
+<span class="fc" id="L199">        return new SearchResult(</span>
+                NtknskDataAccess.CallSpecs.FIND_ALL_BY_KYM_YMD_AND_NWJG_CD_AND_UTLT_KBN_AND_TKKB_NO,
+<span class="fc" id="L201">                baseParameterJsonBuilder(kymYmdFr, kymYmdTo).put(&quot;tkkbNo&quot;, shtiKskbNo),</span>
+<span class="fc" id="L202">                ntknskDataAccess.findAllByKymYmdAndNwjgCdAndUtltKbnAndTkkbNo(</span>
+                        kymYmdFr, kymYmdTo, nwOperatorTokyoGas, utilityGas, shtiKskbNo));
+    }
+
+    /**
+     * 概要: DA 呼出しパラメータ JSON 文字列を構築する。 主な仕様: - 共通パラメータ `kymYmdFr` / `kymYmdTo` / `nwjgCd` / `utltKbn`
+     * を常に出力する。
+     *
+     * @param kymYmdFr 暦年月日 From
+     * @param kymYmdTo 暦年月日 To
+     * @return パラメータ JSON ビルダー
+     */
+    private FlatJsonBuilder baseParameterJsonBuilder(LocalDate kymYmdFr, LocalDate kymYmdTo) {
+<span class="fc" id="L215">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L216">                .put(&quot;kymYmdFr&quot;, kymYmdFr)</span>
+<span class="fc" id="L217">                .put(&quot;kymYmdTo&quot;, kymYmdTo)</span>
+<span class="fc" id="L218">                .put(&quot;nwjgCd&quot;, nwOperatorTokyoGas)</span>
+<span class="fc" id="L219">                .put(&quot;utltKbn&quot;, utilityGas);</span>
+    }
+
+    /**
+     * 概要: 検針方法区分が電話またはスマメかを判定する。 主な仕様: - 電話またはスマメのいずれかに一致した場合のみ true を返却する。 既知の制約: -
+     * 比較値はコンストラクタで解決したコンスタント値を使用する。
+     *
+     * @param knsHuhuKbn 検針方法区分
+     * @return 電話またはスマメ判定結果
+     */
+    private boolean isPhoneOrSumame(String knsHuhuKbn) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        return meterReadingMethodPhone.equals(knsHuhuKbn)</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                || meterReadingMethodSumame.equals(knsHuhuKbn);</span>
+    }
+
+    /**
+     * DA 呼出し結果とメタ情報を保持する。
+     *
+     * @param callSpec DA 呼出し識別情報
+     * @param parameterJsonBuilder 呼出しパラメータ JSON ビルダー
+     * @param records DA 検索結果
+     */
+<span class="fc" id="L241">    private record SearchResult(</span>
+            DataAccessCallSpec callSpec,
+            FlatJsonBuilder parameterJsonBuilder,
+            List&lt;NtknskRecord&gt; records) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

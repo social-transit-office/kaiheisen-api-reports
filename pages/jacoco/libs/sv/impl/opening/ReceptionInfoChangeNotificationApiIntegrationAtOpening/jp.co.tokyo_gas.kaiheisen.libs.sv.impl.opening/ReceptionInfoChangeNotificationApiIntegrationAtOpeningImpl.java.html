@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReceptionInfoChangeNotificationApiIntegrationAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-receptioninfochangenotificationapiintegrationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ReceptionInfoChangeNotificationApiIntegrationAtOpeningImpl.java</span></div><h1>ReceptionInfoChangeNotificationApiIntegrationAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.kaiheisen_change_notification.KaiheisenChangeNotificationCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.kaiheisen_change_notification.KaiheisenChangeNotificationRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ReceptionInfoChangeNotificationApiIntegrationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ReceptionInfoChangeKiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ReceptionInfoChangeKseflInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ReceptionInfoChangeNwkseigInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ReceptionInfoChangeTatemonKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ApplicationTypeAcquisition;
+
+/**
+ * 概要: SV-248（開栓時受付情報変更通知API連携）のサービス実装。
+ * 主な仕様:
+ * - 受付インデックス番号が有効な場合のみ SV-087 と 他-042 を連鎖呼び出しする。
+ * - 報告システム種別、建物名漢字、サービス契約異動年月日は設計の条件に従って編集する。
+ * - `hukkSysShbt`、`systemDatetime` は RequestContext から取得する。
+ * 既知の制約:
+ * - 戻り値は持たず、下位依存で発生した例外はそのまま上位へ伝播する。
+ */
+public class ReceptionInfoChangeNotificationApiIntegrationAtOpeningImpl
+        implements ReceptionInfoChangeNotificationApiIntegrationAtOpening {
+
+<span class="fc" id="L34">    static final LocalDate CIRIUS_ZERO_DATE = LocalDate.of(1900, 1, 1);</span>
+
+<span class="fc" id="L36">    private static final DateTimeFormatter BASIC_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private final ApplicationTypeAcquisition applicationTypeAcquisition;
+
+    private final KaiheisenChangeNotificationCiriusAdapter adapter;
+
+    private final RequestContext requestContext;
+
+    private final String tgRetailFlag;
+
+    private final String gasMerchandiseWorkType;
+
+    private final String procedureCompleted;
+
+    private final String workCompletedCompletion;
+
+    private final String presenceFlagNothing;
+
+    private final String customerRegistrationNumberKeyType;
+
+    private final String gasUsageContractNumberKeyType;
+
+    private final String gasMeterInstallationLocationNumberKeyType;
+
+    private final String gasServiceContractType;
+
+    /**
+     * 概要: SV-248 の依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - SV-087、他-042 adapter、RequestContext、定数サービスを保持する。
+     * - リクエスト編集で使用する必須定数を初期化時点で解決する。
+     *
+     * @param applicationTypeAcquisition 申込種別取得サービス
+     * @param adapter 開閉栓変更通知登録 API adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public ReceptionInfoChangeNotificationApiIntegrationAtOpeningImpl(
+            ApplicationTypeAcquisition applicationTypeAcquisition,
+            KaiheisenChangeNotificationCiriusAdapter adapter,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L79">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L80">        this.applicationTypeAcquisition = Objects.requireNonNull(</span>
+                applicationTypeAcquisition,
+                &quot;applicationTypeAcquisition&quot;);
+<span class="fc" id="L83">        this.adapter = Objects.requireNonNull(adapter, &quot;adapter&quot;);</span>
+<span class="fc" id="L84">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L85">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L88">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L91">        this.tgRetailFlag = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TgRetailJudgmentResultFlag.TYPE,
+                ConstantLookupKeys.Cirius.TgRetailJudgmentResultFlag.TG_RETAIL);
+<span class="fc" id="L95">        this.gasMerchandiseWorkType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MerchandiseWorkType.TYPE,
+                ConstantLookupKeys.Cirius.MerchandiseWorkType.GAS);
+<span class="fc" id="L99">        this.workCompletedCompletion = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.TYPE,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.WORK_COMPLETED_COMPLETION);
+<span class="fc" id="L103">        this.presenceFlagNothing = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.NOTHING);
+<span class="fc" id="L107">        this.procedureCompleted = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.TYPE,
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.PROCEDURE_COMPLETED);
+<span class="fc" id="L111">        this.customerRegistrationNumberKeyType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE_OF_CUSTOMER_REGISTRATION_NUMBER);
+<span class="fc" id="L115">        this.gasUsageContractNumberKeyType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE_OF_GAS_USAGE_CONTRACT_NUMBER);
+<span class="fc" id="L119">        this.gasMeterInstallationLocationNumberKeyType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE_OF_GAS_METER_INSTALLATION_LOCATION_NUMBER);
+<span class="fc" id="L123">        this.gasServiceContractType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ServiceContractType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ServiceContractType.GAS);
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * 概要: 開栓時受付情報変更通知 API 連携を実行する。
+     * 主な仕様:
+     * - 受付インデックス番号が null または空文字の場合は何もせず終了する。
+      * - 利用する RequestContext の必須値を確認し、SV-087 の戻り値で request を補完して他-042 を呼び出す。
+     */
+    @Override
+    public void execute(
+            String utidxNo,
+            String kasJysb,
+            String sgyAnknNo,
+            Long kktSvkyNo,
+            Long gasMtstNo,
+            ReceptionInfoChangeKiycstKktInf kiycstKktInf,
+            String hujnHnsgCtnmKn1,
+            String hujnHnsgCtnmKj1,
+            String hujnHnsgCtnmKn2,
+            String hujnHnsgCtnmKj2,
+            String cbg,
+            ReceptionInfoChangeTatemonKktInf tatemonKktInf,
+            ReceptionInfoChangeNwkseigInf nwkseigInf,
+            String sagyoSyaName,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg,
+            ReceptionInfoChangeKseflInf kseflInf,
+            LocalDate kasgYmd) {
+<span class="pc bpc" id="L156" title="1 of 4 branches missed.">        if (utidxNo == null || utidxNo.isEmpty()) {</span>
+<span class="fc" id="L157">            return;</span>
+        }
+<span class="fc" id="L159">        String requestContextReportSystemType = requireHukkSysShbt();</span>
+<span class="fc" id="L160">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L161">        String reportSystemType = resolveReportSystemType(</span>
+                kasJysb,
+                kseflInf,
+                requestContextReportSystemType);
+<span class="fc" id="L165">        String mkSbt = applicationTypeAcquisition.execute(kasJysb, null, reportSystemType).mkSbt();</span>
+<span class="fc" id="L166">        adapter.registerNotification(buildRequest(</span>
+                utidxNo,
+                sgyAnknNo,
+                kktSvkyNo,
+                gasMtstNo,
+                kiycstKktInf,
+                hujnHnsgCtnmKn1,
+                hujnHnsgCtnmKj1,
+                hujnHnsgCtnmKn2,
+                hujnHnsgCtnmKj2,
+                cbg,
+                tatemonKktInf,
+                nwkseigInf,
+                sagyoSyaName,
+                digwrHntFlg,
+                syoriHnt4XFlg,
+                syoriHntFkktFlg,
+                kasJysb,
+                kasgYmd,
+                systemDatetime,
+                mkSbt));
+<span class="fc" id="L187">    }</span>
+
+    private KaiheisenChangeNotificationRequest buildRequest(
+            String utidxNo,
+            String sgyAnknNo,
+            Long kktSvkyNo,
+            Long gasMtstNo,
+            ReceptionInfoChangeKiycstKktInf kiycstKktInf,
+            String hujnHnsgCtnmKn1,
+            String hujnHnsgCtnmKj1,
+            String hujnHnsgCtnmKn2,
+            String hujnHnsgCtnmKj2,
+            String cbg,
+            ReceptionInfoChangeTatemonKktInf tatemonKktInf,
+            ReceptionInfoChangeNwkseigInf nwkseigInf,
+            String sagyoSyaName,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg,
+            String kasJysb,
+            LocalDate kasgYmd,
+            LocalDateTime systemDatetime,
+            String mkSbt) {
+<span class="fc" id="L210">        LocalDate serviceContractChangeDate = resolveServiceContractChangeDate(</span>
+                kasJysb,
+                digwrHntFlg,
+                syoriHnt4XFlg,
+                syoriHntFkktFlg,
+                kasgYmd,
+<span class="fc" id="L216">                systemDatetime.toLocalDate());</span>
+<span class="fc" id="L217">        String buildingName = resolveBuildingName(tatemonKktInf);</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        String administrativeCode = kiycstKktInf == null ? null : kiycstKktInf.gkkCd();</span>
+<span class="fc" id="L219">        return new KaiheisenChangeNotificationRequest(</span>
+                new KaiheisenChangeNotificationRequest.NotificationInfo(
+                        tgRetailFlag,
+                        utidxNo,
+                        gasMerchandiseWorkType,
+                        mkSbt,
+                        sgyAnknNo,
+<span class="fc" id="L226">                        toBigDecimal(kktSvkyNo),</span>
+                        procedureCompleted,
+<span class="fc" id="L228">                        toBigDecimal(gasMtstNo),</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                        kiycstKktInf == null ? null : toBigDecimal(kiycstKktInf.kyoTrkNo()),</span>
+<span class="fc" id="L230">                        toBigDecimal(kktSvkyNo),</span>
+                        hujnHnsgCtnmKn1,
+                        &quot;&quot;,
+<span class="fc" id="L233">                        nullToEmpty(hujnHnsgCtnmKj1),</span>
+                        &quot;&quot;,
+<span class="fc" id="L235">                        extractPrefectureCode(administrativeCode),</span>
+<span class="fc" id="L236">                        extractMunicipalityCode(administrativeCode),</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                        kiycstKktInf == null ? null : kiycstKktInf.mchCd(),</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">                        kiycstKktInf == null ? null : kiycstKktInf.cmazCd(),</span>
+                        cbg,
+<span class="fc" id="L240">                        nullToEmpty(buildingName),</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">                        suppressBlanksOrEmpty(kiycstKktInf == null ? null : kiycstKktInf.tunoKn()),</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                        suppressBlanksOrEmpty(kiycstKktInf == null ? null : kiycstKktInf.hynKn()),</span>
+                        workCompletedCompletion,
+<span class="fc" id="L244">                        nullToEmpty(hujnHnsgCtnmKn2),</span>
+<span class="fc" id="L245">                        nullToEmpty(hujnHnsgCtnmKj2),</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                        nullToEmpty(nwkseigInf == null ? null : nwkseigInf.nwknKj()),</span>
+<span class="fc" id="L247">                        nullToEmpty(sagyoSyaName),</span>
+<span class="fc" id="L248">                        toYmd(systemDatetime.toLocalDate()),</span>
+                        presenceFlagNothing,
+                        customerRegistrationNumberKeyType,
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                        kiycstKktInf == null ? null : toBigDecimal(kiycstKktInf.kyoTrkNo()),</span>
+                        gasServiceContractType,
+<span class="fc" id="L253">                        toYmd(serviceContractChangeDate),</span>
+                        gasUsageContractNumberKeyType,
+<span class="fc" id="L255">                        toBigDecimal(kktSvkyNo),</span>
+                        gasMeterInstallationLocationNumberKeyType,
+<span class="fc" id="L257">                        toBigDecimal(gasMtstNo)));</span>
+    }
+
+    private String resolveReportSystemType(
+            String kasJysb,
+            ReceptionInfoChangeKseflInf kseflInf,
+            String requestContextReportSystemType) {
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        String errorFollowReportSystemType = kseflInf == null ? null : kseflInf.hukkSysShbt();</span>
+<span class="fc bfc" id="L265" title="All 4 branches covered.">        if (ConstantLookupKeys.Cirius.OpeningReasonType.SUPPLY_RESUMED.equals(kasJysb)</span>
+                &amp;&amp; errorFollowReportSystemType != null
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                &amp;&amp; !errorFollowReportSystemType.isEmpty()) {</span>
+<span class="fc" id="L268">            return errorFollowReportSystemType;</span>
+        }
+<span class="fc" id="L270">        return requestContextReportSystemType;</span>
+    }
+
+    private String resolveBuildingName(ReceptionInfoChangeTatemonKktInf tatemonKktInf) {
+<span class="pc bpc" id="L274" title="1 of 4 branches missed.">        if (tatemonKktInf == null || !Boolean.TRUE.equals(tatemonKktInf.bldKjhkFlg())) {</span>
+<span class="fc" id="L275">            return null;</span>
+        }
+<span class="fc" id="L277">        return tatemonKktInf.bldnKj();</span>
+    }
+
+    private LocalDate resolveServiceContractChangeDate(
+            String kasJysb,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg,
+            LocalDate kasgYmd,
+            LocalDate systemDate) {
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (Boolean.TRUE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L288">            return kasgYmd;</span>
+        }
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        if (ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE.equals(kasJysb)</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                &amp;&amp; Boolean.TRUE.equals(syoriHnt4XFlg)</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">                &amp;&amp; Boolean.TRUE.equals(syoriHntFkktFlg)) {</span>
+<span class="fc" id="L293">            return kasgYmd;</span>
+        }
+<span class="fc" id="L295">        return systemDate;</span>
+    }
+
+    private String requireHukkSysShbt() {
+<span class="fc" id="L299">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L300">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L304">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L305">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private static String extractPrefectureCode(String administrativeCode) {
+<span class="pc bpc" id="L309" title="2 of 4 branches missed.">        if (administrativeCode == null || administrativeCode.length() &lt; 2) {</span>
+<span class="nc" id="L310">            return null;</span>
+        }
+<span class="fc" id="L312">        return administrativeCode.substring(0, 2);</span>
+    }
+
+    private static String extractMunicipalityCode(String administrativeCode) {
+<span class="pc bpc" id="L316" title="2 of 4 branches missed.">        if (administrativeCode == null || administrativeCode.length() &lt; 5) {</span>
+<span class="nc" id="L317">            return null;</span>
+        }
+<span class="fc" id="L319">        return administrativeCode.substring(administrativeCode.length() - 3);</span>
+    }
+
+    private static String suppressBlanks(String value) {
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L324">            return null;</span>
+        }
+<span class="fc" id="L326">        StringBuilder builder = new StringBuilder(value.length());</span>
+<span class="fc" id="L327">        value.codePoints().forEach(codePoint -&gt; {</span>
+<span class="pc bpc" id="L328" title="1 of 4 branches missed.">            if (!Character.isWhitespace(codePoint) &amp;&amp; codePoint != '　') {</span>
+<span class="fc" id="L329">                builder.appendCodePoint(codePoint);</span>
+            }
+<span class="fc" id="L331">        });</span>
+<span class="fc" id="L332">        return builder.toString();</span>
+    }
+
+    private static String suppressBlanksOrEmpty(String value) {
+<span class="fc" id="L336">        return nullToEmpty(suppressBlanks(value));</span>
+    }
+
+    private static String nullToEmpty(String value) {
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private static BigDecimal toBigDecimal(Long value) {
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">        return value == null ? null : BigDecimal.valueOf(value);</span>
+    }
+
+    private static Integer toYmd(LocalDate value) {
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L349">            return null;</span>
+        }
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">        if (CIRIUS_ZERO_DATE.equals(value)) {</span>
+<span class="nc" id="L352">            return 0;</span>
+        }
+<span class="fc" id="L354">        return Integer.valueOf(BASIC_DATE_FORMATTER.format(value));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

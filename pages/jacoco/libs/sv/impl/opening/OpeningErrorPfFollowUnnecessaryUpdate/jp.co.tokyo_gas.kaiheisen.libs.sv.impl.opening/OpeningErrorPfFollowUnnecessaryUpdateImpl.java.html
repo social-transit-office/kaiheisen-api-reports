@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningErrorPfFollowUnnecessaryUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingerrorpffollowunnecessaryupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningErrorPfFollowUnnecessaryUpdateImpl.java</span></div><h1>OpeningErrorPfFollowUnnecessaryUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DatabaseException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.ExclusiveException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningErrorPfFollowUnnecessaryUpdate;
+
+/**
+ * 概要： SV-117(開栓エラーＰＦフォロー不要更新)実装クラス。
+ *
+ * 入力されたパラメータを元に、フォローステータスコード、システム日付、更新ユーザーID、最終更新起点機能ＩＤを更新する。 -
+ * 排他エラーが発生し、更新件数が0件だった場合DA-139-R004を呼び出し、取得したフォローステータスコードを元にエラーをthrowする。 -
+ * 入力値のnull 許可/不許可や前後空白補正は上位層責務とし、本クラスでは追加の正規化を行わない。
+ */
+public class OpeningErrorPfFollowUnnecessaryUpdateImpl implements OpeningErrorPfFollowUnnecessaryUpdate {
+
+    private KseflDataAccess kseflDataAccess;
+
+    private final RequestContext requestContext;
+
+    private KaiheisenConstantService kaiheisenConstantService;
+
+    private final String followStatusMityakushu;
+
+    private final String followStatusFollowHuyou;
+
+    static final String USR_ID = &quot;KHSS117&quot;;
+
+    /**
+     * 概要: フォローステータスコードの更新に必要な依存オブジェクトと定数を初期化する。
+     * KSEFL更新、RequestContext、開閉栓定数サービスを保持する。 -
+     * 依存オブジェクトがnullの場合は初期化時点でNullPointerException を送出する。 -
+     * 必須CIRIUS定数が不足している場合はコンストラクタ初期化時点で失敗する。 -
+     *
+     * @param KseflDataAccess          KSEFL データアクセス
+     * @param requestContext           リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService    CIRIUS 定数サービス
+     */
+
+    public OpeningErrorPfFollowUnnecessaryUpdateImpl(KseflDataAccess kseflDataAccess,
+            CiriusConstantService ciriusConstantService, RequestContext requestContext,
+<span class="fc" id="L61">            KaiheisenConstantService kaiheisenConstantService) {</span>
+
+<span class="fc" id="L63">        this.kseflDataAccess = kseflDataAccess;</span>
+<span class="fc" id="L64">        this.requestContext = requestContext;</span>
+<span class="fc" id="L65">        this.kaiheisenConstantService = kaiheisenConstantService;</span>
+
+<span class="fc" id="L67">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(ciriusConstantService,</span>
+                &quot;ciriusConstantService&quot;);
+
+<span class="fc" id="L70">        this.followStatusMityakushu = RequiredConstantResolver.requireCiriusConstant(resolvedCiriusConstantService,</span>
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L73">        this.followStatusFollowHuyou = RequiredConstantResolver.requireCiriusConstant(resolvedCiriusConstantService,</span>
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_NO_FOLLOW_REQUIRED);
+
+<span class="fc" id="L77">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService,</span>
+                &quot;kaiheisenConstantService&quot;);
+
+<span class="fc" id="L80">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.CIRIUS);
+<span class="fc" id="L83">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT);
+<span class="fc" id="L86">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TAXIS);
+<span class="fc" id="L89">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.KRAKEN);
+<span class="fc" id="L92">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.EAGLE);
+<span class="fc" id="L95">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.HURRY);
+<span class="fc" id="L98">        this.kaiheisenConstantService = resolvedKaiheisenConstantService;</span>
+<span class="fc" id="L99">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+
+<span class="fc" id="L101">    }</span>
+
+    /**
+     * 概要: フォローステータスコードの更新を実行する。-
+     *
+     * requestContextからシステム日時を取得する。- KseflWriteRecordに更新パラーメータを設定する。 -
+     * kseflDataAccessを実施する。この時Responseとして更新件数を取得する -
+     * 排他エラー(030400001)が返却された場合、DA-139-R004を呼び出し、該当テーブルのフォローステータスコードを取得する。 -
+     * フォローステータスコードが未着手の場合はDBエラー、それ以外の場合は業務エラーをthrowする。 -
+     * 引数のnull検証は明示的に行わず、下位処理で実行時例外となる可能性がある。 -
+     *
+     * @param gmb         ガスメーター社番
+     * @param kasgYmd     開栓作業年月日
+     * @param kasHukkYmd  開栓報告年月日
+     * @param sgyAnknNo   作業案件番号
+     * @param recUpdJnjNo レコード更新排他制御順序番号
+     */
+    @Override
+    public void execute(String gmb, LocalDate kasgYmd, LocalDate kasHukkYmd, String sgyAnknNo, Integer recUpdJnjNo) {
+
+<span class="fc" id="L121">        LocalDate fltkYmd = this.requestContext.getSystemDatetime()</span>
+<span class="fc" id="L122">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L123">                .toLocalDate();</span>
+
+<span class="fc" id="L125">        String flwStCd = followStatusFollowHuyou;</span>
+
+        // DA-139-U002パラメータ設定
+<span class="fc" id="L128">        KseflWriteRecord record = new KseflWriteRecord(gmb, kasgYmd, kasHukkYmd, null, sgyAnknNo, flwStCd, fltkYmd,</span>
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+<span class="fc" id="L133">        Set&lt;KseflColumn&gt; targetColumns = Set.of(KseflColumn.FLW_ST_CD, KseflColumn.FLTK_YMD);</span>
+<span class="fc" id="L134">        KseflU002UpdateKey key = new KseflU002UpdateKey(gmb, kasgYmd, kasHukkYmd, sgyAnknNo, recUpdJnjNo);</span>
+
+<span class="fc" id="L136">        String hukkSysShbt = this.requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L137">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+
+<span class="fc" id="L139">        String decodedHkkSysSyb = kaiheisenConstantService</span>
+<span class="fc" id="L140">                .findNameByTypeAndValue(ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE, hukkSysShbt);</span>
+<span class="fc" id="L141">        AuditContext context = new AuditContext(USR_ID, decodedHkkSysSyb);</span>
+
+        // DA-139-U002:GMB・KASG_YMD・KAS_HUKK_YMD・SGY_ANKN_NO・REC_UPD_JNJ_NOによる更新。(updateCountで更新件数を受け取る)
+        try {
+<span class="fc" id="L145">            kseflDataAccess.updateByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNoAndRecUpdJnjNo(record, targetColumns, key,</span>
+                    context);
+
+<span class="fc" id="L148">        } catch (DatabaseException e) {</span>
+<span class="fc" id="L149">            String daIdentifier = e.getDaIdentifier();</span>
+<span class="fc" id="L150">            String sql = e.getSql();</span>
+<span class="fc" id="L151">            Object[] sqlBindPar = e.getSqlBindParameters();</span>
+<span class="fc" id="L152">            Throwable cause = e.getCause();</span>
+
+            // DA-139-U002で排他エラー（030400001）が返却された場合
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (cause.getCause() instanceof ExclusiveException) {</span>
+
+                // DA-139-R004:ガスメーター社番・開栓作業年月日・開栓報告年月日・作業案件番号による取得。
+<span class="fc" id="L158">                KseflRecord kseflRecord = findKseflRecord(gmb, kasgYmd, kasHukkYmd, sgyAnknNo);</span>
+                // フォロー状態の判定
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                if (!Objects.equals(followStatusMityakushu, kseflRecord.flwStCd())) {</span>
+
+                    // 例外をスローする(業務エラー)
+<span class="fc" id="L163">                    throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000043);</span>
+
+                } else {
+
+                    // 例外をスローする(DBエラー)
+<span class="fc" id="L168">                    throw new DatabaseException(daIdentifier, sql, sqlBindPar, cause);</span>
+
+                }
+            } else {
+<span class="fc" id="L172">                throw e;</span>
+
+            }
+<span class="fc" id="L175">        }</span>
+<span class="fc" id="L176">    }</span>
+
+    private KseflRecord findKseflRecord(String gmb, LocalDate kasgYmd, LocalDate kasHukkYmd, String sgyAnknNo) {
+
+<span class="fc" id="L180">        Optional&lt;KseflRecord&gt; record = kseflDataAccess.findByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNo(gmb, kasgYmd,</span>
+                kasHukkYmd, sgyAnknNo);
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (!record.isEmpty()) {</span>
+<span class="fc" id="L183">            return record.get();</span>
+        }
+<span class="fc" id="L185">        throw DataInconsistencySupport.create(kseflDataAccess.tableName(),</span>
+<span class="fc" id="L186">                KseflDataAccess.CallSpecs.FIND_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_SGY_ANKN_NO.identifier(),</span>
+<span class="fc" id="L187">                new FlatJsonBuilder().put(&quot;gmb&quot;, gmb).put(&quot;kasgYmd&quot;, kasgYmd).put(&quot;kasHukkYmd&quot;, kasHukkYmd)</span>
+<span class="fc" id="L188">                        .put(&quot;sgyAnknNo&quot;, sgyAnknNo));</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

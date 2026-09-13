@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetailDivisionResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-other</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.retail_division</a> &gt; <span class="el_source">RetailDivisionResource.java</span></div><h1>RetailDivisionResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.retail_division;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MaResponseNumericValues;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.retail_division.qualifier.RetailDivisionConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TkssvkyInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TskgmstInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TkssvkyInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TskgmstInfo;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-107 小売判定 API のリソース実装。
+ */
+@MainService(identifier = &quot;MA-107&quot;, name = &quot;小売判定 API&quot;)
+@Path(RetailDivisionEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;小売他小売判定&quot;, description = &quot;MA-107 小売／他小売判定 API&quot;)
+public class RetailDivisionResource extends BaseResource&lt;RetailDivisionRequest&gt; {
+
+    private final RetailTypeJudgment retailTypeJudgment;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @param retailTypeJudgment 小売判定サービス
+     */
+    @Inject
+    public RetailDivisionResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            @RetailDivisionConfiguration
+            RetailTypeJudgment retailTypeJudgment) {
+<span class="fc" id="L63">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L64">        this.retailTypeJudgment = retailTypeJudgment;</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * MA-107 小売判定 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return 小売判定レスポンス
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;小売／他小売判定&quot;,
+            description = &quot;小売／他小売判定を行い、判定結果と託送サービス契約関連情報を返却する。&quot;,
+            operationId = &quot;getRetailDivision&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;小売／他小売判定の結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = RetailDivisionResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public RetailDivisionResponse endpoint(@BeanParam RetailDivisionRequest request) {
+<span class="fc" id="L98">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L99">            Long gasMtstNoValue = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc" id="L100">            LocalDate knskKjnYmdValue = Rfc3339LocalDateParser.parse(request.knskKjnYmd());</span>
+
+<span class="fc" id="L102">            RetailTypeJudgmentOutput output = retailTypeJudgment.execute(</span>
+<span class="fc" id="L103">                    request.shrKbn(),</span>
+                    gasMtstNoValue,
+                    knskKjnYmdValue);
+<span class="fc" id="L106">            return toResponse(output);</span>
+        });
+    }
+
+    /**
+     * SV-001 出力をレスポンス DTO へ変換する。
+     *
+     * @param output SV-001 出力
+     * @return レスポンス DTO
+     */
+    private RetailDivisionResponse toResponse(
+            RetailTypeJudgmentOutput output) {
+<span class="fc" id="L118">        return new RetailDivisionResponse(</span>
+<span class="fc" id="L119">                output.kuHntKbn(),</span>
+<span class="fc" id="L120">                mapTskgmstInf(output.tskgmstInf()),</span>
+<span class="fc" id="L121">                mapTkssvkyInf(output.tkssvkyInf()),</span>
+<span class="fc" id="L122">                requestContext.getCorrelationId().orElseThrow(</span>
+<span class="nc" id="L123">                        () -&gt; new IllegalStateException(</span>
+                                &quot;correlationId is not set in RequestContext&quot;)));
+    }
+
+    /**
+     * 託送サービス契約・ガスメーター設置場所関連情報を レスポンス DTO へ変換する。
+     *
+     * @param source SV-001 出力の託送サービス契約・ガスメーター設置場所関連情報
+     * @return レスポンス DTO。{@code source} が {@code null} の場合は {@code null}
+     */
+    private static TskgmstInfoResponse mapTskgmstInf(TskgmstInfo source) {
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L135">            return null;</span>
+        }
+<span class="fc" id="L137">        return new TskgmstInfoResponse(</span>
+<span class="fc" id="L138">            MaResponseNumericValues.orZero(source.gasMtstNo()),</span>
+<span class="fc" id="L139">            MaResponseNumericValues.orZero(source.tksuSvkyNo()),</span>
+<span class="fc" id="L140">            MaResponseNumericValues.orZero(source.skno()),</span>
+<span class="fc" id="L141">                source.tksuSvkkJtkb(),</span>
+<span class="fc" id="L142">                formatDate(source.tkysYmd()),</span>
+<span class="fc" id="L143">                formatDate(source.tyenYmd()),</span>
+<span class="fc" id="L144">            MaResponseNumericValues.orZero(source.recUpdJnjNo()));</span>
+    }
+
+    /**
+     * 託送サービス契約情報をレスポンス DTO へ変換する。
+     *
+     * @param source SV-001 出力の託送サービス契約情報
+     * @return レスポンス DTO。{@code source} が {@code null} の場合は {@code null}
+     */
+    private static TkssvkyInfoResponse mapTkssvkyInf(TkssvkyInfo source) {
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L155">            return null;</span>
+        }
+<span class="fc" id="L157">        return new TkssvkyInfoResponse(</span>
+<span class="fc" id="L158">            MaResponseNumericValues.orZero(source.tksuSvkyNo()),</span>
+<span class="fc" id="L159">            MaResponseNumericValues.orZero(source.skno()),</span>
+<span class="fc" id="L160">                source.tksuSvkyJtkb(),</span>
+<span class="fc" id="L161">                source.tksuSvksJysb(),</span>
+<span class="fc" id="L162">                source.tksuSvkeJysb(),</span>
+<span class="fc" id="L163">                formatDate(source.tkysYmd()),</span>
+<span class="fc" id="L164">                formatDate(source.tyenYmd()),</span>
+<span class="fc" id="L165">                formatDate(source.hesnYtiYmd()),</span>
+<span class="fc" id="L166">                source.tkykShbt(),</span>
+<span class="fc" id="L167">                source.tksuKijsCd(),</span>
+<span class="fc" id="L168">                source.sutiKskhFlg(),</span>
+<span class="fc" id="L169">                MaResponseNumericValues.orZero(source.syoKyoTrno()),</span>
+<span class="fc" id="L170">                MaResponseNumericValues.orZero(source.recUpdJnjNo()));</span>
+    }
+
+    /**
+     * {@link LocalDate} を ISO-8601 文字列（{@code yyyy-MM-dd}）へ変換する。
+     *
+     * @param date 変換対象日付
+     * @return 文字列表現。{@code date} が {@code null} の場合は {@code null}
+     */
+    private static String formatDate(LocalDate date) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (date == null) {</span>
+<span class="fc" id="L181">            return null;</span>
+        }
+<span class="fc" id="L183">        return date.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

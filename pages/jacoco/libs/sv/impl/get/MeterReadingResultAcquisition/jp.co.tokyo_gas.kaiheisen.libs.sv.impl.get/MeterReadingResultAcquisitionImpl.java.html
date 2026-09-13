@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingResultAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-meterreadingresultacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">MeterReadingResultAcquisitionImpl.java</span></div><h1>MeterReadingResultAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdKkmtKnsResultRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdKnsResultRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnkkJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+
+/** 検針結果情報取得サービス実装。 */
+public class MeterReadingResultAcquisitionImpl implements MeterReadingResultAcquisition {
+
+    private static final String ERROR_CODE_NO_METER_READING_RESULT =
+            ErrorCodeConstants.ERROR_CODE_020000074;
+
+    private static final String ERROR_CODE_TARGET_METER_READING_RESULT =
+            ErrorCodeConstants.ERROR_CODE_020000077;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param gmkskkdDataAccess ガスメーター検針結果データアクセス
+     */
+<span class="fc" id="L35">    public MeterReadingResultAcquisitionImpl(GmkskkdDataAccess gmkskkdDataAccess) {</span>
+<span class="fc" id="L36">        this.gmkskkdDataAccess = gmkskkdDataAccess;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public MeterReadingResultAcquisitionOutput execute(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            LocalDate knskTsksYmd,
+            LocalDate knskTskeYmd,
+            KnsKkaTseiMaeJh knsKkaTseiMaeJh) {
+<span class="fc bfc" id="L46" title="All 4 branches covered.">        boolean previousKnsYmdMissing = knsKkaTseiMaeJh == null || knsKkaTseiMaeJh.knsYmd() == null;</span>
+        SearchResult searchResult;
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (previousKnsYmdMissing) {</span>
+<span class="fc" id="L49">            searchResult =</span>
+                    new SearchResult(
+                            GmkskkdDataAccess.CallSpecs
+                                    .FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_FROM_WITH_KKMT_FLG,
+<span class="fc" id="L53">                            fromKkmtRecords(</span>
+<span class="fc" id="L54">                                    gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmdFromWithKkmtFlg(</span>
+                                            gasMtstNo, knskTsksYmd)));
+        } else {
+<span class="fc" id="L57">            searchResult =</span>
+<span class="fc" id="L58">                    loadWithPreviousInfo(</span>
+                            gasMtstNo, knsYmd, knskTsksYmd, knskTskeYmd, knsKkaTseiMaeJh);
+        }
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (searchResult.records().isEmpty()) {</span>
+<span class="fc" id="L63">            throw new BusinessRuleException(ERROR_CODE_NO_METER_READING_RESULT);</span>
+        }
+
+<span class="fc" id="L66">        List&lt;KnkkJh&gt; knkkJhList = new ArrayList&lt;&gt;(searchResult.records());</span>
+        Double tsimSyry;
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (previousKnsYmdMissing) {</span>
+<span class="fc" id="L69">            trimFutureRowsWithoutPrevious(</span>
+<span class="fc" id="L70">                    knkkJhList, knsYmd, searchResult.callSpec().identifier(), gasMtstNo);</span>
+<span class="fc" id="L71">            tsimSyry = null;</span>
+        } else {
+<span class="fc" id="L73">            tsimSyry =</span>
+<span class="fc" id="L74">                    adjustRowsWithPrevious(</span>
+                            knkkJhList,
+                            knsYmd,
+                            knsKkaTseiMaeJh,
+<span class="fc" id="L78">                            searchResult.callSpec().identifier(),</span>
+                            gasMtstNo);
+        }
+
+<span class="fc" id="L82">        return new MeterReadingResultAcquisitionOutput(List.copyOf(knkkJhList), tsimSyry);</span>
+    }
+
+    /**
+     * 概要: 訂正前情報の有無と状態に応じて DA-027 呼出し種別を選択する。 主な仕様: - 訂正前検針年月日が訂正後検針年月日以上の場合、確定前フラグで R011/R010
+     * を切替える。 - 訂正前検針年月日が訂正後検針年月日より前の場合、R005 を使用する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 訂正後検針年月日
+     * @param knskTsksYmd 検索対象期間開始年月日
+     * @param knskTskeYmd 検索対象期間終了年月日
+     * @param knsKkaTseiMaeJh 訂正前情報
+     * @return DA 呼出し結果と不整合判定用メタ情報
+     */
+    private SearchResult loadWithPreviousInfo(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            LocalDate knskTsksYmd,
+            LocalDate knskTskeYmd,
+            KnsKkaTseiMaeJh knsKkaTseiMaeJh) {
+<span class="fc" id="L102">        LocalDate previousKnsYmd = knsKkaTseiMaeJh.knsYmd();</span>
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (!previousKnsYmd.isBefore(knsYmd)) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (Boolean.FALSE.equals(knsKkaTseiMaeJh.knkkKtmeFlg())) {</span>
+<span class="fc" id="L106">                List&lt;GmkskkdKnsResultRecord&gt; records =</span>
+<span class="fc" id="L107">                        gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L108">                                gasMtstNo, knskTsksYmd, knskTskeYmd, knsKkaTseiMaeJh.knsKkaTsno());</span>
+<span class="fc" id="L109">                return new SearchResult(</span>
+                        GmkskkdDataAccess.CallSpecs
+                                .FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO,
+<span class="fc" id="L112">                        fromKnsRecords(records));</span>
+            }
+<span class="fc" id="L114">            List&lt;GmkskkdKkmtKnsResultRecord&gt; records =</span>
+<span class="fc" id="L115">                    gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmdWithKkmtFlgAndKnsKkaTsno(</span>
+<span class="fc" id="L116">                            gasMtstNo, knskTsksYmd, knskTskeYmd, knsKkaTseiMaeJh.knsKkaTsno());</span>
+<span class="fc" id="L117">            return new SearchResult(</span>
+                    GmkskkdDataAccess.CallSpecs
+                            .FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_WITH_KKMT_FLG_AND_KNS_KKA_TSNO,
+<span class="fc" id="L120">                    fromKkmtRecords(records));</span>
+        }
+
+<span class="fc" id="L123">        List&lt;GmkskkdKkmtKnsResultRecord&gt; records =</span>
+<span class="fc" id="L124">                gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmdWithKkmtFlg(</span>
+                        gasMtstNo, knskTsksYmd, knskTskeYmd);
+<span class="fc" id="L126">        return new SearchResult(</span>
+                GmkskkdDataAccess.CallSpecs.FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_WITH_KKMT_FLG,
+<span class="fc" id="L128">                fromKkmtRecords(records));</span>
+    }
+
+    /**
+     * 概要: 訂正前検針年月日がない場合の未来データ除外と整合チェックを行う。 主な仕様: - 未来日かつ確定後データが存在する場合は不整合例外を送出する。 -
+     * 未来日かつ確定前データは先頭から順に除外する。 既知の制約: - 先頭から条件を外れた時点でループを終了する。
+     *
+     * @param knkkJhList 検針結果情報
+     * @param knsYmd 訂正後検針年月日
+     * @param daIdentifier DA 識別子
+     * @param gasMtstNo ガスメーター設置場所番号
+     */
+    private void trimFutureRowsWithoutPrevious(
+            List&lt;KnkkJh&gt; knkkJhList, LocalDate knsYmd, String daIdentifier, Long gasMtstNo) {
+<span class="fc" id="L142">        Iterator&lt;KnkkJh&gt; iterator = knkkJhList.iterator();</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L144">            KnkkJh current = iterator.next();</span>
+<span class="fc bfc" id="L145" title="All 4 branches covered.">            if (knsYmd.isBefore(current.knsYmd()) &amp;&amp; Boolean.FALSE.equals(current.knkkKtmeFlg())) {</span>
+<span class="fc" id="L146">                throw businessRule(daIdentifier, gasMtstNo);</span>
+            }
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">            if (knsYmd.isBefore(current.knsYmd()) &amp;&amp; Boolean.TRUE.equals(current.knkkKtmeFlg())) {</span>
+<span class="fc" id="L149">                iterator.remove();</span>
+<span class="fc" id="L150">                continue;</span>
+            }
+            break;
+        }
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * 概要: 訂正前情報がある場合の範囲判定・除外・訂正前使用量抽出を行う。 主な仕様: - 処理対象期間を導出し、範囲に該当するデータを評価する。 -
+     * 同一キーかつ同一確定前フラグの行は訂正前使用量として退避し、出力から除外する。 - 訂正後検針年月日より未来日のデータは除外する。
+     *
+     * @param knkkJhList 検針結果情報
+     * @param knsYmd 訂正後検針年月日
+     * @param previous 訂正前情報
+     * @param daIdentifier DA 識別子
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 訂正前使用量
+     */
+    private Double adjustRowsWithPrevious(
+            List&lt;KnkkJh&gt; knkkJhList,
+            LocalDate knsYmd,
+            KnsKkaTseiMaeJh previous,
+            String daIdentifier,
+            Long gasMtstNo) {
+<span class="fc" id="L173">        ProcessingRange range = deriveProcessingRange(knsYmd, previous);</span>
+<span class="fc" id="L174">        Double tsimSyry = null;</span>
+
+<span class="fc" id="L176">        Iterator&lt;KnkkJh&gt; iterator = knkkJhList.iterator();</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L178">            KnkkJh current = iterator.next();</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (!isWithinProcessingRange(current, range)) {</span>
+<span class="nc" id="L180">                break;</span>
+            }
+
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (isDifferentConfirmedRecord(current, previous)) {</span>
+<span class="fc" id="L184">                throw businessRule(daIdentifier, gasMtstNo);</span>
+            }
+
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            if (isSameRecordAndSameFlag(current, previous)) {</span>
+<span class="fc" id="L188">                tsimSyry = current.gasSyry();</span>
+<span class="fc" id="L189">                iterator.remove();</span>
+<span class="fc" id="L190">                continue;</span>
+            }
+
+<span class="nc bnc" id="L193" title="All 2 branches missed.">            if (current.knsYmd().isAfter(knsYmd)) {</span>
+<span class="nc" id="L194">                iterator.remove();</span>
+            }
+<span class="nc" id="L196">        }</span>
+
+<span class="fc" id="L198">        return tsimSyry;</span>
+    }
+
+    /**
+     * 概要: 処理対象期間を導出する。 主な仕様: - 訂正前検針年月日と訂正後検針年月日の前後関係で開始/終了キーを切り替える。 - 通し番号は設計記載どおり `1`
+     * または訂正前通し番号を設定する。 既知の制約: - 比較対象値が null の場合は呼び出し元で事前に除外済みであることを前提とする。
+     *
+     * @param knsYmd 訂正後検針年月日
+     * @param previous 訂正前情報
+     * @return 処理対象期間
+     */
+    private ProcessingRange deriveProcessingRange(LocalDate knsYmd, KnsKkaTseiMaeJh previous) {
+<span class="fc" id="L210">        LocalDate previousKnsYmd = previous.knsYmd();</span>
+<span class="fc" id="L211">        Integer previousTsno = previous.knsKkaTsno();</span>
+
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (previousKnsYmd.isEqual(knsYmd)) {</span>
+<span class="fc" id="L214">            return new ProcessingRange(previousKnsYmd, previousTsno, previousKnsYmd, previousTsno);</span>
+        }
+
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">        if (previousKnsYmd.isBefore(knsYmd)) {</span>
+<span class="fc" id="L218">            return new ProcessingRange(knsYmd.plusDays(1), 1, previousKnsYmd, previousTsno);</span>
+        }
+
+<span class="nc" id="L221">        return new ProcessingRange(previousKnsYmd, previousTsno, knsYmd.plusDays(1), 1);</span>
+    }
+
+    /**
+     * 概要: 検針年月日および検針結果通し番号が、処理対象開始～終了の範囲内であることを確認する。 主な仕様: - 開始キー以前かつ終了キー以後を処理対象とみなす。 -
+     * 日付同値時は通し番号で境界判定する。
+     *
+     * @param current 評価対象レコード
+     * @param range 処理対象期間
+     * @return 処理対象範囲に含まれる場合 true
+     */
+    private boolean isWithinProcessingRange(KnkkJh current, ProcessingRange range) {
+<span class="fc" id="L233">        boolean beforeOrAtStart =</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">                current.knsYmd().isBefore(range.startKnsYmd())</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                        || (current.knsYmd().isEqual(range.startKnsYmd())</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                                &amp;&amp; current.knsKkaTsno() &lt;= range.startKnsKkaTsno());</span>
+<span class="fc" id="L237">        boolean afterOrAtEnd =</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">                current.knsYmd().isAfter(range.endKnsYmd())</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                        || (current.knsYmd().isEqual(range.endKnsYmd())</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                                &amp;&amp; current.knsKkaTsno() &gt;= range.endKnsKkaTsno());</span>
+<span class="pc bpc" id="L241" title="2 of 4 branches missed.">        return beforeOrAtStart &amp;&amp; afterOrAtEnd;</span>
+    }
+
+    /**
+     * 概要: 確定後検針結果の有無を確認する。 主な仕様: - 訂正前キーと異なる確定後レコードが対象範囲に存在する場合に不整合とする。 既知の制約: -
+     * 日付比較と通し番号比較をともに不一致で評価する。
+     *
+     * @param current 評価対象レコード
+     * @param previous 訂正前情報
+     * @return 不整合に該当する場合 true
+     */
+    private boolean isDifferentConfirmedRecord(KnkkJh current, KnsKkaTseiMaeJh previous) {
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        return !current.knsYmd().isEqual(previous.knsYmd())</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">                &amp;&amp; !current.knsKkaTsno().equals(previous.knsKkaTsno())</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">                &amp;&amp; Boolean.FALSE.equals(current.knkkKtmeFlg());</span>
+    }
+
+    /**
+     * 概要: 訂正前情報と同一キー・同一確定前フラグかを判定する。 主な仕様: - 日付・通し番号・確定前フラグがすべて一致した場合に true を返す。 既知の制約: - 確定前フラグは
+     * null 安全のため Boolean.equals で比較する。
+     *
+     * @param current 評価対象レコード
+     * @param previous 訂正前情報
+     * @return 同一レコードの場合 true
+     */
+    private boolean isSameRecordAndSameFlag(KnkkJh current, KnsKkaTseiMaeJh previous) {
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        return current.knsYmd().isEqual(previous.knsYmd())</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                &amp;&amp; current.knsKkaTsno().equals(previous.knsKkaTsno())</span>
+<span class="fc" id="L269">                &amp;&amp; Boolean.valueOf(Boolean.TRUE.equals(current.knkkKtmeFlg()))</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                        .equals(Boolean.valueOf(Boolean.TRUE.equals(previous.knkkKtmeFlg())));</span>
+    }
+
+    /**
+     * 概要: DA-027 の `R009/R010/R005` 取得結果を出力 DTO へ変換する。 主な仕様: - `knkkKktmFlg=1` を確定前 (`true`)
+     * としてマップする。 既知の制約: - 数値型は BigDecimal から Double へ変換する。
+     *
+     * @param records DA 取得結果
+     * @return 変換後リスト
+     */
+    private List&lt;KnkkJh&gt; fromKkmtRecords(List&lt;GmkskkdKkmtKnsResultRecord&gt; records) {
+<span class="fc" id="L281">        List&lt;KnkkJh&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (GmkskkdKkmtKnsResultRecord record : records) {</span>
+<span class="fc" id="L283">            result.add(</span>
+                    new KnkkJh(
+<span class="fc" id="L285">                            &quot;1&quot;.equals(record.knkkKktmFlg()),</span>
+<span class="fc" id="L286">                            record.knsYmd(),</span>
+<span class="fc" id="L287">                            record.knsKkaTsno(),</span>
+<span class="fc" id="L288">                            record.knkkSksiJysb(),</span>
+<span class="fc" id="L289">                            record.gmtShjSu(),</span>
+<span class="fc" id="L290">                            toDouble(record.gasSyry()),</span>
+<span class="fc" id="L291">                            toDouble(record.sgyjKytiSyry()),</span>
+<span class="fc" id="L292">                            record.shyDdsu(),</span>
+<span class="fc" id="L293">                            record.sjskKbn(),</span>
+<span class="fc" id="L294">                            record.knsJsjkCd()));</span>
+<span class="fc" id="L295">        }</span>
+<span class="fc" id="L296">        return result;</span>
+    }
+
+    /**
+     * 概要: DA-027 `R011` 取得結果を出力 DTO へ変換する。 主な仕様: - R011 は GMKSKKD 単表のため、確定前フラグを false 固定で設定する。
+     * 既知の制約: - 数値型は BigDecimal から Double へ変換する。
+     *
+     * @param records DA 取得結果
+     * @return 変換後リスト
+     */
+    private List&lt;KnkkJh&gt; fromKnsRecords(List&lt;GmkskkdKnsResultRecord&gt; records) {
+<span class="fc" id="L307">        List&lt;KnkkJh&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        for (GmkskkdKnsResultRecord record : records) {</span>
+<span class="fc" id="L309">            result.add(</span>
+                    new KnkkJh(
+<span class="fc" id="L311">                            false,</span>
+<span class="fc" id="L312">                            record.knsYmd(),</span>
+<span class="fc" id="L313">                            record.knsKkaTsno(),</span>
+<span class="fc" id="L314">                            record.knkkSksiJysb(),</span>
+<span class="fc" id="L315">                            record.gmtShjSu(),</span>
+<span class="fc" id="L316">                            toDouble(record.gasSyry()),</span>
+<span class="fc" id="L317">                            toDouble(record.sgyjKytiSyry()),</span>
+<span class="fc" id="L318">                            record.shyDdsu(),</span>
+<span class="fc" id="L319">                            record.sjskKbn(),</span>
+<span class="fc" id="L320">                            record.knsJsjkCd()));</span>
+<span class="fc" id="L321">        }</span>
+<span class="fc" id="L322">        return result;</span>
+    }
+
+    /**
+     * 概要: BigDecimal を Double に変換する。 主な仕様: - null 入力時は null を返却する。 - 非 null 入力時は `doubleValue()`
+     * を返却する。 既知の制約: - 精度丸めは `doubleValue()` の仕様に依存する。
+     *
+     * @param value 変換対象
+     * @return 変換後値
+     */
+    private static Double toDouble(BigDecimal value) {
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        return value == null ? null : value.doubleValue();</span>
+    }
+
+    private static BusinessRuleException businessRule(String daIdentifier, Long gasMtstNo) {
+<span class="fc" id="L337">        return new BusinessRuleException(</span>
+                ERROR_CODE_TARGET_METER_READING_RESULT,
+<span class="fc" id="L339">                List.of(&quot;daIdentifier=&quot; + daIdentifier, &quot;gasMtstNo=&quot; + gasMtstNo));</span>
+    }
+
+    /**
+     * DA 呼出し結果と不整合判定用メタ情報を保持する。
+     *
+     * @param callSpec DA 呼出し識別情報
+     * @param records 変換後の検針結果一覧
+     */
+<span class="fc" id="L348">    private record SearchResult(DataAccessCallSpec callSpec, List&lt;KnkkJh&gt; records) { }</span>
+
+    /**
+     * 処理対象期間を保持する値オブジェクト。
+     *
+     * @param startKnsYmd 開始検針年月日
+     * @param startKnsKkaTsno 開始検針結果通し番号
+     * @param endKnsYmd 終了検針年月日
+     * @param endKnsKkaTsno 終了検針結果通し番号
+     */
+<span class="fc" id="L358">    private record ProcessingRange(</span>
+            LocalDate startKnsYmd,
+            Integer startKnsKkaTsno,
+            LocalDate endKnsYmd,
+            Integer endKnsKkaTsno) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,420 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-comprehensiveothermeterreadingandrelatedinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionImpl.java</span></div><h1>ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOriginMeterDedicatedMeterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOtherMeterReadingAndRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionComprehensive;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionComprehensiveOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ComprehensiveOtherMeterInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.PipelineMeterLocationInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.RecentMeterReadingInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ServiceContractMeterRelationInfo;
+
+/**
+ * 概要: SV-123（総合他メーターの検針結果＆関連情報取得）の実装クラス。
+ * 主な仕様:
+ * - DA-041-R015 がメーター設置場所番号順で返す同一グループ候補を最大 300 件まで反復し、連続して出現した同一設置場所番号の重複候補はスキップする。
+ * - 候補ごとに導管情報、検針結果関連情報、専用メーター情報を集約し、同一グループ内フラグを更新する。
+ * - `systemDatetime` は RequestContext から取得し、未設定時は fail-fast する。
+ * 既知の制約:
+ * - public 引数の null ガードは SV 規約に従い実装しない。
+ */
+public final class ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionImpl
+        implements ComprehensiveOtherMeterReadingAndRelatedInfoAcquisition {
+
+    private static final int MAX_CANDIDATE_COUNT = 300;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final MeterReadingResultAcquisitionComprehensive meterReadingResultAcquisitionComprehensive;
+
+    private final ComprehensiveOriginMeterDedicatedMeterInfoAcquisition
+            comprehensiveOriginMeterDedicatedMeterInfoAcquisition;
+
+    private final RequestContext requestContext;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String relatedValidStatus;
+
+    private final String relatedEndWaitingStatus;
+
+    private final String relatedEndStatus;
+
+    private final String meterOpeningStatus;
+
+    private final String meterClosedStatus;
+
+    private final String securityClosureReason;
+
+    private final String disasterClosureReason;
+
+    /**
+     * 概要: 依存サービスと必須定数を解決して初期化する。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param gmtsetdDataAccess ガスメーター設置場所導管 DA
+     * @param meterReadingResultAcquisitionComprehensive SV-153
+     * @param comprehensiveOriginMeterDedicatedMeterInfoAcquisition SV-124
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            MeterReadingResultAcquisitionComprehensive meterReadingResultAcquisitionComprehensive,
+            ComprehensiveOriginMeterDedicatedMeterInfoAcquisition
+                    comprehensiveOriginMeterDedicatedMeterInfoAcquisition,
+            RequestContext requestContext,
+<span class="fc" id="L86">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L87">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L88">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L89">        this.meterReadingResultAcquisitionComprehensive = Objects.requireNonNull(</span>
+                meterReadingResultAcquisitionComprehensive,
+                &quot;meterReadingResultAcquisitionComprehensive&quot;);
+<span class="fc" id="L92">        this.comprehensiveOriginMeterDedicatedMeterInfoAcquisition = Objects.requireNonNull(</span>
+                comprehensiveOriginMeterDedicatedMeterInfoAcquisition,
+                &quot;comprehensiveOriginMeterDedicatedMeterInfoAcquisition&quot;);
+<span class="fc" id="L95">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L96">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L97">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L98">        this.dedicatedGasMeterStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L102">        this.relatedValidStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L106">        this.relatedEndWaitingStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L110">        this.relatedEndStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L114">        this.meterOpeningStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L118">        this.meterClosedStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L122">        this.securityClosureReason = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE);
+<span class="fc" id="L126">        this.disasterClosureReason = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L130">    }</span>
+
+     /**
+      * 概要: SV-123 を実行し、同一グループ内の検針結果と関連情報を返却する。
+      *
+      * @param svmstkrUmFlg サービス契約・メーター設置場所関連有無フラグ
+      * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+      * @param svkyNo サービス契約番号
+      * @param gasMtstNo ガスメーター設置場所番号
+      * @param rkkiSttYmd 料金計算開始年月日
+      * @param rkkiEndYmd 料金計算終了年月日
+      * @param dgrpHsenYmd 同一グループ内閉栓年月日
+      * @return 総合他メーターの検針結果＆関連情報取得結果
+      */
+    @Override
+    public ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput execute(
+            Boolean svmstkrUmFlg,
+            String ckrtGmscJtkb,
+            Long svkyNo,
+            Long gasMtstNo,
+            LocalDate rkkiSttYmd,
+            LocalDate rkkiEndYmd,
+            LocalDate dgrpHsenYmd) {
+<span class="fc" id="L153">        OutputAccumulator accumulator = new OutputAccumulator(dgrpHsenYmd);</span>
+<span class="fc bfc" id="L154" title="All 4 branches covered.">        if (Boolean.FALSE.equals(svmstkrUmFlg) &amp;&amp; dedicatedGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L155">            return accumulator.toOutput();</span>
+        }
+
+<span class="fc" id="L158">        LocalDate currentDate = requireCurrentDate();</span>
+<span class="fc" id="L159">        List&lt;SvmstkrRecord&gt; candidates =</span>
+<span class="fc" id="L160">            svmstkrDataAccess.findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNoForR015(</span>
+                svkyNo,
+<span class="fc" id="L162">                List.of(relatedValidStatus, relatedEndWaitingStatus, relatedEndStatus),</span>
+                rkkiSttYmd,
+                rkkiEndYmd,
+                gasMtstNo);
+
+<span class="fc" id="L167">        Long previousMeterLocationNumber = 0L;</span>
+<span class="fc" id="L168">        int limit = Math.min(candidates.size(), MAX_CANDIDATE_COUNT);</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (int index = 0; index &lt; limit; index++) {</span>
+<span class="fc" id="L170">            SvmstkrRecord candidate = candidates.get(index);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            if (Objects.equals(previousMeterLocationNumber, candidate.mtstNo())) {</span>
+<span class="fc" id="L172">                continue;</span>
+            }
+<span class="fc" id="L174">            GmtsetdRecord pipelineInfo = findPipelineInfo(candidate.mtstNo(), currentDate);</span>
+<span class="fc" id="L175">            updateGroupFlags(accumulator, candidate, pipelineInfo);</span>
+<span class="fc" id="L176">            MeterReadingResultAcquisitionComprehensiveOutput meterReadingOutput =</span>
+<span class="fc" id="L177">                    meterReadingResultAcquisitionComprehensive.execute(</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                        pipelineInfo == null ? null : pipelineInfo.kngmStbJtkb(),</span>
+<span class="fc" id="L179">                        candidate.mtstNo());</span>
+<span class="fc" id="L180">            ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput dedicatedMeterOutput =</span>
+<span class="fc" id="L181">                    comprehensiveOriginMeterDedicatedMeterInfoAcquisition.execute(</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">                        pipelineInfo == null ? null : pipelineInfo.ckrtGmscJtkb(),</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                        pipelineInfo == null ? null : pipelineInfo.szcGkkCd(),</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                        pipelineInfo == null ? null : pipelineInfo.szcCmazCd(),</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                        pipelineInfo == null ? null : pipelineInfo.szcMchCd(),</span>
+<span class="fc" id="L186">                        candidate.mtstNo(),</span>
+<span class="fc" id="L187">                        candidate.rkkiKnrnJtkb());</span>
+<span class="fc" id="L188">            RecentMeterReadingInfo recentMeterReadingInfo = mapRecentMeterReadingInfo(meterReadingOutput);</span>
+<span class="fc" id="L189">            accumulator.mergeMeterReadingFlags(meterReadingOutput);</span>
+<span class="fc" id="L190">            accumulator.mergeDedicatedFlag(dedicatedMeterOutput);</span>
+<span class="fc" id="L191">            accumulator.addMeterInfo(new ComprehensiveOtherMeterInfo(</span>
+<span class="fc" id="L192">                    mapServiceContractMeterRelationInfo(candidate),</span>
+<span class="fc" id="L193">                    mapPipelineMeterLocationInfo(pipelineInfo),</span>
+                    recentMeterReadingInfo));
+<span class="fc" id="L195">            previousMeterLocationNumber = candidate.mtstNo();</span>
+        }
+<span class="fc" id="L197">        return accumulator.toOutput();</span>
+    }
+
+    /**
+     * 概要: 現在日付を RequestContext から取得する。
+     *
+     * @return DA 検索に用いる現在日付
+     */
+    private LocalDate requireCurrentDate() {
+<span class="fc" id="L206">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L207">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L208">                .toLocalDate();</span>
+    }
+
+    /**
+     * 概要: 必須 CIRIUS 定数を解決する。
+     *
+     * @param ciriusConstantService 定数取得サービス
+     * @param typeCode 定数種別コード
+     * @param code 定数コード
+     * @return 解決済み定数値
+     */
+    private static String requireConstant(
+            CiriusConstantService ciriusConstantService,
+            String typeCode,
+            String code) {
+<span class="fc" id="L223">        return RequiredConstantResolver.requireCiriusConstant(ciriusConstantService, typeCode, code);</span>
+    }
+
+    /**
+     * 概要: 候補設置場所番号に対応する導管情報を取得する。
+     *
+     * @param meterLocationNumber 候補設置場所番号
+     * @param currentDate 検索基準日
+     * @return 条件に一致した導管情報の先頭レコード。取得できない場合は null
+     */
+    private GmtsetdRecord findPipelineInfo(Long meterLocationNumber, LocalDate currentDate) {
+<span class="fc" id="L234">        List&lt;GmtsetdRecord&gt; records =</span>
+<span class="fc" id="L235">            gmtsetdDataAccess.findAllByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                meterLocationNumber,
+                currentDate);
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (records.isEmpty()) {</span>
+<span class="nc" id="L239">            return null;</span>
+        }
+<span class="fc" id="L241">        return records.getFirst();</span>
+    }
+
+    /**
+     * 概要: 候補と導管情報から同一グループ内のフラグ類を更新する。
+     *
+     * @param accumulator 出力集約状態
+     * @param candidate 候補関連情報
+     * @param pipelineInfo 導管情報
+     */
+    private void updateGroupFlags(
+            OutputAccumulator accumulator,
+            SvmstkrRecord candidate,
+            GmtsetdRecord pipelineInfo) {
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">        if (pipelineInfo == null || !isPositiveMeterLocation(pipelineInfo.gasMtstNo())) {</span>
+<span class="fc" id="L256">            accumulator.dgrpMiRegFlg = true;</span>
+<span class="fc" id="L257">            return;</span>
+        }
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (meterOpeningStatus.equals(pipelineInfo.gmtKhsJtkb())</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                &amp;&amp; !relatedEndStatus.equals(candidate.rkkiKnrnJtkb())) {</span>
+<span class="fc" id="L261">            accumulator.dgrpKasFlg = true;</span>
+        }
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        if (isLaterDate(pipelineInfo.hesnYmd(), accumulator.dgrpHsenYmd)) {</span>
+<span class="fc" id="L264">            accumulator.dgrpHsenYmd = pipelineInfo.hesnYmd();</span>
+        }
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (relatedEndStatus.equals(candidate.rkkiKnrnJtkb())</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">                &amp;&amp; isLaterDate(candidate.rkkiEndYmd(), accumulator.dgrpHsenYmd)) {</span>
+<span class="fc" id="L268">            accumulator.dgrpHsenYmd = candidate.rkkiEndYmd();</span>
+        }
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (meterClosedStatus.equals(pipelineInfo.gmtKhsJtkb())</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                &amp;&amp; isNonClosableReason(pipelineInfo.hesnJysb())) {</span>
+<span class="fc" id="L272">            accumulator.dgrpHkhesnJiyuFlg = true;</span>
+        }
+<span class="fc" id="L274">    }</span>
+
+    /**
+     * 概要: メーター設置場所番号が正数か判定する。
+     *
+     * @param meterLocationNumber 判定対象番号
+     * @return 正数の場合 true
+     */
+    private static boolean isPositiveMeterLocation(Long meterLocationNumber) {
+<span class="pc bpc" id="L283" title="1 of 4 branches missed.">        return meterLocationNumber != null &amp;&amp; meterLocationNumber &gt; 0L;</span>
+    }
+
+    /**
+     * 概要: 日付が比較対象より後か判定する。
+     *
+     * @param candidateDate 判定対象日付
+     * @param currentDate 比較基準日付
+     * @return candidateDate が後日の場合 true
+     */
+    private static boolean isLaterDate(LocalDate candidateDate, LocalDate currentDate) {
+<span class="pc bpc" id="L294" title="2 of 6 branches missed.">        return candidateDate != null &amp;&amp; (currentDate == null || candidateDate.isAfter(currentDate));</span>
+    }
+
+    /**
+     * 概要: 閉栓事由が全部閉栓不可対象か判定する。
+     *
+     * @param closureReason 閉栓事由種別
+     * @return 保安閉栓または災害時閉栓の場合 true
+     */
+    private boolean isNonClosableReason(String closureReason) {
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        return securityClosureReason.equals(closureReason)</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                || disasterClosureReason.equals(closureReason);</span>
+    }
+
+    /**
+     * 概要: 候補関連情報を API モデルへ変換する。
+     *
+     * @param candidate 候補関連情報
+     * @return API モデル
+     */
+    private static ServiceContractMeterRelationInfo mapServiceContractMeterRelationInfo(
+            SvmstkrRecord candidate) {
+<span class="fc" id="L316">        return new ServiceContractMeterRelationInfo(</span>
+<span class="fc" id="L317">                candidate.mtstNo(),</span>
+<span class="fc" id="L318">                candidate.svkyNo(),</span>
+<span class="fc" id="L319">                candidate.skno(),</span>
+<span class="fc" id="L320">                candidate.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L321">                candidate.rkkiEndYmd(),</span>
+<span class="fc" id="L322">                candidate.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 導管情報を API モデルへ変換する。
+     *
+     * @param pipelineInfo 導管情報
+     * @return API モデル。入力が null の場合は null
+     */
+    private static PipelineMeterLocationInfo mapPipelineMeterLocationInfo(
+            GmtsetdRecord pipelineInfo) {
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        if (pipelineInfo == null) {</span>
+<span class="nc" id="L334">            return null;</span>
+        }
+<span class="fc" id="L336">        return new PipelineMeterLocationInfo(</span>
+<span class="fc" id="L337">                pipelineInfo.kngmStbJtkb(),</span>
+<span class="fc" id="L338">                pipelineInfo.ckrtGmscJtkb());</span>
+    }
+
+    /**
+     * 概要: SV-153 の戻り値を最近検針結果情報へ変換する。
+     *
+     * @param output SV-153 戻り値
+     * @return 最近検針結果情報。設定項目がない場合は null
+     */
+    private static RecentMeterReadingInfo mapRecentMeterReadingInfo(
+            MeterReadingResultAcquisitionComprehensiveOutput output) {
+<span class="pc bpc" id="L349" title="1 of 4 branches missed.">        if (output.skinKnkkInf() == null &amp;&amp; output.hsenHkkKnuKigenYmd() == null) {</span>
+<span class="fc" id="L350">            return null;</span>
+        }
+<span class="fc" id="L352">        return new RecentMeterReadingInfo(</span>
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().knsYmd(),</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().knsKkaTsno(),</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().gmtShjSu(),</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().knkkSsjyShbt(),</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().knkkKtmeFlg(),</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().sjskKbn(),</span>
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">                output.skinKnkkInf() == null ? null : output.skinKnkkInf().knsJsjkCd(),</span>
+<span class="fc" id="L360">                output.hsenHkkKnuKigenYmd());</span>
+    }
+
+    /** 出力集約状態。 */
+    private static final class OutputAccumulator {
+
+        private boolean dgrpKasFlg;
+
+        private LocalDate dgrpHsenYmd;
+
+        private boolean dgrpSyryKytiTyuFlg;
+
+        private Long dgrpSyryKytiTyuMtstno;
+
+        private boolean dgrpMiRegFlg;
+
+        private boolean dgrpHkhesnJiyuFlg;
+
+        private boolean snyKyktFlg;
+
+<span class="fc" id="L380">        private final List&lt;ComprehensiveOtherMeterInfo&gt; sogoTmtrInfList = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L382">        private OutputAccumulator(LocalDate initialClosedDate) {</span>
+<span class="fc" id="L383">            this.dgrpHsenYmd = initialClosedDate;</span>
+<span class="fc" id="L384">        }</span>
+
+        private void mergeMeterReadingFlags(
+                MeterReadingResultAcquisitionComprehensiveOutput output) {
+<span class="fc bfc" id="L388" title="All 2 branches covered.">            if (Boolean.TRUE.equals(output.dgrpSyryKytiTyuFlg())) {</span>
+<span class="fc" id="L389">                dgrpSyryKytiTyuFlg = true;</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">                if (output.dgrpSyryKytiTyuMtstno() != null) {</span>
+<span class="fc" id="L391">                    dgrpSyryKytiTyuMtstno = output.dgrpSyryKytiTyuMtstno();</span>
+                }
+            }
+<span class="fc" id="L394">        }</span>
+
+        private void mergeDedicatedFlag(
+                ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput output) {
+<span class="fc bfc" id="L398" title="All 2 branches covered.">            if (Boolean.TRUE.equals(output.snyKyktFlg())) {</span>
+<span class="fc" id="L399">                snyKyktFlg = true;</span>
+            }
+<span class="fc" id="L401">        }</span>
+
+        private void addMeterInfo(ComprehensiveOtherMeterInfo meterInfo) {
+<span class="fc" id="L404">            sogoTmtrInfList.add(meterInfo);</span>
+<span class="fc" id="L405">        }</span>
+
+        private ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput toOutput() {
+<span class="fc" id="L408">            return new ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput(</span>
+<span class="fc" id="L409">                    dgrpKasFlg,</span>
+                    dgrpHsenYmd,
+<span class="fc" id="L411">                    dgrpSyryKytiTyuFlg,</span>
+                    dgrpSyryKytiTyuMtstno,
+<span class="fc" id="L413">                    dgrpMiRegFlg,</span>
+<span class="fc" id="L414">                    dgrpHkhesnJiyuFlg,</span>
+<span class="fc" id="L415">                    snyKyktFlg,</span>
+<span class="fc" id="L416">                    List.copyOf(sogoTmtrInfList));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

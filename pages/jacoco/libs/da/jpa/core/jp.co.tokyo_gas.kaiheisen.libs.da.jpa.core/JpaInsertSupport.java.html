@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JpaInsertSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">JpaInsertSupport.java</span></div><h1>JpaInsertSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.TableWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WriteColumnResolver;
+
+/**
+ * write record から解決できた公開列と insert 管理列を対象に INSERT を実行する reusable helper。
+ *
+ * @param &lt;RecordT&gt; API レコード型
+ * @param &lt;EntityT&gt; JPA エンティティ型
+ * @param &lt;ColumnT&gt; 列型
+ */
+public final class JpaInsertSupport&lt;
+        RecordT, EntityT, ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt; {
+
+    private final EntityManager entityManager;
+
+    private final String tableName;
+
+    private final TableWriteDefinition&lt;RecordT, ColumnT&gt; definition;
+
+    private final JpaEntityWriteSupport&lt;RecordT, EntityT&gt; entityWriteSupport;
+
+    /**
+     * helper を生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param tableName 物理テーブル名
+     * @param definition テーブル write 定義
+     * @param entityClass JPA エンティティ型
+     * @param entityMapper Record/Entity 変換
+     */
+    public JpaInsertSupport(
+            EntityManager entityManager,
+            String tableName,
+            TableWriteDefinition&lt;RecordT, ColumnT&gt; definition,
+            Class&lt;EntityT&gt; entityClass,
+<span class="fc" id="L48">            Function&lt;RecordT, EntityT&gt; entityMapper) {</span>
+<span class="fc" id="L49">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L50">        this.tableName = Objects.requireNonNull(tableName, &quot;tableName&quot;);</span>
+<span class="fc" id="L51">        this.definition = Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+<span class="fc" id="L52">        this.entityWriteSupport = new JpaEntityWriteSupport&lt;&gt;(entityClass, entityMapper);</span>
+<span class="fc" id="L53">    }</span>
+
+    /**
+     * write record から解決できた公開列と insert 管理列で INSERT を実行する。
+     *
+     * @param record 登録値
+     * @return 登録件数
+     */
+    public int insert(RecordT record) {
+<span class="nc" id="L62">        return insert(record, entity -&gt; { });</span>
+    }
+
+    /**
+     * write record から解決できた公開列と insert 管理列で INSERT を実行する。
+     *
+     * @param record 登録値
+     * @param insertDefaultsApplier insert 前の DA 管理列設定
+     * @return 登録件数
+     * @throws IllegalArgumentException INSERT 対象列が 1 件も解決できない場合
+     */
+    public int insert(RecordT record, Consumer&lt;EntityT&gt; insertDefaultsApplier) {
+<span class="fc" id="L74">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L75">        Objects.requireNonNull(insertDefaultsApplier, &quot;insertDefaultsApplier&quot;);</span>
+<span class="fc" id="L76">        List&lt;ColumnT&gt; insertColumns = resolveInsertColumns(record);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (insertColumns.isEmpty()) {</span>
+<span class="fc" id="L78">            throw new IllegalArgumentException(</span>
+                    &quot;No insert columns resolved for table: &quot; + tableName);
+        }
+<span class="fc" id="L81">        EntityT entity = entityWriteSupport.toEntity(record);</span>
+<span class="fc" id="L82">        insertDefaultsApplier.accept(entity);</span>
+<span class="fc" id="L83">        entityWriteSupport.complementNotNullColumns(entity, insertColumns);</span>
+
+<span class="fc" id="L85">        String sql = buildInsertSql(insertColumns);</span>
+<span class="fc" id="L86">        SqlCapture.set(sql);</span>
+<span class="fc" id="L87">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L88">        entityWriteSupport.bindColumnValues(query, insertColumns, entity, 1);</span>
+<span class="fc" id="L89">        return query.executeUpdate();</span>
+    }
+
+    private List&lt;ColumnT&gt; resolveInsertColumns(RecordT record) {
+<span class="fc" id="L93">        EnumMap&lt;ColumnT, Object&gt; publicValues = WriteColumnResolver.extractValues(definition, record);</span>
+<span class="fc" id="L94">        List&lt;ColumnT&gt; publicColumns = definition.columnOrder().stream()</span>
+<span class="fc" id="L95">                .filter(publicValues::containsKey)</span>
+<span class="fc" id="L96">                .toList();</span>
+<span class="fc" id="L97">        List&lt;ColumnT&gt; effectiveColumns =</span>
+<span class="fc" id="L98">            WriteColumnResolver.effectiveColumns(</span>
+<span class="fc" id="L99">                publicColumns, definition.insertManagedColumns());</span>
+<span class="fc" id="L100">        return definition.columnOrder().stream()</span>
+<span class="fc" id="L101">            .filter(effectiveColumns::contains)</span>
+<span class="fc" id="L102">            .toList();</span>
+    }
+
+    private String buildInsertSql(List&lt;? extends DataAccessColumn&gt; insertColumns) {
+<span class="fc" id="L106">        String columnList =</span>
+<span class="fc" id="L107">                insertColumns.stream()</span>
+<span class="fc" id="L108">                        .map(DataAccessColumn::columnName)</span>
+<span class="fc" id="L109">                        .collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc" id="L110">        String values = insertColumns.stream().map(ignored -&gt; &quot;?&quot;).collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc" id="L111">        return &quot;INSERT INTO &quot; + tableName + &quot; (&quot; + columnList + &quot;) VALUES (&quot; + values + &quot;)&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

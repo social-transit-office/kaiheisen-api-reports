@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PostClosingResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.post_closing</a> &gt; <span class="el_source">PostClosingResource.java</span></div><h1>PostClosingResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.post_closing;
+
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.Bff;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.InterFieldValidation;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.DownstreamErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.post_closing.PostClosingEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.post_closing.PostClosingRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.post_closing.PostClosingResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * BFF-004 LIVALIT閉栓落成 API。
+ */
+@Bff(identifier = &quot;BFF-004&quot;, name = &quot;LIVALIT閉栓落成&quot;)
+@Tag(name = &quot;closing&quot;, description = &quot;BFF-004 LIVALIT閉栓落成&quot;)
+@Path(PostClosingEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+public class PostClosingResource extends BaseResource&lt;PostClosingRequest&gt; {
+
+    private final PostClosingService postClosingService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム日時プロバイダ
+     * @param postClosingService 閉栓落成サービス
+     */
+    @Inject
+    public PostClosingResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            PostClosingService postClosingService) {
+<span class="fc" id="L61">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L62">        this.postClosingService = postClosingService;</span>
+<span class="fc" id="L63">    }</span>
+
+    /**
+     * 閉栓落成を実施する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    @POST
+    @Operation(
+            summary = &quot;LIVALIT閉栓落成&quot;,
+            description = &quot;小売判定の結果に応じて閉栓落成の downstream MA を呼び分ける。&quot;,
+            operationId = &quot;postClosing&quot;)
+    @RequestBody(required = true, content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = PostClosingRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常レスポンス&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = PostClosingResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(anyOf = {CommonErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(anyOf = {KaiheisenErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;default&quot;,
+            description = &quot;MA API エラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(implementation = DownstreamErrorResponse.class)),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    public Response postClosing(PostClosingRequest request) {
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L110">            throw new ValidationException(</span>
+<span class="nc" id="L111">                List.of(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;requestBody&quot;)),</span>
+                true);
+        }
+<span class="fc" id="L114">        return execute(request, () -&gt; Response.ok(postClosingService.handle(request)).build());</span>
+    }
+
+    @Override
+    protected InterFieldValidation&lt;PostClosingRequest&gt; interFieldValidation() {
+<span class="fc" id="L119">        return request -&gt; {</span>
+<span class="fc" id="L120">            List&lt;ValidationError&gt; errors = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">            if (!isBlank(request.sgyAnknNo()) &amp;&amp; !request.sgyAnknNo().startsWith(&quot;0&quot;)) {</span>
+<span class="fc" id="L122">                errors.add(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000012, &quot;sgyAnknNo&quot;));</span>
+            }
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (!isGasUsageWithinScale(request.gasSyry())) {</span>
+<span class="fc" id="L125">                errors.add(ValidationError.of(ErrorCodeConstants.ERROR_CODE_010000020, &quot;gasSyry&quot;, &quot;11&quot;, &quot;4&quot;));</span>
+            }
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">            if (&quot;4&quot;.equals(request.hesnJysb()) &amp;&amp; isBlank(request.hesnSdnShbt())) {</span>
+<span class="nc" id="L128">                errors.add(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;hesnSdnShbt&quot;));</span>
+            }
+<span class="fc bfc" id="L130" title="All 4 branches covered.">            if (!&quot;4&quot;.equals(request.hesnJysb()) &amp;&amp; isBlank(request.utidxNo())) {</span>
+<span class="fc" id="L131">                errors.add(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;utidxNo&quot;));</span>
+            }
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">            if (&quot;3&quot;.equals(request.syoriKbn()) &amp;&amp; isBlank(request.hsenErrRyCd())) {</span>
+<span class="nc" id="L134">                errors.add(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;hsenErrRyCd&quot;));</span>
+            }
+<span class="fc" id="L136">            return List.copyOf(errors);</span>
+        };
+    }
+
+    private boolean isBlank(String value) {
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">        return value == null || value.trim().isEmpty();</span>
+    }
+
+    private boolean isGasUsageWithinScale(BigDecimal gasSyry) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (gasSyry == null) {</span>
+<span class="fc" id="L146">            return true;</span>
+        }
+
+<span class="fc" id="L149">        String text = gasSyry.abs().toPlainString();</span>
+<span class="fc" id="L150">        String[] parts = text.split(&quot;\\.&quot;, 2);</span>
+
+<span class="fc" id="L152">        String integerPart = parts[0].replaceFirst(&quot;^0+(?!$)&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        String fractionPart = parts.length == 2 ? parts[1] : &quot;&quot;;</span>
+
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">        return integerPart.length() &lt;= 11 &amp;&amp; fractionPart.length() &lt;= 4;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

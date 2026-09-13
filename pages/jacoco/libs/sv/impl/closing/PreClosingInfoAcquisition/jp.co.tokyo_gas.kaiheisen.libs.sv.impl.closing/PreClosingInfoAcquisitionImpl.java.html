@@ -1,0 +1,906 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreClosingInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-preclosinginfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">PreClosingInfoAcquisitionImpl.java</span></div><h1>PreClosingInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess.CallSpecs.FIND_LATEST_BY_SVKY_NO_AND_SVKY_JTKB_LIST;
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PreClosingInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PreClosingInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GasmtrdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdHsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdSystemDateInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.KbagmstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.KnsytiInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionComprehensiveOtherMeterInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionGmtsetdSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionKnsKkaMtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionKnsKkaSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionPipelineMeterLocationInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionServiceContractMeterRelationInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionSkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionSvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionZnkiKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvckyaKiyKtymInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TaksmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ClosingTargetMeterReadingAndRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOtherMeterReadingAndRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAndRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAndRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberByMeterAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberByMeterAcquisitionOutput;
+
+/**
+ * SV-318（閉栓前情報取得）のサービス実装。
+ *
+ * &lt;p&gt;システム日時点および閉栓作業日時点のメーター設置場所情報、検針予定、検針分担エリア、
+ * 検針結果関連情報、ガスメーター情報、サービス契約情報、託送メータ情報を収集し、
+ * 閉栓前確認に必要な集約結果を返却する。
+ */
+public final class PreClosingInfoAcquisitionImpl implements PreClosingInfoAcquisition {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final KnsytiDataAccess knsytiDataAccess;
+
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    private final ServiceContractNumberByMeterAcquisition serviceContractNumberByMeterAcquisition;
+
+    private final MeterReadingResultAndRelatedInfoAcquisition meterReadingResultAndRelatedInfoAcquisition;
+
+    private final ClosingTargetMeterReadingAndRelatedInfoAcquisition closingTargetMeterReadingAndRelatedInfoAcquisition;
+
+    private final ComprehensiveOtherMeterReadingAndRelatedInfoAcquisition
+            comprehensiveOtherMeterReadingAndRelatedInfoAcquisition;
+
+    private final RequestContext requestContext;
+
+    private final String tgRetail;
+
+    private final String underContractStatus;
+
+    private final String endOfContractStatus;
+
+    private final String waitingForContractApplicationStatus;
+
+    private final String temporaryRegistrationStatus;
+
+    private final String bookRegistrationStatus;
+
+    private final String provisionalCancellationStatus;
+
+    private final String switchApplication;
+
+    /**
+     * 依存 DA / 下位 SV / 定数サービスを初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞DA
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞DA
+     * @param knsytiDataAccess 検針予定DA
+     * @param kbagmstDataAccess 検針分担エリア別ガスメーター設置場所DA
+     * @param svckyaDataAccess サービス契約DA
+     * @param gasmtrdDataAccess ガスメーター＜導管＞DA
+     * @param taksmtrDataAccess 託送メータDA
+     * @param serviceContractNumberByMeterAcquisition SV-065
+     * @param meterReadingResultAndRelatedInfoAcquisition SV-121
+     * @param closingTargetMeterReadingAndRelatedInfoAcquisition SV-122
+     * @param comprehensiveOtherMeterReadingAndRelatedInfoAcquisition SV-123
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public PreClosingInfoAcquisitionImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            KnsytiDataAccess knsytiDataAccess,
+            KbagmstDataAccess kbagmstDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            GasmtrdDataAccess gasmtrdDataAccess,
+            TaksmtrDataAccess taksmtrDataAccess,
+            ServiceContractNumberByMeterAcquisition serviceContractNumberByMeterAcquisition,
+            MeterReadingResultAndRelatedInfoAcquisition meterReadingResultAndRelatedInfoAcquisition,
+            ClosingTargetMeterReadingAndRelatedInfoAcquisition closingTargetMeterReadingAndRelatedInfoAcquisition,
+            ComprehensiveOtherMeterReadingAndRelatedInfoAcquisition
+                    comprehensiveOtherMeterReadingAndRelatedInfoAcquisition,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L149">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L150">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L151">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L152">        this.knsytiDataAccess = Objects.requireNonNull(knsytiDataAccess, &quot;knsytiDataAccess&quot;);</span>
+<span class="fc" id="L153">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L154">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L155">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L156">        this.taksmtrDataAccess = Objects.requireNonNull(taksmtrDataAccess, &quot;taksmtrDataAccess&quot;);</span>
+<span class="fc" id="L157">        this.serviceContractNumberByMeterAcquisition = Objects.requireNonNull(</span>
+                serviceContractNumberByMeterAcquisition,
+                &quot;serviceContractNumberByMeterAcquisition&quot;);
+<span class="fc" id="L160">        this.meterReadingResultAndRelatedInfoAcquisition = Objects.requireNonNull(</span>
+                meterReadingResultAndRelatedInfoAcquisition,
+                &quot;meterReadingResultAndRelatedInfoAcquisition&quot;);
+<span class="fc" id="L163">        this.closingTargetMeterReadingAndRelatedInfoAcquisition = Objects.requireNonNull(</span>
+                closingTargetMeterReadingAndRelatedInfoAcquisition,
+                &quot;closingTargetMeterReadingAndRelatedInfoAcquisition&quot;);
+<span class="fc" id="L166">        this.comprehensiveOtherMeterReadingAndRelatedInfoAcquisition = Objects.requireNonNull(</span>
+                comprehensiveOtherMeterReadingAndRelatedInfoAcquisition,
+                &quot;comprehensiveOtherMeterReadingAndRelatedInfoAcquisition&quot;);
+<span class="fc" id="L169">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L170">        CiriusConstantService nonNullCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L173">        KaiheisenConstantService nonNullKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L176">        this.tgRetail = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TG_RETAIL);
+<span class="fc" id="L180">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L184">        this.endOfContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.END_OF_CONTRACT);
+<span class="fc" id="L188">        this.waitingForContractApplicationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.WAITING_FOR_CONTRACT_APPLICATION);
+<span class="fc" id="L192">        this.temporaryRegistrationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TEMPORARY_REGISTRATION);
+<span class="fc" id="L196">        this.bookRegistrationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.BOOK_REGISTRATION);
+<span class="fc" id="L200">        this.provisionalCancellationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.PROVISIONAL_CANCELLATION);
+<span class="fc" id="L204">        this.switchApplication = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.SWITCH_APPLICATION);
+<span class="fc" id="L208">    }</span>
+
+        /**
+         * 閉栓前確認に必要な各種情報を取得し、戻り値 DTO に集約する。
+         *
+         * &lt;p&gt;ガスメーター設置場所情報、検針関連情報、ガスメーター情報を取得したうえで、
+         * TG小売の場合はサービス契約情報と総合他メーター情報を取得し、
+         * 他小売の場合は託送メータ情報を取得する。取得件数に応じた有無フラグや、
+         * 複数下位 SV の結果をまとめる集約フラグも併せて設定する。
+         *
+         * @param tgTkurKbn TG他小売区分
+         * @param gasMtstNo ガスメーター設置場所番号
+         * @param hssgYmd 閉栓作業年月日
+         * @return 閉栓前確認に必要な各種取得結果
+         */
+    @Override
+    public PreClosingInfoAcquisitionOutput execute(String tgTkurKbn, Long gasMtstNo, LocalDate hssgYmd) {
+<span class="fc" id="L225">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L226">        LocalDate systemDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L227">        YearMonth targetYearMonth = YearMonth.of(hssgYmd.getYear(), hssgYmd.getMonthValue());</span>
+
+<span class="fc" id="L229">        GmtsetdRecord systemDateGmtsetd = gmtsetdDataAccess</span>
+<span class="fc" id="L230">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, systemDate)</span>
+<span class="fc" id="L231">                .orElseThrow(() -&gt; systemDateGmtsetdNotFound(gasMtstNo, systemDate));</span>
+<span class="fc" id="L232">        GmtsetdRecord hsenDateGmtsetd = gmtsetdDataAccess</span>
+<span class="fc" id="L233">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, hssgYmd)</span>
+<span class="pc" id="L234">                .orElseThrow(() -&gt; hsenDateGmtsetdNotFound(gasMtstNo, hssgYmd));</span>
+<span class="fc" id="L235">        Optional&lt;GmtsetkRecord&gt; gmtsetk = gmtsetkDataAccess</span>
+<span class="fc" id="L236">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, hssgYmd);</span>
+<span class="fc" id="L237">        Optional&lt;KnsytiRecord&gt; knsyti = knsytiDataAccess</span>
+<span class="fc" id="L238">                .findAllByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, targetYearMonth)</span>
+<span class="fc" id="L239">                .stream()</span>
+<span class="fc" id="L240">                .findFirst();</span>
+<span class="fc" id="L241">        KbagmstRecord kbagmst = kbagmstDataAccess</span>
+<span class="fc" id="L242">                .findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, targetYearMonth)</span>
+<span class="fc" id="L243">                .orElseThrow(() -&gt; kbagmstNotFound(gasMtstNo, targetYearMonth));</span>
+<span class="fc" id="L244">        MeterReadingResultAndRelatedInfoAcquisitionOutput meterReadingResult =</span>
+<span class="fc" id="L245">                meterReadingResultAndRelatedInfoAcquisition.execute(</span>
+<span class="fc" id="L246">                        systemDateGmtsetd.kngmStbJtkb(),</span>
+                        gasMtstNo);
+<span class="fc" id="L248">        ClosingTargetMeterReadingAndRelatedInfoAcquisitionOutput closingTargetInfo =</span>
+<span class="fc" id="L249">                closingTargetMeterReadingAndRelatedInfoAcquisition.execute(</span>
+<span class="fc" id="L250">                        hsenDateGmtsetd.ckrtGmscJtkb(),</span>
+<span class="fc" id="L251">                        hsenDateGmtsetd.szcGkkCd(),</span>
+<span class="fc" id="L252">                        hsenDateGmtsetd.szcCmazCd(),</span>
+<span class="fc" id="L253">                        hsenDateGmtsetd.szcMchCd(),</span>
+<span class="fc" id="L254">                        hsenDateGmtsetd.mtgMtstNo(),</span>
+                        gasMtstNo,
+<span class="fc" id="L256">                        systemDateGmtsetd.gmtKhsJtkb(),</span>
+<span class="fc" id="L257">                        hsenDateGmtsetd.hesnJysb(),</span>
+<span class="fc" id="L258">                        systemDateGmtsetd.kngmStbJtkb(),</span>
+                        hssgYmd);
+
+<span class="fc" id="L261">        List&lt;GasmtrdRecord&gt; gasmtrdRecords =</span>
+<span class="fc" id="L262">                gasmtrdDataAccess.findAllByTtkGmsbNoAndGmtThkgYmd(gasMtstNo, null);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        boolean gasmtrdUmFlg = !gasmtrdRecords.isEmpty();</span>
+<span class="fc" id="L264">        GasmtrdRecord gasmtrdRecord = gasmtrdRecords.stream().findFirst().orElse(null);</span>
+
+<span class="fc" id="L266">        List&lt;String&gt; switchReservationStatusList = List.of(</span>
+                temporaryRegistrationStatus,
+                provisionalCancellationStatus);
+<span class="fc" id="L269">        List&lt;TaksmtrRecord&gt; switchReservations = taksmtrDataAccess</span>
+<span class="fc" id="L270">                .findAllByGmtSetNoAndTaksKyJtCdListAndTaksCisHntCdOrderByTaksStartYmdDesc(</span>
+                        gasMtstNo,
+                        switchReservationStatusList,
+                        switchApplication);
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        boolean swYykUmuFlg = !switchReservations.isEmpty();</span>
+<span class="fc" id="L275">        TaksmtrRecord switchReservation = switchReservations.stream().findFirst().orElse(null);</span>
+
+<span class="pc bpc" id="L277" title="1 of 4 branches missed.">        boolean tgRetailTarget = Objects.equals(&quot;&quot;, tgTkurKbn) || Objects.equals(tgRetail, tgTkurKbn);</span>
+<span class="fc" id="L278">        ServiceContractNumberByMeterAcquisitionOutput serviceContractNumber = null;</span>
+<span class="fc" id="L279">        SvckyaRecord svckya = null;</span>
+<span class="fc" id="L280">        SvckyaRecord waitingContract = null;</span>
+<span class="fc" id="L281">        List&lt;SvckyaRecord&gt; waitingContractList = List.of();</span>
+<span class="fc" id="L282">        ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput comprehensiveOtherMeter = null;</span>
+<span class="fc" id="L283">        List&lt;TaksmtrRecord&gt; otherRetailTaksmtrList = List.of();</span>
+<span class="fc" id="L284">        TaksmtrRecord transportMeterInfo = switchReservation;</span>
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        if (tgRetailTarget) {</span>
+<span class="fc" id="L287">            serviceContractNumber = serviceContractNumberByMeterAcquisition.execute(</span>
+                    gasMtstNo,
+<span class="fc" id="L289">                    hsenDateGmtsetd.ckrtGmscJtkb(),</span>
+<span class="fc" id="L290">                    hsenDateGmtsetd.mtgMtstNo(),</span>
+                    hssgYmd);
+<span class="fc" id="L292">            List&lt;String&gt; svkyStatusList = List.of(</span>
+                    underContractStatus,
+                    endOfContractStatus);
+<span class="fc" id="L295">            ServiceContractNumberByMeterAcquisitionOutput finalServiceContractNumber = serviceContractNumber;</span>
+<span class="fc" id="L296">            svckya = svckyaDataAccess</span>
+<span class="fc" id="L297">                    .findLatestBySvkyNoAndSvkyJtkbList(serviceContractNumber.svkyNo(), svkyStatusList)</span>
+<span class="fc" id="L298">                    .orElseThrow(() -&gt; svckyaNotFound(finalServiceContractNumber.svkyNo(), svkyStatusList));</span>
+<span class="fc" id="L299">            waitingContractList = svckyaDataAccess.findAllBySvkyNoAndSvkyJtkb(</span>
+<span class="fc" id="L300">                    serviceContractNumber.svkyNo(),</span>
+                    waitingForContractApplicationStatus);
+<span class="fc" id="L302">            waitingContract = waitingContractList.stream().findFirst().orElse(null);</span>
+<span class="fc" id="L303">            comprehensiveOtherMeter = comprehensiveOtherMeterReadingAndRelatedInfoAcquisition.execute(</span>
+                    Boolean.TRUE,
+<span class="fc" id="L305">                    hsenDateGmtsetd.ckrtGmscJtkb(),</span>
+<span class="fc" id="L306">                    serviceContractNumber.svkyNo(),</span>
+                    gasMtstNo,
+<span class="fc" id="L308">                    serviceContractNumber.rkkiSttYmd(),</span>
+<span class="fc" id="L309">                    serviceContractNumber.rkkiEndYmd(),</span>
+                    hssgYmd);
+<span class="fc" id="L311">        } else {</span>
+<span class="fc" id="L312">            List&lt;String&gt; otherRetailContractStatusList = List.of(</span>
+                    bookRegistrationStatus,
+                    provisionalCancellationStatus);
+<span class="fc" id="L315">            otherRetailTaksmtrList = taksmtrDataAccess.findAllByGmtSetNoAndTaksKyJtCdList(</span>
+                    gasMtstNo,
+                    otherRetailContractStatusList);
+<span class="fc" id="L318">            transportMeterInfo = selectOtherRetailTaksmtrRecord(otherRetailTaksmtrList);</span>
+        }
+
+<span class="fc" id="L321">        return new PreClosingInfoAcquisitionOutput(</span>
+<span class="fc" id="L322">                toGmtsetdSystemDateInf(systemDateGmtsetd),</span>
+<span class="fc" id="L323">                toGmtsetdHsenSaymdInf(hsenDateGmtsetd),</span>
+<span class="fc" id="L324">                gmtsetk.map(this::toGmtsetkInf).orElse(null),</span>
+<span class="fc" id="L325">                knsyti.map(this::toKnsytiInf).orElse(null),</span>
+<span class="fc" id="L326">                toKbagmstInf(kbagmst),</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">                svckya != null ? toSvckyaInf(svckya) : null,</span>
+<span class="fc" id="L328">                toSvckyaKiyKtymInf(waitingContract),</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">                serviceContractNumber != null ? toSvmstkrInf(serviceContractNumber) : null,</span>
+<span class="fc" id="L330">                toClosingSkinKnkkInf(</span>
+<span class="fc" id="L331">                        meterReadingResult.skinKnkkInf(),</span>
+<span class="fc" id="L332">                        meterReadingResult.hsenHkkKnuKigenYmd()),</span>
+<span class="fc" id="L333">                meterReadingResult.hsenHkkKnuKigenYmd(),</span>
+<span class="fc" id="L334">                toClosingZnkiKnkkInf(meterReadingResult.znkiKnkkInf()),</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">                gasmtrdRecord != null ? toGasmtrdInf(gasmtrdRecord) : null,</span>
+<span class="fc" id="L336">                closingTargetInfo.knsKkaSnyInf().skinKnkkInfList().size(),</span>
+<span class="fc" id="L337">                toClosingGmtsetdSnyInf(closingTargetInfo.gmtsetdSnyInf()),</span>
+<span class="fc" id="L338">                toClosingKnsKkaMtInf(</span>
+<span class="fc" id="L339">                        closingTargetInfo.knsKkaMtInf(),</span>
+<span class="fc" id="L340">                        meterReadingResult.hsenHkkKnuKigenYmd()),</span>
+<span class="fc" id="L341">                toClosingKnsKkaSnyInf(closingTargetInfo.knsKkaSnyInf()),</span>
+<span class="fc" id="L342">                toClosingComprehensiveOtherMeterInfoList(comprehensiveOtherMeter),</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">                transportMeterInfo != null ? toTaksmtrInf(transportMeterInfo) : null,</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">                gasmtrdUmFlg,</span>
+<span class="fc" id="L345">                serviceContractNumber != null,</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">                !otherRetailTaksmtrList.isEmpty(),</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                !waitingContractList.isEmpty(),</span>
+<span class="fc" id="L348">                closingTargetInfo.knsKkaSnyInf().snyHsngKnsFlg(),</span>
+<span class="fc" id="L349">                closingTargetInfo.dgrpHesnMturFlg(),</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">                comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpKasFlg() : null,</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpMiRegFlg() : Boolean.FALSE,</span>
+<span class="fc" id="L352">                closingTargetInfo.snyKasFlg(),</span>
+<span class="fc" id="L353">                meterReadingResult.gmsrKtumFlg(),</span>
+<span class="fc" id="L354">                closingTargetInfo.knsKkaMtInf().mtgSyryKytiTyuFlg(),</span>
+<span class="fc" id="L355">                closingTargetInfo.knsKkaSnyInf().snySyryKytiTyuFlg(),</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">                comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpSyryKytiTyuFlg() : null,</span>
+<span class="fc" id="L357">                closingTargetInfo.knsKkaMtInf().mtgSyryKytiTyuMtstno(),</span>
+<span class="fc" id="L358">                closingTargetInfo.knsKkaSnyInf().snySyryKytiTyuMtstno(),</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpSyryKytiTyuMtstno() : null,</span>
+<span class="fc" id="L360">                aggregateTrue(</span>
+<span class="fc" id="L361">                        closingTargetInfo.knsKkaSnyInf().snyKyktFlg(),</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                        comprehensiveOtherMeter != null ? comprehensiveOtherMeter.snyKyktFlg() : null),</span>
+<span class="fc" id="L363">                swYykUmuFlg,</span>
+<span class="fc" id="L364">                aggregateTrue(</span>
+<span class="fc" id="L365">                        closingTargetInfo.dgrpHkhesnJiyuFlg(),</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">                        comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpHkhesnJiyuFlg() : null),</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">                comprehensiveOtherMeter != null ? comprehensiveOtherMeter.dgrpHsenYmd() : null);</span>
+    }
+
+    private PreClosingInfoAcquisitionSkinKnkkInf toClosingSkinKnkkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf value,
+            LocalDate closingReportDeadline) {
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L374">            return null;</span>
+        }
+<span class="fc" id="L376">        return new PreClosingInfoAcquisitionSkinKnkkInf(</span>
+<span class="fc" id="L377">                value.knsYmd(),</span>
+<span class="fc" id="L378">                value.knsKkaTsno(),</span>
+<span class="fc" id="L379">                value.gmtShjSu(),</span>
+<span class="fc" id="L380">                value.knkkSsjyShbt(),</span>
+<span class="fc" id="L381">                value.knkkKtmeFlg(),</span>
+<span class="fc" id="L382">                value.sjskKbn(),</span>
+<span class="fc" id="L383">                value.knsJsjkCd(),</span>
+                closingReportDeadline);
+    }
+
+    private PreClosingInfoAcquisitionSkinKnkkInf toClosingSkinKnkkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.RecentMeterReadingInfo value) {
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L390">            return null;</span>
+        }
+<span class="fc" id="L392">        return new PreClosingInfoAcquisitionSkinKnkkInf(</span>
+<span class="fc" id="L393">                value.knsYmd(),</span>
+<span class="fc" id="L394">                value.knsKkaTsno(),</span>
+<span class="fc" id="L395">                value.gmtShjSu(),</span>
+<span class="fc" id="L396">                value.knkkSsjyShbt(),</span>
+<span class="fc" id="L397">                value.knkkKtmeFlg(),</span>
+<span class="fc" id="L398">                value.sjskKbn(),</span>
+<span class="fc" id="L399">                value.knsJsjkCd(),</span>
+<span class="fc" id="L400">                value.hsenHkkKnuKigenYmd());</span>
+    }
+
+    private PreClosingInfoAcquisitionZnkiKnkkInf toClosingZnkiKnkkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ZnkiKnkkInf value) {
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L406">            return null;</span>
+        }
+<span class="fc" id="L408">        return new PreClosingInfoAcquisitionZnkiKnkkInf(</span>
+<span class="fc" id="L409">                value.knsYmd(),</span>
+<span class="fc" id="L410">                value.knsKkaTsno(),</span>
+<span class="fc" id="L411">                value.gmtShjSu(),</span>
+<span class="fc" id="L412">                value.knkkSsjyShbt(),</span>
+<span class="fc" id="L413">                value.knkkKtmeFlg(),</span>
+<span class="fc" id="L414">                value.sjskKbn(),</span>
+<span class="fc" id="L415">                value.knsJsjkCd(),</span>
+<span class="fc" id="L416">                value.tksuSvkyNo());</span>
+    }
+
+    private PreClosingInfoAcquisitionGmtsetdSnyInf toClosingGmtsetdSnyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GmtsetdSnyInf value) {
+<span class="pc bpc" id="L421" title="2 of 4 branches missed.">        if (value == null || value.snyInfList() == null) {</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">            return value == null ? null : new PreClosingInfoAcquisitionGmtsetdSnyInf(List.of());</span>
+        }
+<span class="fc" id="L424">        return new PreClosingInfoAcquisitionGmtsetdSnyInf(</span>
+<span class="fc" id="L425">                value.snyInfList().stream().map(this::toClosingSnyInf).toList());</span>
+    }
+
+    private PreClosingInfoAcquisitionSnyInf toClosingSnyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SnyInf value) {
+<span class="nc" id="L430">        return new PreClosingInfoAcquisitionSnyInf(</span>
+<span class="nc" id="L431">                value.gasMtstNo(),</span>
+<span class="nc" id="L432">                value.tkysYmd(),</span>
+<span class="nc" id="L433">                value.tyenYmd(),</span>
+<span class="nc" id="L434">                value.kngmStbJtkb(),</span>
+<span class="nc" id="L435">                value.gmtKhsJtkb(),</span>
+<span class="nc" id="L436">                value.szcGkkCd(),</span>
+<span class="nc" id="L437">                value.szcCmazCd(),</span>
+<span class="nc" id="L438">                value.szcMchCd(),</span>
+<span class="nc" id="L439">                value.cbgSuj1(),</span>
+<span class="nc" id="L440">                value.cbgKn2(),</span>
+<span class="nc" id="L441">                value.cbgKn3(),</span>
+<span class="nc" id="L442">                value.cbgKn4(),</span>
+<span class="nc" id="L443">                value.bldNo(),</span>
+<span class="nc" id="L444">                value.tunoKn(),</span>
+<span class="nc" id="L445">                value.hynKn(),</span>
+<span class="nc" id="L446">                value.htuFlg(),</span>
+<span class="nc" id="L447">                value.ohmKj(),</span>
+<span class="nc" id="L448">                value.kasYmd(),</span>
+<span class="nc" id="L449">                value.hesnYmd(),</span>
+<span class="nc" id="L450">                value.kasJysb(),</span>
+<span class="nc" id="L451">                value.hesnJysb(),</span>
+<span class="nc" id="L452">                value.tkshGmsbShbt(),</span>
+<span class="nc" id="L453">                value.gtyMtscKbn(),</span>
+<span class="nc" id="L454">                value.tksuMtscCd(),</span>
+<span class="nc" id="L455">                value.kkyuGmtKbn(),</span>
+<span class="nc" id="L456">                value.ckrtGmscJtkb(),</span>
+<span class="nc" id="L457">                value.mtgMtstNo(),</span>
+<span class="nc" id="L458">                value.snstGkjYm(),</span>
+<span class="nc" id="L459">                value.snstGkjShbt(),</span>
+<span class="nc" id="L460">                value.tusoGmtkYmd(),</span>
+<span class="nc" id="L461">                value.gmtTkeYmd(),</span>
+<span class="nc" id="L462">                value.knckKbn(),</span>
+<span class="nc" id="L463">                value.bldKbn(),</span>
+<span class="nc" id="L464">                value.akySnstFlg(),</span>
+<span class="nc" id="L465">                value.gasYtCd(),</span>
+<span class="nc" id="L466">                value.lpgKbn(),</span>
+<span class="nc" id="L467">                value.ntryKbn(),</span>
+<span class="nc" id="L468">                value.gmtKykaShbt(),</span>
+<span class="nc" id="L469">                value.jkarSu(),</span>
+<span class="nc" id="L470">                value.gmicDbriShbt(),</span>
+<span class="nc" id="L471">                value.gmicSbriShbt(),</span>
+<span class="nc" id="L472">                value.knsKhFlg(),</span>
+<span class="nc" id="L473">                value.gmicTsjhMem(),</span>
+<span class="nc" id="L474">                value.kkysSgykKbn(),</span>
+<span class="nc" id="L475">                value.kktkYuhrShbt(),</span>
+<span class="nc" id="L476">                value.niknSdksShbt(),</span>
+<span class="nc" id="L477">                value.niknTkkyYmd(),</span>
+<span class="nc" id="L478">                value.chukThkgFlg(),</span>
+<span class="nc" id="L479">                value.hesnSdnShbt(),</span>
+<span class="nc" id="L480">                value.mcnTkfnJysb(),</span>
+<span class="nc" id="L481">                value.sdtgSchFlg(),</span>
+<span class="nc" id="L482">                value.sdtgTrkrShbt(),</span>
+<span class="nc" id="L483">                value.sdtgTtkYmd(),</span>
+<span class="nc" id="L484">                value.sdtgTkfnJysb(),</span>
+<span class="nc" id="L485">                value.smpCd(),</span>
+<span class="nc" id="L486">                value.ksjGhtbCd(),</span>
+<span class="nc" id="L487">                value.kusYmd(),</span>
+<span class="nc" id="L488">                value.kysfYmd(),</span>
+<span class="nc" id="L489">                value.kngmSbmsYmd(),</span>
+<span class="nc" id="L490">                value.recUpdJnjNo());</span>
+    }
+
+    private PreClosingInfoAcquisitionKnsKkaMtInf toClosingKnsKkaMtInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaMtInf value,
+            LocalDate closingReportDeadline) {
+<span class="pc bpc" id="L496" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L497">            return null;</span>
+        }
+<span class="fc" id="L499">        return new PreClosingInfoAcquisitionKnsKkaMtInf(</span>
+<span class="fc" id="L500">                toClosingSkinKnkkInf(value.skinKnkkInf(), closingReportDeadline),</span>
+                closingReportDeadline,
+<span class="fc" id="L502">                value.mtgSyryKytiTyuFlg(),</span>
+<span class="fc" id="L503">                value.mtgSyryKytiTyuMtstno());</span>
+    }
+
+    private PreClosingInfoAcquisitionKnsKkaSnyInf toClosingKnsKkaSnyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaSnyInf value) {
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L509">            return null;</span>
+        }
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">        List&lt;PreClosingInfoAcquisitionSkinKnkkInf&gt; readings = value.skinKnkkInfList() == null</span>
+<span class="nc" id="L512">                ? null</span>
+<span class="fc" id="L513">                : value.skinKnkkInfList().stream()</span>
+<span class="fc" id="L514">                        .map(reading -&gt; toClosingSkinKnkkInf(reading, null))</span>
+<span class="fc" id="L515">                        .toList();</span>
+<span class="fc" id="L516">        return new PreClosingInfoAcquisitionKnsKkaSnyInf(</span>
+                readings,
+<span class="fc" id="L518">                value.snyHsngKnsFlg(),</span>
+<span class="fc" id="L519">                value.snyKyktFlg(),</span>
+<span class="fc" id="L520">                value.snySyryKytiTyuFlg(),</span>
+<span class="fc" id="L521">                value.snySyryKytiTyuMtstno());</span>
+    }
+
+    private List&lt;PreClosingInfoAcquisitionComprehensiveOtherMeterInfo&gt; toClosingComprehensiveOtherMeterInfoList(
+            ComprehensiveOtherMeterReadingAndRelatedInfoAcquisitionOutput value) {
+<span class="pc bpc" id="L526" title="1 of 4 branches missed.">        if (value == null || value.sogoTmtrInfList() == null) {</span>
+<span class="fc" id="L527">            return null;</span>
+        }
+<span class="fc" id="L529">        return value.sogoTmtrInfList().stream()</span>
+<span class="fc" id="L530">                .map(this::toClosingComprehensiveOtherMeterInfo)</span>
+<span class="fc" id="L531">                .toList();</span>
+    }
+
+    private PreClosingInfoAcquisitionComprehensiveOtherMeterInfo toClosingComprehensiveOtherMeterInfo(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ComprehensiveOtherMeterInfo value) {
+<span class="fc" id="L536">        return new PreClosingInfoAcquisitionComprehensiveOtherMeterInfo(</span>
+<span class="fc" id="L537">                toClosingServiceContractMeterRelationInfo(value.svmstkrInf()),</span>
+<span class="fc" id="L538">                toClosingPipelineMeterLocationInfo(value.gmtsetdInf()),</span>
+<span class="fc" id="L539">                toClosingSkinKnkkInf(value.skinKnkkInf()));</span>
+    }
+
+    private PreClosingInfoAcquisitionServiceContractMeterRelationInfo toClosingServiceContractMeterRelationInfo(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ServiceContractMeterRelationInfo value) {
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L545">            return null;</span>
+        }
+<span class="fc" id="L547">        return new PreClosingInfoAcquisitionServiceContractMeterRelationInfo(</span>
+<span class="fc" id="L548">                value.mtstNo(),</span>
+<span class="fc" id="L549">                value.svkyNo(),</span>
+<span class="fc" id="L550">                value.skno(),</span>
+<span class="fc" id="L551">                value.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L552">                value.rkkiEndYmd(),</span>
+<span class="fc" id="L553">                value.recUpdJnjNo());</span>
+    }
+
+    private PreClosingInfoAcquisitionPipelineMeterLocationInfo toClosingPipelineMeterLocationInfo(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.PipelineMeterLocationInfo value) {
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L559">            return null;</span>
+        }
+<span class="fc" id="L561">        return new PreClosingInfoAcquisitionPipelineMeterLocationInfo(</span>
+<span class="fc" id="L562">                value.kngmStbJtkb(),</span>
+<span class="fc" id="L563">                value.ckrtGmscJtkb());</span>
+    }
+
+        /**
+         * 2 つの Boolean を OR 集約して返す。
+         *
+         * &lt;p&gt;両方とも {@code null} の場合のみ {@code null} を返し、
+         * それ以外はどちらか一方でも {@code true} であれば {@code true} を返す。
+         *
+         * @param left 集約対象の左値
+         * @param right 集約対象の右値
+         * @return OR 集約結果
+         */
+    private Boolean aggregateTrue(Boolean left, Boolean right) {
+<span class="pc bpc" id="L577" title="3 of 4 branches missed.">        if (left == null &amp;&amp; right == null) {</span>
+<span class="nc" id="L578">            return null;</span>
+        }
+<span class="fc bfc" id="L580" title="All 4 branches covered.">        return Boolean.TRUE.equals(left) || Boolean.TRUE.equals(right);</span>
+    }
+
+    private GmtsetdSystemDateInf toGmtsetdSystemDateInf(GmtsetdRecord record) {
+<span class="fc" id="L584">        return new GmtsetdSystemDateInf(</span>
+<span class="fc" id="L585">                record.gasMtstNo(),</span>
+<span class="fc" id="L586">                record.tkysYmd(),</span>
+<span class="fc" id="L587">                record.tyenYmd(),</span>
+<span class="fc" id="L588">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L589">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L590">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L591">                record.szcGkkCd(),</span>
+<span class="fc" id="L592">                record.szcMchCd(),</span>
+<span class="fc" id="L593">                record.szcCmazCd(),</span>
+<span class="fc" id="L594">                record.cbgSuj1(),</span>
+<span class="fc" id="L595">                record.cbgKn2(),</span>
+<span class="fc" id="L596">                record.cbgKn3(),</span>
+<span class="fc" id="L597">                record.cbgKn4(),</span>
+<span class="fc" id="L598">                record.bldNo(),</span>
+<span class="fc" id="L599">                record.tunoKn(),</span>
+<span class="fc" id="L600">                record.hynKn(),</span>
+<span class="fc" id="L601">                record.htuFlg(),</span>
+<span class="fc" id="L602">                record.ohmKj(),</span>
+<span class="fc" id="L603">                record.kasYmd(),</span>
+<span class="fc" id="L604">                record.hesnYmd(),</span>
+<span class="fc" id="L605">                record.kasJysb(),</span>
+<span class="fc" id="L606">                record.hesnJysb(),</span>
+<span class="fc" id="L607">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L608">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L609">                record.tksuMtscCd(),</span>
+<span class="fc" id="L610">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L611">                record.mtgMtstNo(),</span>
+<span class="fc" id="L612">                record.snstGkjYm(),</span>
+<span class="fc" id="L613">                record.snstGkjShbt(),</span>
+<span class="fc" id="L614">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L615">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L616">                record.knckKbn(),</span>
+<span class="fc" id="L617">                record.bldKbn(),</span>
+<span class="fc" id="L618">                record.akySnstFlg(),</span>
+<span class="fc" id="L619">                record.gasYtCd(),</span>
+<span class="fc" id="L620">                record.lpgKbn(),</span>
+<span class="fc" id="L621">                record.ntryKbn(),</span>
+<span class="fc" id="L622">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L623">                record.jkarSu(),</span>
+<span class="fc" id="L624">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L625">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L626">                record.knsKhFlg(),</span>
+<span class="fc" id="L627">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L628">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L629">                record.niknSdksShbt(),</span>
+<span class="fc" id="L630">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L631">                record.chukThkgFlg(),</span>
+<span class="fc" id="L632">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L633">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L634">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L635">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L636">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L637">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L638">                record.smpCd(),</span>
+<span class="fc" id="L639">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L640">                record.kusYmd(),</span>
+<span class="fc" id="L641">                record.kysfYmd(),</span>
+<span class="fc" id="L642">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L643">                record.recUpdJnjNo(),</span>
+<span class="fc" id="L644">                record.gmicTsjhMem());</span>
+    }
+
+    private GmtsetdHsenSaymdInf toGmtsetdHsenSaymdInf(GmtsetdRecord record) {
+<span class="fc" id="L648">        return new GmtsetdHsenSaymdInf(</span>
+<span class="fc" id="L649">                record.gasMtstNo(),</span>
+<span class="fc" id="L650">                record.tkysYmd(),</span>
+<span class="fc" id="L651">                record.tyenYmd(),</span>
+<span class="fc" id="L652">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L653">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L654">                record.szcGkkCd(),</span>
+<span class="fc" id="L655">                record.szcMchCd(),</span>
+<span class="fc" id="L656">                record.szcCmazCd(),</span>
+<span class="fc" id="L657">                record.cbgSuj1(),</span>
+<span class="fc" id="L658">                record.cbgKn2(),</span>
+<span class="fc" id="L659">                record.cbgKn3(),</span>
+<span class="fc" id="L660">                record.cbgKn4(),</span>
+<span class="fc" id="L661">                record.bldNo(),</span>
+<span class="fc" id="L662">                record.tunoKn(),</span>
+<span class="fc" id="L663">                record.hynKn(),</span>
+<span class="fc" id="L664">                record.htuFlg(),</span>
+<span class="fc" id="L665">                record.ohmKj(),</span>
+<span class="fc" id="L666">                record.kasYmd(),</span>
+<span class="fc" id="L667">                record.hesnYmd(),</span>
+<span class="fc" id="L668">                record.kasJysb(),</span>
+<span class="fc" id="L669">                record.hesnJysb(),</span>
+<span class="fc" id="L670">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L671">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L672">                record.tksuMtscCd(),</span>
+<span class="fc" id="L673">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L674">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L675">                record.mtgMtstNo(),</span>
+<span class="fc" id="L676">                record.snstGkjYm(),</span>
+<span class="fc" id="L677">                record.snstGkjShbt(),</span>
+<span class="fc" id="L678">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L679">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L680">                record.knckKbn(),</span>
+<span class="fc" id="L681">                record.bldKbn(),</span>
+<span class="fc" id="L682">                record.akySnstFlg(),</span>
+<span class="fc" id="L683">                record.gasYtCd(),</span>
+<span class="fc" id="L684">                record.lpgKbn(),</span>
+<span class="fc" id="L685">                record.ntryKbn(),</span>
+<span class="fc" id="L686">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L687">                record.jkarSu(),</span>
+<span class="fc" id="L688">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L689">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L690">                record.knsKhFlg(),</span>
+<span class="fc" id="L691">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L692">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L693">                record.niknSdksShbt(),</span>
+<span class="fc" id="L694">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L695">                record.chukThkgFlg(),</span>
+<span class="fc" id="L696">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L697">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L698">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L699">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L700">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L701">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L702">                record.smpCd(),</span>
+<span class="fc" id="L703">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L704">                record.kusYmd(),</span>
+<span class="fc" id="L705">                record.kysfYmd(),</span>
+<span class="fc" id="L706">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L707">                record.recUpdJnjNo(),</span>
+<span class="fc" id="L708">                record.gmicTsjhMem());</span>
+    }
+
+    private GmtsetkInf toGmtsetkInf(GmtsetkRecord record) {
+<span class="fc" id="L712">        return new GmtsetkInf(</span>
+<span class="fc" id="L713">                record.gasMtstNo(),</span>
+<span class="fc" id="L714">                record.tkysYmd(),</span>
+<span class="fc" id="L715">                record.tyenYmd(),</span>
+<span class="fc" id="L716">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L717">                record.ohmKj(),</span>
+<span class="fc" id="L718">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L719">                record.kasYmd(),</span>
+<span class="fc" id="L720">                record.hesnYmd(),</span>
+<span class="fc" id="L721">                record.kasJysb(),</span>
+<span class="fc" id="L722">                record.hesnJysb(),</span>
+<span class="fc" id="L723">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L724">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L725">                record.tksuMtscCd(),</span>
+<span class="fc" id="L726">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L727">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L728">                record.mtgMtstNo(),</span>
+<span class="fc" id="L729">                record.snstGkjYm(),</span>
+<span class="fc" id="L730">                record.snstGkjShbt(),</span>
+<span class="fc" id="L731">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L732">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L733">                record.knckKbn(),</span>
+<span class="fc" id="L734">                record.bldKbn(),</span>
+<span class="fc" id="L735">                record.akySnstFlg(),</span>
+<span class="fc" id="L736">                record.gasYtCd(),</span>
+<span class="fc" id="L737">                record.lpgKbn(),</span>
+<span class="fc" id="L738">                record.ntryKbn(),</span>
+<span class="fc" id="L739">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L740">                record.jkarSu(),</span>
+<span class="fc" id="L741">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L742">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L743">                record.knsKhFlg(),</span>
+<span class="fc" id="L744">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L745">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L746">                record.niknSdksShbt(),</span>
+<span class="fc" id="L747">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L748">                record.chukThkgFlg(),</span>
+<span class="fc" id="L749">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L750">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L751">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L752">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L753">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L754">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L755">                record.smpCd(),</span>
+<span class="fc" id="L756">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L757">                record.kusYmd(),</span>
+<span class="fc" id="L758">                record.kysfYmd(),</span>
+<span class="fc" id="L759">                record.kkyCitnTtno(),</span>
+<span class="fc" id="L760">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L761">                record.recUpdJnjNo(),</span>
+<span class="fc" id="L762">                record.gmicTsjhMem());</span>
+    }
+
+    private KnsytiInf toKnsytiInf(KnsytiRecord record) {
+<span class="fc" id="L766">        return new KnsytiInf(record.knsHuhuKbn(), record.stkbKbn(), record.shtiKskbNo());</span>
+    }
+
+    private KbagmstInf toKbagmstInf(KbagmstRecord record) {
+<span class="fc" id="L770">        return new KbagmstInf(record.kbabCktkCd(), record.kbabKtnCd());</span>
+    }
+
+    private SvckyaInf toSvckyaInf(SvckyaRecord record) {
+<span class="fc" id="L774">        return new SvckyaInf(</span>
+<span class="fc" id="L775">                record.svkyNo(),</span>
+<span class="fc" id="L776">                record.skno(),</span>
+<span class="fc" id="L777">                record.kyttSkno(),</span>
+<span class="fc" id="L778">                record.kyttTsno(),</span>
+<span class="fc" id="L779">                record.svkyJtkb(),</span>
+<span class="fc" id="L780">                record.svkySttJysb(),</span>
+<span class="fc" id="L781">                record.ksbTkyJysb(),</span>
+<span class="fc" id="L782">                record.svkyEndJysb(),</span>
+<span class="fc" id="L783">                record.rkkiSttYmd(),</span>
+<span class="fc" id="L784">                record.rkkiEndYmd(),</span>
+<span class="fc" id="L785">                record.ksbSttYmd(),</span>
+<span class="fc" id="L786">                record.ksbEndYmd(),</span>
+<span class="fc" id="L787">                record.ksbStytYmd(),</span>
+<span class="fc" id="L788">                record.ksbEnytYmd(),</span>
+<span class="fc" id="L789">                record.kykYtiYmd(),</span>
+<span class="fc" id="L790">                record.svcRyksYmd(),</span>
+<span class="fc" id="L791">                record.svkyTiktYmd(),</span>
+<span class="fc" id="L792">                record.ksbTiktYmd(),</span>
+<span class="fc" id="L793">                record.szirHtyoYmd(),</span>
+<span class="fc" id="L794">                record.sqtiKiyNo(),</span>
+<span class="fc" id="L795">                record.syoKyoTrno(),</span>
+<span class="fc" id="L796">                record.kysKyoTrno(),</span>
+<span class="fc" id="L797">                record.byssUmFlg(),</span>
+<span class="fc" id="L798">                record.shziKbn(),</span>
+<span class="fc" id="L799">                record.kiyShbt(),</span>
+<span class="fc" id="L800">                record.gasYtCd(),</span>
+<span class="fc" id="L801">                record.sziKziKbn(),</span>
+<span class="fc" id="L802">                record.syaKbn(),</span>
+<span class="fc" id="L803">                record.recUpdJnjNo());</span>
+    }
+
+    private SvckyaKiyKtymInf toSvckyaKiyKtymInf(SvckyaRecord record) {
+<span class="pc bpc" id="L807" title="1 of 4 branches missed.">        if (record == null || !Objects.equals(record.svkyJtkb(), waitingForContractApplicationStatus)) {</span>
+<span class="fc" id="L808">            return null;</span>
+        }
+<span class="fc" id="L810">        return new SvckyaKiyKtymInf(</span>
+<span class="fc" id="L811">                record.svkyNo(),</span>
+<span class="fc" id="L812">                record.skno(),</span>
+<span class="fc" id="L813">                record.ksbStytYmd(),</span>
+<span class="fc" id="L814">                record.kiyShbt(),</span>
+<span class="fc" id="L815">                record.recUpdJnjNo());</span>
+    }
+
+    private PreClosingInfoAcquisitionSvmstkrInf toSvmstkrInf(
+            ServiceContractNumberByMeterAcquisitionOutput output) {
+<span class="fc" id="L820">        return new PreClosingInfoAcquisitionSvmstkrInf(</span>
+<span class="fc" id="L821">                output.mtstNo(),</span>
+<span class="fc" id="L822">                output.svkyNo(),</span>
+<span class="fc" id="L823">                output.skno(),</span>
+<span class="fc" id="L824">                output.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L825">                output.rkkiEndYmd(),</span>
+<span class="fc" id="L826">                output.recUpdJnjNo());</span>
+    }
+
+    private GasmtrdInf toGasmtrdInf(GasmtrdRecord record) {
+<span class="fc" id="L830">        return new GasmtrdInf(</span>
+<span class="fc" id="L831">                record.gmb(),</span>
+<span class="fc" id="L832">                record.gmbTsno(),</span>
+<span class="fc" id="L833">                record.gmtkYmd(),</span>
+<span class="fc" id="L834">                record.gmtThkgJysb(),</span>
+<span class="fc" id="L835">                record.ktyYm(),</span>
+<span class="fc" id="L836">                record.gmkShbt(),</span>
+<span class="fc" id="L837">                record.gmtGusu(),</span>
+<span class="fc" id="L838">                record.sjsuMincSu(),</span>
+<span class="fc" id="L839">                record.sjskHticSu());</span>
+    }
+
+    private TaksmtrInf toTaksmtrInf(TaksmtrRecord record) {
+<span class="fc" id="L843">        return new TaksmtrInf(</span>
+<span class="fc" id="L844">                record.takskyNo(),</span>
+<span class="fc" id="L845">                record.taksKyJtCd(),</span>
+<span class="fc" id="L846">                record.taksCisHntCd(),</span>
+<span class="fc" id="L847">                record.taksEndYmd(),</span>
+<span class="fc" id="L848">                record.hkkmItiNo(),</span>
+<span class="fc" id="L849">                record.recUpdJnjNo());</span>
+    }
+
+    private TaksmtrRecord selectOtherRetailTaksmtrRecord(List&lt;TaksmtrRecord&gt; records) {
+<span class="pc bpc" id="L853" title="1 of 4 branches missed.">        if (records == null || records.isEmpty()) {</span>
+<span class="fc" id="L854">            return null;</span>
+        }
+<span class="fc" id="L856">        return records.stream()</span>
+<span class="fc" id="L857">                .filter(record -&gt; Objects.equals(record.taksKyJtCd(), provisionalCancellationStatus))</span>
+<span class="fc" id="L858">                .max(</span>
+<span class="fc" id="L859">                        Comparator.comparing(</span>
+                                TaksmtrRecord::taksStartYmd,
+<span class="fc" id="L861">                                Comparator.nullsFirst(Comparator.naturalOrder())))</span>
+<span class="fc" id="L862">                .orElse(records.get(0));</span>
+    }
+
+    private RuntimeException systemDateGmtsetdNotFound(Long gasMtstNo, LocalDate systemDate) {
+<span class="fc" id="L866">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L867">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L868">                FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L870">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L871">                        .put(&quot;knskKjnYmd&quot;, systemDate));</span>
+    }
+
+    private RuntimeException hsenDateGmtsetdNotFound(Long gasMtstNo, LocalDate hssgYmd) {
+<span class="nc" id="L875">        return DataInconsistencySupport.create(</span>
+<span class="nc" id="L876">                gmtsetdDataAccess.tableName(),</span>
+<span class="nc" id="L877">                FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="nc" id="L879">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="nc" id="L880">                        .put(&quot;knskKjnYmd&quot;, hssgYmd));</span>
+    }
+
+    private RuntimeException kbagmstNotFound(Long gasMtstNo, YearMonth targetYearMonth) {
+<span class="fc" id="L884">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L885">                kbagmstDataAccess.tableName(),</span>
+<span class="fc" id="L886">                FIND_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L888">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L889">                        .put(&quot;knskKjnYm&quot;, targetYearMonth.toString()));</span>
+    }
+
+    private RuntimeException svckyaNotFound(Long svkyNo, List&lt;String&gt; svkyJtkbList) {
+<span class="fc" id="L893">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L894">                svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L895">                FIND_LATEST_BY_SVKY_NO_AND_SVKY_JTKB_LIST.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L897">                        .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L898">                        .put(&quot;svkyJtkbList&quot;, svkyJtkbList));</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L902">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L903">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

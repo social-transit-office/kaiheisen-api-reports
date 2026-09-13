@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvoiceDisplayControlUpdateForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-invoicedisplaycontrolupdatefortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">InvoiceDisplayControlUpdateForTerminationImpl.java</span></div><h1>InvoiceDisplayControlUpdateForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsTkysYmdJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.InvoiceDisplayControlUpdateForTermination;
+
+/**
+ * 概要: SV-041（請求書表示制御情報更新（契約終了））のサービス実装。
+ * 主な仕様:
+ * - 請求書表示制御管理番号が null または 0 の場合は下位 DA を呼ばずに終了する。
+ * - それ以外の場合のみ RequestContext の必須値を検証し、SQSHYJS を取得して契約終了状態へ更新する。
+ * - 取得 0 件は DataInconsistencyException へ変換する。
+ * 既知の制約:
+ * - correlationId は存在確認のみを行い、監査や下位引数には直接使用しない。
+ */
+public class InvoiceDisplayControlUpdateForTerminationImpl
+        implements InvoiceDisplayControlUpdateForTermination {
+
+    static final String SERVICE_USER_ID = &quot;KHSS041&quot;;
+
+    private final SqshyjsDataAccess sqshyjsDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * 概要: SV-041 に必要な依存を初期化する。
+     * 主な仕様:
+     * - SQSHYJS データアクセス、RequestContext、開閉栓定数サービスを保持する。
+     * - 依存不足はインスタンス生成時に fail-fast で検知する。
+     *
+     * @param sqshyjsDataAccess SQSHYJS データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public InvoiceDisplayControlUpdateForTerminationImpl(
+            SqshyjsDataAccess sqshyjsDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L53">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L54">        this.sqshyjsDataAccess = Objects.requireNonNull(sqshyjsDataAccess, &quot;sqshyjsDataAccess&quot;);</span>
+<span class="fc" id="L55">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L56">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L59">    }</span>
+
+    /**
+     * 概要: 請求書表示制御情報を契約終了状態へ更新する。
+     * 主な仕様:
+     * - 請求書表示制御管理番号が null または 0 の場合は処理せず終了する。
+     * - 通常値の場合のみ RequestContext の correlationId、hukkSysShbt、systemDatetime を必須とする。
+     * - 通常値の場合は R002 取得結果を U002 更新条件へ引き継ぐ。
+          * - U002 の更新結果は下位 DA の戻り値に委ね、SV では追加の 0 件判定を行わない。
+     *
+     * @param skshHyjsKrno 請求書表示制御管理番号
+     */
+    @Override
+    public void execute(Long skshHyjsKrno) {
+<span class="fc bfc" id="L73" title="All 4 branches covered.">        if (skshHyjsKrno == null || Long.valueOf(0L).equals(skshHyjsKrno)) {</span>
+<span class="fc" id="L74">            return;</span>
+        }
+
+<span class="fc" id="L77">        RequestContextValues requestContextValues = requireRequestContextValues();</span>
+<span class="fc" id="L78">        LocalDate currentDate = requestContextValues.systemDatetime().toLocalDate();</span>
+<span class="fc" id="L79">        SqshyjsRecord existingRecord = sqshyjsDataAccess.findBySkshHyjsKrnoAndKnskKjnYmd(</span>
+                        skshHyjsKrno,
+                        currentDate)
+<span class="fc" id="L82">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L83">                        sqshyjsDataAccess.tableName(),</span>
+<span class="fc" id="L84">                        SqshyjsDataAccess.CallSpecs.FIND_BY_SKSH_HYJS_KRNO_AND_KNSK_KJN_YMD.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L86">                                .put(&quot;skshHyjsKrno&quot;, skshHyjsKrno)</span>
+<span class="fc" id="L87">                                .put(&quot;knskKjnYmd&quot;, currentDate)));</span>
+<span class="fc" id="L88">        String decodedOriginFunctionId = decodeOriginFunctionId(requestContextValues.hukkSysShbt());</span>
+<span class="fc" id="L89">        sqshyjsDataAccess.updateBySkshHyjsKrnoAndTkysYmdAndRecUpdJnjNo(</span>
+                new SqshyjsWriteRecord(
+                        null,
+                        null,
+                        currentDate,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L104">                Set.of(SqshyjsColumn.TYEN_YMD),</span>
+                new SqshyjsTkysYmdJnjUpdateKey(
+<span class="fc" id="L106">                        existingRecord.skshHyjsKrno(),</span>
+<span class="fc" id="L107">                        existingRecord.tkysYmd(),</span>
+<span class="fc" id="L108">                        existingRecord.recUpdJnjNo()),</span>
+<span class="fc" id="L109">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+     *
+     * @return 検証済みの RequestContext 値
+     */
+    private RequestContextValues requireRequestContextValues() {
+<span class="fc" id="L118">        requireCorrelationId();</span>
+<span class="fc" id="L119">        return new RequestContextValues(requireHukkSysShbt(), requireSystemDatetime());</span>
+    }
+
+    /**
+     * 概要: 相関IDを取得する。
+     *
+     * @return 相関ID
+     */
+    private String requireCorrelationId() {
+<span class="fc" id="L128">        return requestContext.getCorrelationId()</span>
+<span class="fc" id="L129">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 報告システム種別を取得する。
+     *
+     * @return 報告システム種別
+     */
+    private String requireHukkSysShbt() {
+<span class="fc" id="L138">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L139">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    /**
+     * 概要: システム日時を取得する。
+     *
+     * @return システム日時
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L148">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L149">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別から監査用の起点機能IDを復号する。
+     *
+     * @param hukkSysShbt 報告システム種別
+     * @return 監査用起点機能ID
+     */
+    private String decodeOriginFunctionId(String hukkSysShbt) {
+<span class="fc" id="L159">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+
+<span class="fc" id="L164">    private record RequestContextValues(String hukkSysShbt, LocalDateTime systemDatetime) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

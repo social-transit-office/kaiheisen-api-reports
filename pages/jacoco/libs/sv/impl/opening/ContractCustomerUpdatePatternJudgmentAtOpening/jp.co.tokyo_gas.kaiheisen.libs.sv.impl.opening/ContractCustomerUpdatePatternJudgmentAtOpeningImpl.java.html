@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractCustomerUpdatePatternJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractcustomerupdatepatternjudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractCustomerUpdatePatternJudgmentAtOpeningImpl.java</span></div><h1>ContractCustomerUpdatePatternJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerUpdatePatternJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerUpdatePatternJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstHsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstKsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.MtgInf;
+
+/**
+ * 概要: 開栓時契約お客さま更新パターン判定サービスを実装する。
+ * 主な仕様:
+ * - 直列専用通過を最優先で評価し、次に他小売経路、継続使用経路、通常経路の順で返却パターンを決定する。
+ * - 他-048 の採番が必要な分岐では、導管向け・小売向けの採番 support を呼び出して確定使用者契約お客さま登録番号へ反映する。
+ * - 設計上 `RequestContext` は参照せず、分岐に必要な値は公開引数のみから判定する。
+ * 既知の制約:
+ * - Boolean 引数は null の場合に false として扱い、分岐で参照する必須 DTO は参照時点で fail-fast する。
+ * - 小売契約お客さま情報が欠ける場合は、利用可能な導管情報から確定情報を補完して継続する。
+ * - 導管情報から契約お客さま情報（確定）を組み立てる場合、契約者名系の小売専用項目は null を設定する。
+ */
+public final class ContractCustomerUpdatePatternJudgmentAtOpeningImpl
+        implements ContractCustomerUpdatePatternJudgmentAtOpening {
+
+    private final NumberingAllInOneSupport numberingAllInOneSupport;
+
+    private final String otherRetailCategory;
+
+    private final String continuedUseOpeningReason;
+
+    private final String newCustomerPattern;
+
+    private final String useExistingCustomerNumberPattern;
+
+    private final String newNumberAssignedPattern;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param numberingAllInOneSupport 他-048 採番ゲートウェイ
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public ContractCustomerUpdatePatternJudgmentAtOpeningImpl(
+            NumberingAllInOneSupport numberingAllInOneSupport,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L56">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L57">        this.numberingAllInOneSupport = Objects.requireNonNull(numberingAllInOneSupport, &quot;numberingAllInOneSupport&quot;);</span>
+<span class="fc" id="L58">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L59">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L60">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L61">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L62">        this.otherRetailCategory = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L66">        this.continuedUseOpeningReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L70">        this.newCustomerPattern = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.TYPE,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.NEW_CUSTOMER);
+<span class="fc" id="L74">        this.useExistingCustomerNumberPattern = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.TYPE,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.USE_EXISTING_CUSTOMER_NUMBER);
+<span class="fc" id="L78">        this.newNumberAssignedPattern = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.TYPE,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.NEW_NUMBER_ASSIGNED);
+<span class="fc" id="L82">    }</span>
+
+    /** {@inheritDoc} */
+    @Override
+    public ContractCustomerUpdatePatternJudgmentAtOpeningOutput execute(
+            String tgTkurKbn,
+            String kasJysb,
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt3XFlg,
+            Boolean syoriHntFkktFlg,
+            Boolean cstTkssvkyTrkZmFlg,
+            CstHsenjInf cstHsenjInf,
+            CstKsenjInf cstKsenjInf,
+            MtgInf mtgInf) {
+<span class="fc" id="L97">        boolean serialMeterFlag = Boolean.TRUE.equals(snyTkmtFlg);</span>
+<span class="fc" id="L98">        boolean alternativeJudgmentResult = Boolean.TRUE.equals(digwrHntFlg);</span>
+<span class="fc" id="L99">        boolean process3xFlag = Boolean.TRUE.equals(syoriHnt3XFlg);</span>
+<span class="fc" id="L100">        boolean revivalFlag = Boolean.TRUE.equals(syoriHntFkktFlg);</span>
+<span class="fc" id="L101">        boolean registeredTransportContract = Boolean.TRUE.equals(cstTkssvkyTrkZmFlg);</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (serialMeterFlag) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            return isOtherRetail(tgTkurKbn)</span>
+<span class="fc" id="L105">                    ? output(useExistingCustomerNumberPattern, mtgInf.kiycstdInf())</span>
+<span class="fc" id="L106">                    : output(useExistingCustomerNumberPattern, mtgInf.kiycstkInf(), mtgInf.kiycstdInf());</span>
+        }
+
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (isOtherRetail(tgTkurKbn)) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (alternativeJudgmentResult) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (registeredTransportContract) {</span>
+<span class="fc" id="L112">                    return output(</span>
+                            newCustomerPattern,
+<span class="fc" id="L114">                            numberingAllInOneSupport.issuePipelineContractCustomerRegistrationNumber(),</span>
+                            null,
+                            null);
+                }
+<span class="fc" id="L118">                return output(</span>
+                        newNumberAssignedPattern,
+<span class="fc" id="L120">                        cstKsenjInf.kiycstdInf());</span>
+            }
+<span class="fc" id="L122">            return output(useExistingCustomerNumberPattern, cstHsenjInf.kiycstdInf());</span>
+        }
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (isContinuedUse(kasJysb)) {</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (process3xFlag) {</span>
+<span class="fc" id="L127">                return output(</span>
+                        useExistingCustomerNumberPattern,
+<span class="fc" id="L129">                        cstHsenjInf.kiycstkInf(),</span>
+<span class="fc" id="L130">                        cstHsenjInf.kiycstdInf());</span>
+            }
+<span class="fc" id="L132">            Long numberedRetailCustomerNumber = numberingAllInOneSupport.issueRetailContractCustomerRegistrationNumber();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (revivalFlag) {</span>
+<span class="fc" id="L134">                return output(</span>
+                        newCustomerPattern,
+                        numberedRetailCustomerNumber,
+<span class="fc" id="L137">                        toConfirmedContractCustomerInfo(cstHsenjInf.kiycstkInf()),</span>
+<span class="fc" id="L138">                        toConfirmedPipelineContractCustomerInfo(cstHsenjInf.kiycstdInf()));</span>
+            }
+<span class="fc" id="L140">            return output(newCustomerPattern, numberedRetailCustomerNumber, null, null);</span>
+        }
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (alternativeJudgmentResult) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (registeredTransportContract) {</span>
+<span class="fc" id="L145">                return output(</span>
+                        newCustomerPattern,
+<span class="fc" id="L147">                        numberingAllInOneSupport.issueRetailContractCustomerRegistrationNumber(),</span>
+                        null,
+                        null);
+            }
+<span class="fc" id="L151">            return output(</span>
+                    newNumberAssignedPattern,
+<span class="fc" id="L153">                    cstKsenjInf.kiycstkInf().kyoTrkNo(),</span>
+<span class="fc" id="L154">                    toConfirmedContractCustomerInfo(cstKsenjInf.kiycstkInf()),</span>
+                    null);
+        }
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (cstHsenjInf == null) {</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">            if (cstKsenjInf == null) {</span>
+<span class="nc" id="L160">                return output(useExistingCustomerNumberPattern, (Long) null, null, null);</span>
+            }
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">            if (cstKsenjInf.kiycstkInf() == null) {</span>
+<span class="nc" id="L163">                return output(useExistingCustomerNumberPattern, cstKsenjInf.kiycstdInf());</span>
+            }
+<span class="fc" id="L165">            return output(</span>
+                    useExistingCustomerNumberPattern,
+<span class="fc" id="L167">                    cstKsenjInf.kiycstkInf(),</span>
+<span class="fc" id="L168">                    cstKsenjInf.kiycstdInf());</span>
+        }
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (cstHsenjInf.kiycstkInf() == null) {</span>
+<span class="fc" id="L172">            return output(useExistingCustomerNumberPattern, cstHsenjInf.kiycstdInf());</span>
+        }
+
+<span class="fc" id="L175">        return output(</span>
+                useExistingCustomerNumberPattern,
+<span class="fc" id="L177">                cstHsenjInf.kiycstkInf(),</span>
+<span class="fc" id="L178">                cstHsenjInf.kiycstdInf());</span>
+    }
+
+    /**
+     * 概要: 他小売区分を判定する。
+     * 主な仕様: 開閉栓定数で解決した KH005 の他小売コードと入力値を比較する。
+     * 既知の制約: 入力値が null の場合は false と同等ではなく単純に不一致扱いとする。
+     *
+     * @param tgTkurKbn ＴＧ他小売区分
+     * @return 他小売の場合 true
+     */
+    private boolean isOtherRetail(String tgTkurKbn) {
+<span class="fc" id="L190">        return otherRetailCategory.equals(tgTkurKbn);</span>
+    }
+
+    /**
+     * 概要: 開栓事由が継続使用かを判定する。
+     * 主な仕様: CIRIUS 定数で解決した 04900 の継続使用コードと入力値を比較する。
+     * 既知の制約: 入力値が null の場合は単純に不一致扱いとする。
+     *
+     * @param kasJysb 開栓事由種別
+     * @return 継続使用の場合 true
+     */
+    private boolean isContinuedUse(String kasJysb) {
+<span class="fc" id="L202">        return continuedUseOpeningReason.equals(kasJysb);</span>
+    }
+
+    /**
+     * 概要: 導管情報ベースの既存客番利用/新規採番済出力を組み立てる。
+     * 主な仕様: 導管情報を契約お客さま情報（確定）と契約お客さま＜導管＞情報（確定）の両方へ反映する。
+     * 既知の制約: 契約者名系の小売専用項目は null を設定する。
+     *
+     * @param pattern 3x更新パターン区分
+     * @param pipelineInfo 契約お客さま＜導管＞情報
+     * @return 判定結果
+     */
+    private ContractCustomerUpdatePatternJudgmentAtOpeningOutput output(
+            String pattern,
+            KiycstdInf pipelineInfo) {
+<span class="fc" id="L217">        return output(</span>
+                pattern,
+<span class="fc" id="L219">                pipelineInfo.kyoTrkNo(),</span>
+<span class="fc" id="L220">                toConfirmedContractCustomerInfo(pipelineInfo),</span>
+<span class="fc" id="L221">                toConfirmedPipelineContractCustomerInfo(pipelineInfo));</span>
+    }
+
+    /**
+     * 概要: 小売情報と導管情報を併せて出力を組み立てる。
+     * 主な仕様: 契約お客さま情報（確定）は小売情報から、導管情報（確定）は導管情報から構築する。
+     * 既知の制約: 小売情報が null の場合は参照時点で fail-fast する。
+     *
+     * @param pattern 3x更新パターン区分
+     * @param retailInfo 契約お客さま＜小売＞情報
+     * @param pipelineInfo 契約お客さま＜導管＞情報
+     * @return 判定結果
+     */
+    private ContractCustomerUpdatePatternJudgmentAtOpeningOutput output(
+            String pattern,
+            KiycstkInf retailInfo,
+            KiycstdInf pipelineInfo) {
+<span class="fc" id="L238">        return output(</span>
+                pattern,
+<span class="fc" id="L240">                retailInfo.kyoTrkNo(),</span>
+<span class="fc" id="L241">                toConfirmedContractCustomerInfo(retailInfo),</span>
+<span class="fc" id="L242">                toConfirmedPipelineContractCustomerInfo(pipelineInfo));</span>
+    }
+
+    /**
+     * 概要: 完成済みの各項目から出力 DTO を生成する。
+     * 主な仕様: 3x更新パターン区分、確定番号、確定情報をそのまま出力へ格納する。
+     * 既知の制約: null 補完や追加変換は行わない。
+     *
+     * @param pattern 3x更新パターン区分
+     * @param confirmedCustomerRegistrationNumber 確定使用者契約お客さま登録番号
+     * @param confirmedContractCustomerInfo 契約お客さま情報（確定）
+     * @param confirmedPipelineContractCustomerInfo 契約お客さま＜導管＞情報（確定）
+     * @return 判定結果
+     */
+    private static ContractCustomerUpdatePatternJudgmentAtOpeningOutput output(
+            String pattern,
+            Long confirmedCustomerRegistrationNumber,
+            KiycstKktInf confirmedContractCustomerInfo,
+            KiycstdKktInf confirmedPipelineContractCustomerInfo) {
+<span class="fc" id="L261">        return new ContractCustomerUpdatePatternJudgmentAtOpeningOutput(</span>
+                pattern,
+                confirmedCustomerRegistrationNumber,
+                confirmedContractCustomerInfo,
+                confirmedPipelineContractCustomerInfo);
+    }
+
+    /**
+     * 概要: 契約お客さま＜小売＞情報から契約お客さま情報（確定）を生成する。
+     * 主な仕様: 小売情報の全同名項目をそのまま確定情報へ写像する。
+     * 既知の制約: null の場合は参照時点で fail-fast する。
+     *
+     * @param retailInfo 契約お客さま＜小売＞情報
+     * @return 契約お客さま情報（確定）
+     */
+    private static KiycstKktInf toConfirmedContractCustomerInfo(KiycstkInf retailInfo) {
+<span class="fc" id="L277">        return new KiycstKktInf(</span>
+<span class="fc" id="L278">                retailInfo.kyoTrkNo(),</span>
+<span class="fc" id="L279">                retailInfo.ctnmKj1(),</span>
+<span class="fc" id="L280">                retailInfo.ctnmKn1(),</span>
+<span class="fc" id="L281">                retailInfo.ctnm1HujnShbt(),</span>
+<span class="fc" id="L282">                retailInfo.ctnm1HshiShbt(),</span>
+<span class="fc" id="L283">                retailInfo.ctnmKj2(),</span>
+<span class="fc" id="L284">                retailInfo.ctnmKn2(),</span>
+<span class="fc" id="L285">                retailInfo.ctnm2HujnShbt(),</span>
+<span class="fc" id="L286">                retailInfo.ctnm2HshiShbt(),</span>
+<span class="fc" id="L287">                retailInfo.ctnmKjhkFlg(),</span>
+<span class="fc" id="L288">                retailInfo.kynmKj(),</span>
+<span class="fc" id="L289">                retailInfo.kynmKn(),</span>
+<span class="fc" id="L290">                retailInfo.kynmHujnShbt(),</span>
+<span class="fc" id="L291">                retailInfo.kynmHshiShbt(),</span>
+<span class="fc" id="L292">                retailInfo.kynmKjhkFlg(),</span>
+<span class="fc" id="L293">                retailInfo.shkiLvShbt(),</span>
+<span class="fc" id="L294">                retailInfo.yubnNo(),</span>
+<span class="fc" id="L295">                retailInfo.gkkCd(),</span>
+<span class="fc" id="L296">                retailInfo.mchCd(),</span>
+<span class="fc" id="L297">                retailInfo.cmazCd(),</span>
+<span class="fc" id="L298">                retailInfo.cbgSuj1(),</span>
+<span class="fc" id="L299">                retailInfo.cbgKn2(),</span>
+<span class="fc" id="L300">                retailInfo.cbgKn3(),</span>
+<span class="fc" id="L301">                retailInfo.cbgKn4(),</span>
+<span class="fc" id="L302">                retailInfo.bldNo(),</span>
+<span class="fc" id="L303">                retailInfo.bldnKj(),</span>
+<span class="fc" id="L304">                retailInfo.bldnKn(),</span>
+<span class="fc" id="L305">                retailInfo.bldnKjhkFlg(),</span>
+<span class="fc" id="L306">                retailInfo.jutKbn(),</span>
+<span class="fc" id="L307">                retailInfo.tunoKn(),</span>
+<span class="fc" id="L308">                retailInfo.hynKn(),</span>
+<span class="fc" id="L309">                retailInfo.htuFlg(),</span>
+<span class="fc" id="L310">                retailInfo.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 契約お客さま＜導管＞情報から契約お客さま情報（確定）を生成する。
+     * 主な仕様: 導管情報の同名項目のみを写像し、契約者名系の小売専用項目は null を設定する。
+     * 既知の制約: 契約者名系項目は spec 上の同名項目が存在しないため null 固定とする。
+     *
+     * @param pipelineInfo 契約お客さま＜導管＞情報
+     * @return 契約お客さま情報（確定）
+     */
+    private static KiycstKktInf toConfirmedContractCustomerInfo(KiycstdInf pipelineInfo) {
+<span class="fc" id="L322">        return new KiycstKktInf(</span>
+<span class="fc" id="L323">                pipelineInfo.kyoTrkNo(),</span>
+<span class="fc" id="L324">                pipelineInfo.ctnmKj1(),</span>
+<span class="fc" id="L325">                pipelineInfo.ctnmKn1(),</span>
+<span class="fc" id="L326">                pipelineInfo.ctnm1HujnShbt(),</span>
+<span class="fc" id="L327">                pipelineInfo.ctnm1HshiShbt(),</span>
+<span class="fc" id="L328">                pipelineInfo.ctnmKj2(),</span>
+<span class="fc" id="L329">                pipelineInfo.ctnmKn2(),</span>
+<span class="fc" id="L330">                pipelineInfo.ctnm2HujnShbt(),</span>
+<span class="fc" id="L331">                pipelineInfo.ctnm2HshiShbt(),</span>
+<span class="fc" id="L332">                pipelineInfo.ctnmKjhkFlg(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L338">                pipelineInfo.shkiLvShbt(),</span>
+<span class="fc" id="L339">                pipelineInfo.yubnNo(),</span>
+<span class="fc" id="L340">                pipelineInfo.gkkCd(),</span>
+<span class="fc" id="L341">                pipelineInfo.mchCd(),</span>
+<span class="fc" id="L342">                pipelineInfo.cmazCd(),</span>
+<span class="fc" id="L343">                pipelineInfo.cbgSuj1(),</span>
+<span class="fc" id="L344">                pipelineInfo.cbgKn2(),</span>
+<span class="fc" id="L345">                pipelineInfo.cbgKn3(),</span>
+<span class="fc" id="L346">                pipelineInfo.cbgKn4(),</span>
+<span class="fc" id="L347">                pipelineInfo.bldNo(),</span>
+<span class="fc" id="L348">                pipelineInfo.bldnKj(),</span>
+<span class="fc" id="L349">                pipelineInfo.bldnKn(),</span>
+<span class="fc" id="L350">                pipelineInfo.bldnKjhkFlg(),</span>
+<span class="fc" id="L351">                pipelineInfo.jutKbn(),</span>
+<span class="fc" id="L352">                pipelineInfo.tunoKn(),</span>
+<span class="fc" id="L353">                pipelineInfo.hynKn(),</span>
+<span class="fc" id="L354">                pipelineInfo.htuFlg(),</span>
+<span class="fc" id="L355">                pipelineInfo.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 契約お客さま＜導管＞情報から契約お客さま＜導管＞情報（確定）を生成する。
+     * 主な仕様: 同名項目をそのまま出力モデルへ写像する。
+     * 既知の制約: null の場合は参照時点で fail-fast する。
+     *
+     * @param pipelineInfo 契約お客さま＜導管＞情報
+     * @return 契約お客さま＜導管＞情報（確定）
+     */
+    private static KiycstdKktInf toConfirmedPipelineContractCustomerInfo(KiycstdInf pipelineInfo) {
+<span class="fc" id="L367">        return new KiycstdKktInf(</span>
+<span class="fc" id="L368">                pipelineInfo.kyoTrkNo(),</span>
+<span class="fc" id="L369">                pipelineInfo.ctnmKj1(),</span>
+<span class="fc" id="L370">                pipelineInfo.ctnmKn1(),</span>
+<span class="fc" id="L371">                pipelineInfo.ctnm1HujnShbt(),</span>
+<span class="fc" id="L372">                pipelineInfo.ctnm1HshiShbt(),</span>
+<span class="fc" id="L373">                pipelineInfo.ctnmKj2(),</span>
+<span class="fc" id="L374">                pipelineInfo.ctnmKn2(),</span>
+<span class="fc" id="L375">                pipelineInfo.ctnm2HujnShbt(),</span>
+<span class="fc" id="L376">                pipelineInfo.ctnm2HshiShbt(),</span>
+<span class="fc" id="L377">                pipelineInfo.ctnmKjhkFlg(),</span>
+<span class="fc" id="L378">                pipelineInfo.shkiLvShbt(),</span>
+<span class="fc" id="L379">                pipelineInfo.yubnNo(),</span>
+<span class="fc" id="L380">                pipelineInfo.gkkCd(),</span>
+<span class="fc" id="L381">                pipelineInfo.mchCd(),</span>
+<span class="fc" id="L382">                pipelineInfo.cmazCd(),</span>
+<span class="fc" id="L383">                pipelineInfo.cbgSuj1(),</span>
+<span class="fc" id="L384">                pipelineInfo.cbgKn2(),</span>
+<span class="fc" id="L385">                pipelineInfo.cbgKn3(),</span>
+<span class="fc" id="L386">                pipelineInfo.cbgKn4(),</span>
+<span class="fc" id="L387">                pipelineInfo.bldNo(),</span>
+<span class="fc" id="L388">                pipelineInfo.bldnKj(),</span>
+<span class="fc" id="L389">                pipelineInfo.bldnKn(),</span>
+<span class="fc" id="L390">                pipelineInfo.bldnKjhkFlg(),</span>
+<span class="fc" id="L391">                pipelineInfo.jutKbn(),</span>
+<span class="fc" id="L392">                pipelineInfo.tunoKn(),</span>
+<span class="fc" id="L393">                pipelineInfo.hynKn(),</span>
+<span class="fc" id="L394">                pipelineInfo.htuFlg(),</span>
+<span class="fc" id="L395">                pipelineInfo.recUpdJnjNo());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

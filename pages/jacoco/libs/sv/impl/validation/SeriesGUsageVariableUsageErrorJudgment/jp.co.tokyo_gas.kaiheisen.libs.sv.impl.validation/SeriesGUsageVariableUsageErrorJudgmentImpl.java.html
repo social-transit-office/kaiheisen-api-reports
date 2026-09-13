@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SeriesGUsageVariableUsageErrorJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-seriesgusagevariableusageerrorjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">SeriesGUsageVariableUsageErrorJudgmentImpl.java</span></div><h1>SeriesGUsageVariableUsageErrorJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleListException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.SeriesGUsageVariableUsageErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckPipeline;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckPipelineOutput;
+
+/**
+ * 概要: SV-149（直列G使用量・変動使用量エラー判定）の実装クラス。
+ * 主な仕様:
+ * - 未確認のときだけ SV-291 の判定を実行し、元ガスメーター時は直列グループ使用量集計も加えて評価する。
+ * - 集計使用量不足、マイナス使用量、号数超過の業務エラー条件を順に評価する。
+ * - 条件に一致した子エラーを収集し、判定完了後に報告システム種別に応じた業務エラーを送出する。
+ */
+public final class SeriesGUsageVariableUsageErrorJudgmentImpl
+        implements SeriesGUsageVariableUsageErrorJudgment {
+
+<span class="fc" id="L38">    private static final BigDecimal ZERO = BigDecimal.ZERO;</span>
+
+    private static final String ERROR_CODE_USAGE_TOTAL_EXCEEDED = ErrorCodeConstants.ERROR_CODE_020200041;
+
+    private static final String ERROR_CODE_MINUS_USAGE = ErrorCodeConstants.ERROR_CODE_020200044;
+
+    private static final String ERROR_CODE_METER_CAPACITY_EXCEEDED = ErrorCodeConstants.ERROR_CODE_020200045;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final VariableUsageCheckPipeline variableUsageCheckPipeline;
+
+    private final RequestContext requestContext;
+
+    private final String reportingSystemTypeCirius;
+
+    private final String originalGasMeterStatus;
+
+    private final String supplyStopPaymentPending;
+
+    private final String negativeUsageAmountErrorType;
+
+    /**
+     * 判定に必要な依存を初期化する。
+     *
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞取得 DA
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果取得 DA
+     * @param kkytskrDataAccess 供給停止管理取得 DA
+     * @param variableUsageCheckPipeline SV-291
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓API独自コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public SeriesGUsageVariableUsageErrorJudgmentImpl(
+            GmkskkdDataAccess gmkskkdDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            KkytskrDataAccess kkytskrDataAccess,
+            VariableUsageCheckPipeline variableUsageCheckPipeline,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L83">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L84">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L85">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L86">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L87">        this.variableUsageCheckPipeline = Objects.requireNonNull(</span>
+                variableUsageCheckPipeline,
+                &quot;variableUsageCheckPipeline&quot;);
+<span class="fc" id="L90">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L91">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L92">            Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L93">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L94">            Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L95">        this.reportingSystemTypeCirius =</span>
+<span class="fc" id="L96">            RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.CIRIUS);
+<span class="fc" id="L100">        this.originalGasMeterStatus =</span>
+<span class="fc" id="L101">            RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L105">        this.supplyStopPaymentPending =</span>
+<span class="fc" id="L106">            RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L110">        this.negativeUsageAmountErrorType =</span>
+<span class="fc" id="L111">            RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.GhpSerialGroupUsageErrorType.TYPE,
+                ConstantLookupKeys.Cirius.GhpSerialGroupUsageErrorType.THERE_IS_A_NEGATIVE_USAGE_AMOUNT);
+<span class="fc" id="L115">    }</span>
+
+    @Override
+    public void execute(
+            Boolean kknnFlg,
+            String ckrtGmscJtkb,
+            LocalDate znkiKnsYmd,
+            LocalDate hssgYmd,
+            Long gasMtstNo,
+            BigDecimal gasSyry,
+            Integer snyMtrKnsu,
+            String gmtKhsJtkb,
+            BigDecimal gmtGusu,
+            Long tksuSvkyNo,
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GasRknKsnInf gasRknKsnInf) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (!Boolean.FALSE.equals(kknnFlg)) {</span>
+<span class="fc" id="L131">            return;</span>
+        }
+
+<span class="fc" id="L134">        List&lt;HeisenRuleException&gt; childErrorList = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L136">        List&lt;GmkskkdRecord&gt; gmkskkdRecords = List.of();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L138">            gmkskkdRecords = gmkskkdDataAccess.findAllByKnsYmdAndMtgMtstNoAndMgmtKnsYmdAndMgmtKnkkTsno(</span>
+                    znkiKnsYmd,
+                    hssgYmd,
+                    gasMtstNo,
+                    null,
+<span class="fc" id="L143">                    0);</span>
+<span class="fc" id="L144">            BigDecimal totalUsage = sumGmkskkdUsage(gmkskkdRecords)</span>
+<span class="fc" id="L145">                    .add(sumKtmgmkkUsage(ktmgmkkDataAccess.findAllByMtgMtstNoAndMgmtKnsYmdAndMgmtKnkkTsno(</span>
+                            gasMtstNo,
+                            null,
+<span class="fc" id="L148">                            0)))</span>
+<span class="fc" id="L149">                    .add(sumSupplyStopUsage(snyMtrKnsu, gmkskkdRecords));</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (gasSyry.compareTo(totalUsage) &lt; 0) {</span>
+<span class="fc" id="L151">                childErrorList.add(new HeisenRuleException(ERROR_CODE_USAGE_TOTAL_EXCEEDED));</span>
+            }
+        }
+
+<span class="fc" id="L155">        VariableUsageCheckPipelineOutput sv291Output = variableUsageCheckPipeline.execute(</span>
+                gasMtstNo,
+                gmtKhsJtkb,
+                gmtGusu,
+                tksuSvkyNo,
+                hssgYmd,
+                gasSyry,
+<span class="fc" id="L162">                resolveUsageDays(gasRknKsnInf));</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (hasMinusUsageWarning(sv291Output)) {</span>
+<span class="fc" id="L164">            childErrorList.add(new HeisenRuleException(ERROR_CODE_MINUS_USAGE));</span>
+        }
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (Boolean.TRUE.equals(sv291Output.gusuCkaErrUmFlg())) {</span>
+<span class="fc" id="L167">            childErrorList.add(new HeisenRuleException(ERROR_CODE_METER_CAPACITY_EXCEEDED));</span>
+        }
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (!childErrorList.isEmpty()) {</span>
+<span class="nc" id="L170">            throwCommonBusinessError(childErrorList);</span>
+        }
+<span class="fc" id="L172">    }</span>
+
+    private String requireHukkSysShbt() {
+<span class="fc" id="L175">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L176">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    private int resolveUsageDays(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GasRknKsnInf gasRknKsnInf) {
+<span class="fc" id="L181">        return gasRknKsnInf.shyDdsu() - gasRknKsnInf.kkyCushDdsu();</span>
+    }
+
+    private boolean hasMinusUsageWarning(VariableUsageCheckPipelineOutput output) {
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        return negativeUsageAmountErrorType.equals(output.gcgnSyreShbt())</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                || Boolean.TRUE.equals(output.mnsSyryErrUmFlg());</span>
+    }
+
+    private BigDecimal sumGmkskkdUsage(List&lt;GmkskkdRecord&gt; records) {
+<span class="fc" id="L190">        BigDecimal total = ZERO;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        for (GmkskkdRecord record : records) {</span>
+<span class="fc" id="L192">            total = total.add(defaultValue(record.gasSyry()));</span>
+<span class="fc" id="L193">        }</span>
+<span class="fc" id="L194">        return total;</span>
+    }
+
+    private BigDecimal sumKtmgmkkUsage(List&lt;KtmgmkkRecord&gt; records) {
+<span class="fc" id="L198">        BigDecimal total = ZERO;</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        for (KtmgmkkRecord record : records) {</span>
+<span class="fc" id="L200">            total = total.add(defaultValue(record.gasSyry()));</span>
+<span class="fc" id="L201">        }</span>
+<span class="fc" id="L202">        return total;</span>
+    }
+
+    private BigDecimal sumSupplyStopUsage(Integer snyMtrKnsu, List&lt;GmkskkdRecord&gt; gmkskkdRecords) {
+<span class="fc" id="L206">        BigDecimal total = ZERO;</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        int meterCount = snyMtrKnsu == null ? 0 : snyMtrKnsu;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        for (int index = 0; index &lt; meterCount; index++) {</span>
+<span class="fc" id="L209">            GmkskkdRecord gmkskkdRecord = gmkskkdRecords.get(index);</span>
+<span class="fc" id="L210">            Optional&lt;KkytskrRecord&gt; supplyStopRecord = kkytskrDataAccess.findByGasMtstNoAndHesnYmdAndKkysSisnJtkb(</span>
+<span class="fc" id="L211">                    gmkskkdRecord.gasMtstNo(),</span>
+<span class="fc" id="L212">                    gmkskkdRecord.knsYmd(),</span>
+                    supplyStopPaymentPending);
+<span class="fc bfc" id="L214" title="All 2 branches covered.">            if (supplyStopRecord.isPresent()) {</span>
+<span class="fc" id="L215">                total = total.add(defaultValue(supplyStopRecord.get().gasSyry()));</span>
+            }
+        }
+<span class="fc" id="L218">        return total;</span>
+    }
+
+    private void throwCommonBusinessError(List&lt;HeisenRuleException&gt; childErrorList) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (reportingSystemTypeCirius.equals(requireHukkSysShbt())) {</span>
+<span class="fc" id="L223">            throw new HeisenRuleListException(List.copyOf(childErrorList));</span>
+        }
+<span class="fc" id="L225">        throw childErrorList.get(0);</span>
+    }
+
+    private BigDecimal defaultValue(BigDecimal value) {
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">        return value == null ? ZERO : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

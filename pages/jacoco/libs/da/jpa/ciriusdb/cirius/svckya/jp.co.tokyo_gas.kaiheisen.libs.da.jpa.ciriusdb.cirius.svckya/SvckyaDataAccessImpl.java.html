@@ -1,0 +1,503 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SvckyaDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-svckya</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.svckya</a> &gt; <span class="el_source">SvckyaDataAccessImpl.java</span></div><h1>SvckyaDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.svckya;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaKyttSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaSknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbReadValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** SVCKYA データアクセスの JPA 実装。 */
+public class SvckyaDataAccessImpl extends DataAccessBase implements SvckyaDataAccess {
+
+    private static final int SVKY_JTKB_LENGTH = 2;
+
+    private static final String TABLE_NAME = &quot;SVCKYA&quot;;
+
+    private static final String U001_WHERE_CLAUSE = &quot;SVKY_NO = ? AND SKNO = ?&quot;;
+
+    private static final String U003_WHERE_CLAUSE = &quot;SVKY_NO = ? AND KYTT_SKNO = ? AND SKNO &lt;&gt; ?&quot;;
+
+<span class="fc" id="L47">    private static final ReflectiveRecordEntityMapper&lt;SvckyaRecord, SvckyaEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L48">            ReflectiveRecordEntityMapper.create(SvckyaRecord.class, SvckyaEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;SvckyaWriteRecord, SvckyaEntity&gt;
+<span class="fc" id="L51">            WRITE_MAPPER =</span>
+<span class="fc" id="L52">                    ReflectiveRecordEntityMapper.create(</span>
+                            SvckyaWriteRecord.class, SvckyaEntity.class);
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;SvckyaEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;SvckyaWriteRecord, SvckyaEntity, SvckyaColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;SvckyaWriteRecord, SvckyaEntity, SvckyaColumn&gt;
+            updateSupport;
+
+    /**
+     * JPA ベースの SVCKYA データアクセスを生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param criteriaBuilderFactory Blaze Persistence CriteriaBuilderFactory
+     */
+    public SvckyaDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="fc" id="L78">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L83">    }</span>
+
+    SvckyaDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="nc" id="L89">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L90">    }</span>
+
+    SvckyaDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L96">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L97">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L98">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L100">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L101">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(SvckyaEntity.class);</span>
+<span class="fc" id="L102">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L103">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L104">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SvckyaWriteDefinition.INSTANCE,
+                        SvckyaEntity.class,
+<span class="fc" id="L110">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L111">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SvckyaWriteDefinition.INSTANCE,
+                        SvckyaEntity.class,
+<span class="fc" id="L117">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L118">    }</span>
+
+    @Override
+    public int insert(SvckyaWriteRecord record, AuditContext auditContext) {
+<span class="fc" id="L122">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L123">        Objects.requireNonNull(auditContext, &quot;auditContext&quot;);</span>
+<span class="fc" id="L124">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L127">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L128">                                auditColumnAccessBinder.bind(entity), auditContext, clock));</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findFirstBySvkyNoAndSvkyJtkb(Long svkyNo, String svkyJtkb) {
+<span class="fc" id="L133">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L134">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="fc" id="L135">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND SVKY_JTKB = :svkyJtkb FETCH FIRST&quot;
+                    + &quot; 1 ROWS ONLY&quot;);
+<span class="fc" id="L138">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L139">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L140">        JpaWhere.eq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="fc" id="L141">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findLatestBySvkyNoAndSvkyJtkbNot(Long svkyNo) {
+<span class="fc" id="L146">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L147">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo ORDER BY SKNO DESC FETCH FIRST 1 ROWS&quot;
+                    + &quot; ONLY&quot;);
+<span class="fc" id="L150">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L151">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L152">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L153">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findLatestBySvkyNoAndSvkyJtkbList(
+            Long svkyNo, List&lt;String&gt; svkyJtkbList) {
+<span class="fc" id="L159">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L160">        Objects.requireNonNull(svkyJtkbList, &quot;svkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (svkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L162">            return Optional.empty();</span>
+        }
+<span class="fc" id="L164">        List&lt;String&gt; safeSvkyJtkbList = safeSvkyJtkbList(svkyJtkbList, &quot;svkyJtkbList&quot;);</span>
+<span class="fc" id="L165">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND SVKY_JTKB IN (:svkyJtkbList)&quot;
+                    + &quot; ORDER BY RKKI_STT_YMD DESC FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L168">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L169">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L170">        JpaWhere.in(builder, &quot;svkyJtkb&quot;, safeSvkyJtkbList);</span>
+<span class="fc" id="L171">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L172">        builder.setMaxResults(1);</span>
+<span class="fc" id="L173">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvckyaRecord&gt; findAllBySvkyNoAndRkkiSttYmdAfterAndSvkyJtkbNotOrderByRkkiSttYmd(
+            Long svkyNo, java.time.LocalDate rkkiSttYmd, String svkyJtkb) {
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">        if (svkyJtkb == null || svkyJtkb.isBlank()) {</span>
+<span class="fc" id="L180">            return List.of();</span>
+        }
+<span class="nc" id="L182">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="nc" id="L183">        BigDecimal safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="nc" id="L184">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="nc" id="L185">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD &gt; :rkkiSttYmd AND&quot;
+                    + &quot; SVKY_JTKB &lt;&gt; :svkyJtkb ORDER BY RKKI_STT_YMD&quot;);
+<span class="nc" id="L188">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="nc" id="L189">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="nc" id="L190">        JpaWhere.gt(builder, &quot;rkkiSttYmd&quot;, safeRkkiSttYmd);</span>
+<span class="nc" id="L191">        JpaWhere.notEq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="nc" id="L192">        builder.orderByAsc(&quot;rkkiSttYmd&quot;);</span>
+<span class="nc" id="L193">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findLatestBySvkyNoAndRkkiSttYmdAndSvkyJtkb(
+            Long svkyNo, java.time.LocalDate rkkiSttYmd, String svkyJtkb) {
+<span class="fc" id="L199">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L200">        BigDecimal safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L201">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="fc" id="L202">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD = :rkkiSttYmd AND&quot;
+                    + &quot; SVKY_JTKB = :svkyJtkb ORDER BY SKNO DESC FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L205">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L206">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L207">        JpaWhere.eq(builder, &quot;rkkiSttYmd&quot;, safeRkkiSttYmd);</span>
+<span class="fc" id="L208">        JpaWhere.eq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="fc" id="L209">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L210">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvckyaRecord&gt; findAllBySvkyNoAtKnskKjnYmdAndSvkyJtkbNot(
+            Long svkyNo, java.time.LocalDate knskKjnYmd, String svkyJtkb) {
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">        if (svkyJtkb == null || svkyJtkb.isBlank()) {</span>
+<span class="fc" id="L217">            return List.of();</span>
+        }
+<span class="nc" id="L219">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="nc" id="L220">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="nc" id="L221">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="nc" id="L222">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD &lt;= :knskKjnYmd AND&quot;
+                    + &quot; RKKI_END_YMD &gt;= :knskKjnYmd AND SVKY_JTKB &lt;&gt; :svkyJtkb&quot;);
+<span class="nc" id="L225">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="nc" id="L226">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="nc" id="L227">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="nc" id="L228">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="nc" id="L229">        JpaWhere.notEq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="nc" id="L230">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findLatestBySvkyNoAtKnskKjnYmdAndSvkyJtkbNot(
+            Long svkyNo, java.time.LocalDate knskKjnYmd, String svkyJtkb) {
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">        if (svkyJtkb == null || svkyJtkb.isBlank()) {</span>
+<span class="fc" id="L237">            return Optional.empty();</span>
+        }
+<span class="nc" id="L239">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="nc" id="L240">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="nc" id="L241">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="nc" id="L242">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD &lt;= :knskKjnYmd AND&quot;
+                    + &quot; RKKI_END_YMD &gt;= :knskKjnYmd AND SVKY_JTKB &lt;&gt; :svkyJtkb ORDER BY&quot;
+                    + &quot; RKKI_STT_YMD DESC FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="nc" id="L246">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="nc" id="L247">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="nc" id="L248">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="nc" id="L249">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="nc" id="L250">        JpaWhere.notEq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="nc" id="L251">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="nc" id="L252">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvckyaRecord&gt; findAllBySvkyNoAtKnskKjnYmdAndSvkyJtkbList(
+            Long svkyNo, java.time.LocalDate knskKjnYmd, List&lt;String&gt; svkyJtkbList) {
+<span class="fc" id="L258">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L259">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L260">        Objects.requireNonNull(svkyJtkbList, &quot;svkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        if (svkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L262">            return List.of();</span>
+        }
+<span class="fc" id="L264">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD &lt;= :knskKjnYmd AND&quot;
+                    + &quot; RKKI_END_YMD &gt;= :knskKjnYmd AND SVKY_JTKB IN (:svkyJtkbList)&quot;);
+<span class="fc" id="L267">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L268">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L269">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L270">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L271">        JpaWhere.in(builder, &quot;svkyJtkb&quot;, svkyJtkbList);</span>
+<span class="fc" id="L272">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public List&lt;SvckyaRecord&gt; findAllBySvkyNoAndSvkyJtkb(
+            final Long svkyNo,
+            final String svkyJtkb) {
+<span class="fc" id="L279">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L280">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="fc" id="L281">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo&quot;
+                        + &quot; AND SVKY_JTKB = :svkyJtkb&quot;);
+<span class="fc" id="L284">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L285">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L286">        JpaWhere.eq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="fc" id="L287">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findBySvkyNoAndSkno(
+            final Long svkyNo,
+            final Integer skno) {
+<span class="fc" id="L294">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L295">        BigDecimal safeSkno = safeSkno(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L296">        SqlCapture.set(&quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND SKNO = :skno&quot;);</span>
+<span class="fc" id="L297">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L298">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L299">        JpaWhere.eq(builder, &quot;skno&quot;, safeSkno);</span>
+<span class="fc" id="L300">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvckyaRecord&gt; findLatestBySvkyNoAtKnskKjnYmdAndSvkyJtkbNotOrderByRkkiSttYmd(
+            final Long svkyNo,
+            final java.time.LocalDate knskKjnYmd,
+            final String svkyJtkb) {
+<span class="fc bfc" id="L308" title="All 4 branches covered.">        if (svkyJtkb == null || svkyJtkb.isBlank()) {</span>
+<span class="fc" id="L309">            return Optional.empty();</span>
+        }
+<span class="fc" id="L311">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L312">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L313">        String safeSvkyJtkb = safeSvkyJtkb(svkyJtkb, &quot;svkyJtkb&quot;);</span>
+<span class="fc" id="L314">        SqlCapture.set(</span>
+                &quot;SELECT * FROM SVCKYA WHERE SVKY_NO = :svkyNo AND RKKI_STT_YMD &lt;= :knskKjnYmd AND&quot;
+                        + &quot; SVKY_JTKB &lt;&gt; :svkyJtkb ORDER BY RKKI_STT_YMD DESC FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L317">        var builder = criteriaBuilderFactory.create(entityManager, SvckyaEntity.class);</span>
+<span class="fc" id="L318">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L319">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L320">        JpaWhere.notEq(builder, &quot;svkyJtkb&quot;, safeSvkyJtkb);</span>
+<span class="fc" id="L321">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L322">        builder.setMaxResults(1);</span>
+<span class="fc" id="L323">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;Integer&gt; findMaxKyttSknoBySvkyNo(final Long svkyNo) {
+<span class="fc" id="L328">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+
+<span class="fc" id="L330">        SqlCapture.set(&quot;SELECT MAX(KYTT_SKNO) FROM SVCKYA WHERE SVKY_NO = :svkyNo&quot;);</span>
+<span class="fc" id="L331">        Query query = entityManager.createNativeQuery(</span>
+                &quot;SELECT MAX(KYTT_SKNO) FROM SVCKYA WHERE SVKY_NO = :svkyNo&quot;);
+<span class="fc" id="L333">        query.setParameter(&quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L334">        Object value = query.getSingleResult();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L336">            return Optional.empty();</span>
+        }
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">        if (value instanceof java.math.BigDecimal bigDecimal) {</span>
+<span class="fc" id="L339">            return Optional.ofNullable(JpaDbReadValues.integerOrNullIfZero(bigDecimal));</span>
+        }
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="nc" id="L342">            return Optional.of(number.intValue());</span>
+        }
+<span class="nc" id="L344">        return Optional.of(Integer.parseInt(value.toString()));</span>
+    }
+
+    private static BigDecimal safeSvkyNo(Long value, String paramName) {
+<span class="fc" id="L348">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L349">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeSkno(Integer value, String paramName) {
+<span class="fc" id="L353">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L354">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(java.time.LocalDate value, String paramName) {
+<span class="fc" id="L358">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L359">                JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeSvkyJtkb(String value, String paramName) {
+<span class="fc" id="L363">        return WhereParamGuard.fixedLengthNotNull(value, paramName, SVKY_JTKB_LENGTH);</span>
+    }
+
+    private static List&lt;String&gt; safeSvkyJtkbList(List&lt;String&gt; values, String paramName) {
+<span class="fc" id="L367">        return values.stream().map(value -&gt; safeSvkyJtkb(value, paramName)).toList();</span>
+    }
+
+    @Override
+    public int updateBySvkyNoAndSkno(
+            final SvckyaWriteRecord record,
+            final Set&lt;SvckyaColumn&gt; targetColumns,
+            final SvckyaSknoUpdateKey updateKey,
+            final AuditContext auditContext) {
+<span class="fc" id="L376">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L377">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L378">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L379">        Objects.requireNonNull(auditContext, &quot;auditContext&quot;);</span>
+<span class="fc" id="L380">        Integer currentRecUpdJnjNo =</span>
+<span class="fc" id="L381">                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L382">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L386">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L387">                                auditColumnAccessBinder.bind(entity),</span>
+                                auditContext,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L391">                PreparedWhere.of(</span>
+                        U001_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L394">                            int nextIndex =</span>
+<span class="fc" id="L395">                                    JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+<span class="fc" id="L398">                                            updateKey.svkyNo(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L400">                            return JpaBind.set(</span>
+                                    query,
+                                    nextIndex,
+<span class="fc" id="L403">                                    updateKey.skno(),</span>
+                                    JpaDbWriteValues::bigDecimal);
+                        },
+<span class="fc" id="L406">                        JpaDbWriteValues.bigDecimal(updateKey.svkyNo()),</span>
+<span class="fc" id="L407">                        JpaDbWriteValues.bigDecimal(updateKey.skno())),</span>
+<span class="fc" id="L408">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L409">                SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_SKNO.identifier());</span>
+    }
+
+    @Override
+    public int updateBySvkyNoAndSknoAndRecUpdJnjNo(
+            final SvckyaWriteRecord record,
+            final Set&lt;SvckyaColumn&gt; targetColumns,
+            final SvckyaSknoJnjUpdateKey updateKey,
+            final AuditContext auditContext) {
+<span class="fc" id="L418">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L419">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L420">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L421">        Objects.requireNonNull(auditContext, &quot;auditContext&quot;);</span>
+<span class="fc" id="L422">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L426">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L427">                                auditColumnAccessBinder.bind(entity),</span>
+                                auditContext,
+                                clock,
+<span class="fc" id="L430">                                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0)),</span>
+<span class="fc" id="L431">                PreparedWhere.of(</span>
+                        U001_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L434">                            int nextIndex =</span>
+<span class="fc" id="L435">                                    JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+<span class="fc" id="L438">                                            updateKey.svkyNo(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L440">                            nextIndex =</span>
+<span class="fc" id="L441">                                    JpaBind.set(</span>
+                                            query,
+                                            nextIndex,
+<span class="fc" id="L444">                                            updateKey.skno(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L446">                            return nextIndex;</span>
+                        },
+<span class="fc" id="L448">                        JpaDbWriteValues.bigDecimal(updateKey.svkyNo()),</span>
+<span class="fc" id="L449">                        JpaDbWriteValues.bigDecimal(updateKey.skno())),</span>
+<span class="fc" id="L450">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L451">                SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier());</span>
+    }
+
+    @Override
+    public int updateBySvkyNoAndKyttSknoAndSknoNot(
+            final SvckyaWriteRecord record,
+            final Set&lt;SvckyaColumn&gt; targetColumns,
+            final SvckyaKyttSknoUpdateKey updateKey,
+            final AuditContext auditContext) {
+<span class="fc" id="L460">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L461">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L462">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L463">        Objects.requireNonNull(auditContext, &quot;auditContext&quot;);</span>
+<span class="fc" id="L464">        Integer currentRecUpdJnjNo =</span>
+<span class="fc" id="L465">                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L466">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L470">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L471">                                auditColumnAccessBinder.bind(entity),</span>
+                                auditContext,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L475">                PreparedWhere.of(</span>
+                        U003_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L478">                            int nextIndex =</span>
+<span class="fc" id="L479">                                    JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+<span class="fc" id="L482">                                            updateKey.svkyNo(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L484">                            nextIndex =</span>
+<span class="fc" id="L485">                                    JpaBind.set(</span>
+                                            query,
+                                            nextIndex,
+<span class="fc" id="L488">                                            updateKey.kyttSkno(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L490">                            return JpaBind.set(</span>
+                                    query,
+                                    nextIndex,
+<span class="fc" id="L493">                                    updateKey.skno(),</span>
+                                    JpaDbWriteValues::bigDecimal);
+                        },
+<span class="fc" id="L496">                        JpaDbWriteValues.bigDecimal(updateKey.svkyNo()),</span>
+<span class="fc" id="L497">                        JpaDbWriteValues.bigDecimal(updateKey.kyttSkno()),</span>
+<span class="fc" id="L498">                        JpaDbWriteValues.bigDecimal(updateKey.skno())),</span>
+<span class="fc" id="L499">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L500">                SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_KYTT_SKNO_AND_SKNO_NOT.identifier());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

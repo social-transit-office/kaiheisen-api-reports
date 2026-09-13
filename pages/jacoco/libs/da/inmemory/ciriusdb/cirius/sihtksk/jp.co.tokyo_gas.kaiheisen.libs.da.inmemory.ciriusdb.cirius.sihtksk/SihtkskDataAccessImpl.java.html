@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SihtkskDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-sihtksk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.sihtksk</a> &gt; <span class="el_source">SihtkskDataAccessImpl.java</span></div><h1>SihtkskDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.sihtksk;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.SihtkskDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.SihtkskRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.write.SihtkskColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.write.SihtkskWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.write.SihtkskWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/**
+ * DA-032 の SQL 振る舞いを模した SIHTKSK インメモリ実装。
+ */
+public class SihtkskDataAccessImpl extends DataAccessBase implements SihtkskDataAccess {
+
+<span class="fc" id="L29">    private static final ReflectiveInMemoryRowMapper&lt;SihtkskColumn, SihtkskRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L30">            ReflectiveInMemoryRowMapper.create(SihtkskColumn.class, SihtkskRecord.class);</span>
+
+<span class="fc" id="L32">    private static final AutoNeutralValueResolver&lt;SihtkskColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L33">            AutoNeutralValueResolver.create(SihtkskColumn.class, SihtkskRecord.class);</span>
+
+<span class="fc" id="L35">    private final List&lt;EnumMap&lt;SihtkskColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;SihtkskWriteRecord, SihtkskColumn&gt; insertSupport;
+
+    /**
+     * デフォルト依存でインスタンスを生成する。
+     */
+    public SihtkskDataAccessImpl() {
+<span class="nc" id="L47">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L48">    }</span>
+
+    SihtkskDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="fc" id="L51">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L52">    }</span>
+
+    SihtkskDataAccessImpl(
+<span class="fc" id="L55">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L56">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L57">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L58">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L59">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(
+                        SihtkskWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * テストデータを 1 行追加する。
+     *
+     * @param record 追加レコード
+     * @return このインスタンス
+     */
+    public SihtkskDataAccessImpl addRow(SihtkskRecord record) {
+<span class="nc" id="L71">        EnumMap&lt;SihtkskColumn, Object&gt; values =</span>
+<span class="nc" id="L72">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="nc" id="L73">        NEUTRAL_VALUE_RESOLVER.complement(values, SihtkskWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="nc" id="L74">        rows.add(values);</span>
+<span class="nc" id="L75">        return this;</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public int insert(SihtkskWriteRecord record, AuditContext context) {
+<span class="fc" id="L81">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L82">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L83">        rows.add(</span>
+<span class="fc" id="L84">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L87">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                SihtkskColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L92">        return 1;</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Optional&lt;SihtkskRecord&gt; findByPK(Long sihKiyNo) {
+<span class="fc" id="L98">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L99">        return rows.stream()</span>
+<span class="fc" id="L100">                .filter(row -&gt; Objects.equals(row.get(SihtkskColumn.SIH_KIY_NO), safeSihKiyNo))</span>
+<span class="fc" id="L101">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L102">                .findFirst();</span>
+    }
+
+    /**
+     * long 引数を補完する。
+     *
+     * @param value 元値
+     * @param paramName パラメータ名
+     * @return 補完後値
+     */
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L113">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

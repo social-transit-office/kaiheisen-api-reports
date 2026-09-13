@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceContractSupplySuspensionUpdateWithNoSettlementImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-servicecontractsupplysuspensionupdatewithnosettlement</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">ServiceContractSupplySuspensionUpdateWithNoSettlementImpl.java</span></div><h1>ServiceContractSupplySuspensionUpdateWithNoSettlementImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrHesnUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ServiceContractSupplySuspensionUpdateWithNoSettlement;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ServiceContractSupplySuspensionUpdateWithNoSettlementOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.KkytskrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SuguGmtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf;
+
+/**
+ * 概要: SV-072（サービス契約、供給停止管理更新（供給停止精算不要データ有））のサービス実装。
+ * 主な仕様:
+ * - 総合判定フラグと GHP専用4x有無フラグの組み合わせに応じて、サービス契約更新、総合扱いガスメーター走査、または処理なしを切り替える。
+ * - 総合扱いガスメーター走査中に開栓中メーターを見つけた場合は `ksenFlg=true` を返す。
+ * - `DA-033-R006` 0 件、`DA-038-U001` 0 件、`DA-055-U001` 0 件は `DataInconsistencyException` を送出する。
+ */
+public final class ServiceContractSupplySuspensionUpdateWithNoSettlementImpl
+        implements ServiceContractSupplySuspensionUpdateWithNoSettlement {
+
+    static final String SERVICE_USER_ID = &quot;KHSS072&quot;;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String supplyStopPaymentPendingStatus;
+
+    private final String openingGasMeterStatus;
+
+    /**
+     * 必須依存と必須定数を初期化する。
+     *
+     * @param svckyaDataAccess サービス契約 DA
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DA
+     * @param kkytskrDataAccess 供給停止管理 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public ServiceContractSupplySuspensionUpdateWithNoSettlementImpl(
+            SvckyaDataAccess svckyaDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            KkytskrDataAccess kkytskrDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L73">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L74">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L76">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L77">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L78">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L81">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L84">        this.supplyStopPaymentPendingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L88">        this.openingGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L92">    }</span>
+
+    @Override
+    public ServiceContractSupplySuspensionUpdateWithNoSettlementOutput execute(
+            Boolean suguHntFlg,
+            Boolean sny4XUmFlg,
+            SvckyaInf svckyaInf,
+            List&lt;SuguGmtInf&gt; suguGmtInfList,
+            LocalDate trkKnsYmd,
+            KkytskrInf kkytskrInf) {
+<span class="fc" id="L102">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L103">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L105">        boolean ksenFlg = false;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (Boolean.FALSE.equals(suguHntFlg)) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (shouldExecuteFirstServiceContractUpdate(sny4XUmFlg)) {</span>
+<span class="fc" id="L108">                updateServiceContractSupplyStopPaymentStatus(</span>
+                        svckyaInf,
+                        auditContext,
+                        decodedOriginFunctionId);
+            }
+        } else {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            for (SuguGmtInf suguGmtInf : suguGmtInfList) {</span>
+<span class="fc" id="L115">                GmtsetdRecord gasMeter = findGasMeterOrThrow(suguGmtInf, trkKnsYmd);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                if (openingGasMeterStatus.equals(gasMeter.gmtKhsJtkb())) {</span>
+<span class="fc" id="L117">                    ksenFlg = true;</span>
+<span class="fc" id="L118">                    break;</span>
+                }
+<span class="fc" id="L120">            }</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (!ksenFlg) {</span>
+<span class="fc" id="L122">                updateServiceContractSupplyStopPaymentStatus(</span>
+                        svckyaInf,
+                        auditContext,
+                        decodedOriginFunctionId);
+            }
+        }
+
+<span class="fc" id="L129">        updateSupplySuspensionManagement(kkytskrInf, auditContext, decodedOriginFunctionId);</span>
+<span class="fc" id="L130">        return new ServiceContractSupplySuspensionUpdateWithNoSettlementOutput(ksenFlg);</span>
+    }
+
+    private boolean shouldExecuteFirstServiceContractUpdate(Boolean sny4XUmFlg) {
+<span class="fc" id="L134">        return Boolean.FALSE.equals(sny4XUmFlg);</span>
+    }
+
+    private GmtsetdRecord findGasMeterOrThrow(SuguGmtInf suguGmtInf, LocalDate trkKnsYmd) {
+<span class="fc" id="L138">        Long gasMtstNo = suguGmtInf.gasMtstNo();</span>
+<span class="fc" id="L139">        return gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, trkKnsYmd)</span>
+<span class="fc" id="L140">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L141">                        gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L142">                        GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L144">                                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L145">                                .put(&quot;knskKjnYmd&quot;, trkKnsYmd)));</span>
+    }
+
+    private void updateServiceContractSupplyStopPaymentStatus(
+            SvckyaInf svckyaInf,
+            AuditContext auditContext,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L152">        int updatedCount = svckyaDataAccess.updateBySvkyNoAndSkno(</span>
+<span class="fc" id="L153">                buildSvckyaWriteRecord(),</span>
+<span class="fc" id="L154">                EnumSet.of(SvckyaColumn.KKYS_SISN_JTKB),</span>
+<span class="fc" id="L155">                new SvckyaSknoUpdateKey(svckyaInf.svkyNo(), svckyaInf.skno()),</span>
+                auditContext);
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L158">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L159">                    svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L160">                    SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_SKNO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L162">                            .put(&quot;svkyNo&quot;, svckyaInf.svkyNo())</span>
+<span class="fc" id="L163">                            .put(&quot;skno&quot;, svckyaInf.skno())</span>
+<span class="fc" id="L164">                            .put(&quot;kkysSisnJtkb&quot;, supplyStopPaymentPendingStatus)</span>
+<span class="fc" id="L165">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L166">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L168">    }</span>
+
+    private void updateSupplySuspensionManagement(
+            KkytskrInf kkytskrInf,
+            AuditContext auditContext,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L174">        int updatedCount = kkytskrDataAccess.updateByGasMtstNoAndHesnYmd(</span>
+<span class="fc" id="L175">                buildKkytskrWriteRecord(),</span>
+<span class="fc" id="L176">                EnumSet.of(KkytskrColumn.KKYS_SISN_JTKB, KkytskrColumn.KAS_YMD),</span>
+<span class="fc" id="L177">                new KkytskrHesnUpdateKey(kkytskrInf.gasMtstNo(), kkytskrInf.hesnYmd()),</span>
+                auditContext);
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L180">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L181">                    kkytskrDataAccess.tableName(),</span>
+<span class="fc" id="L182">                    KkytskrDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_HESN_YMD.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L184">                            .put(&quot;gasMtstNo&quot;, kkytskrInf.gasMtstNo())</span>
+<span class="fc" id="L185">                            .put(&quot;hesnYmd&quot;, kkytskrInf.hesnYmd())</span>
+<span class="fc" id="L186">                            .put(&quot;kkysSisnJtkb&quot;, supplyStopPaymentPendingStatus)</span>
+<span class="fc" id="L187">                            .put(&quot;kasYmd&quot;, null)</span>
+<span class="fc" id="L188">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L189">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L191">    }</span>
+
+    private SvckyaWriteRecord buildSvckyaWriteRecord() {
+<span class="fc" id="L194">        return new SvckyaWriteRecord(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                supplyStopPaymentPendingStatus,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private KkytskrWriteRecord buildKkytskrWriteRecord() {
+<span class="fc" id="L231">        return new KkytskrWriteRecord(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                supplyStopPaymentPendingStatus,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L253">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L254">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L255">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

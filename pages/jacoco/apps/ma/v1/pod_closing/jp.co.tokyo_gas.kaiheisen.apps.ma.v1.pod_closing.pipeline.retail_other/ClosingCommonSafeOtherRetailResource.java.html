@@ -1,0 +1,1508 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCommonSafeOtherRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.pipeline.retail_other</a> &gt; <span class="el_source">ClosingCommonSafeOtherRetailResource.java</span></div><h1>ClosingCommonSafeOtherRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.pipeline.retail_other;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.pipeline.retail_other.ClosingCommonSafeOtherRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.pipeline.retail_other.ClosingCommonSafeOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.pipeline.retail_other.ClosingCommonSafeOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HaisenRuleHokokuShiyouryoHuicchiException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleListException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleShiyouryoKyoteichuException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCatalog;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.write.KtmgmkkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PreClosingInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PreClosingInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryOtherSystemIntegrationDataRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transferconfig.CustomerNameEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transferconfig.CustomerNameEditOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.CalculationStartDateIdentificationErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.CalculationStartDateIdentificationErrorJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingDateErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingDateErrorJudgment2;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveSeriesGRelatedErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.DedicatedMeterOpeningInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningClosingInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.SeriesDedicatedContractInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.SeriesGUsageVariableUsageErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.TgPipelineReadingJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.UsageAgreementInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.UsageAmountErrorJudgment;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-074 閉栓共通処理 災害時閉栓・保安閉栓・供給停止 導管 他小売 API のリソース実装。
+ */
+@Path(ClosingCommonSafeOtherRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-074&quot;, name = &quot;閉栓共通処理 災害時閉栓・保安閉栓・供給停止 導管 他小売 API&quot;)
+@Tag(
+        name = &quot;閉栓共通処理 災害時閉栓・保安閉栓・供給停止 導管 他小売&quot;,
+        description = &quot;MA-074 閉栓共通処理 災害時閉栓・保安閉栓・供給停止 導管 他小売 API&quot;)
+public class ClosingCommonSafeOtherRetailResource
+        extends BaseResource&lt;ClosingCommonSafeOtherRetailRequest&gt; {
+
+<span class="fc" id="L111">    private static final Pattern SIGNED_DECIMAL_PATTERN = Pattern.compile(&quot;^-?\\d+(?:\\.\\d+)?$&quot;);</span>
+
+    private static final int MA026_GAS_USAGE_INTEGER_DIGITS = 11;
+
+    private static final int MA026_GAS_USAGE_FRACTION_DIGITS = 4;
+
+    protected ClosingCommonSafeOtherRetailResponse delegateFromParent(
+            ClosingCommonSafeOtherRetailRequest request) {
+<span class="fc" id="L119">        bindRequestContext(request);</span>
+        try {
+<span class="nc" id="L121">            validate(request);</span>
+<span class="fc" id="L122">        } catch (jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException exception) {</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            if (!canSkipValidationForParentDelegation(request, exception)) {</span>
+<span class="fc" id="L124">                throw exception;</span>
+            }
+<span class="nc" id="L126">        }</span>
+<span class="nc" id="L127">        return handle(request);</span>
+    }
+
+    private boolean canSkipValidationForParentDelegation(
+            ClosingCommonSafeOtherRetailRequest request,
+            jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException exception) {
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">        if (request == null || exception.getErrorDetailList().isEmpty()) {</span>
+<span class="nc" id="L134">            return false;</span>
+        }
+<span class="fc" id="L136">        return exception.getErrorDetailList().stream()</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                .allMatch(detail -&gt; isParentDelegationGapForRegressionCategory(request, detail)</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                        || isParentDelegationGapForSignedGasUsage(request, detail));</span>
+    }
+
+    private boolean isParentDelegationGapForRegressionCategory(
+            ClosingCommonSafeOtherRetailRequest request,
+            String errorDetail) {
+<span class="pc bpc" id="L144" title="3 of 4 branches missed.">        return request.sjskKbn() == null &amp;&amp; errorDetail.contains(&quot;sjskKbn&quot;);</span>
+    }
+
+    private boolean isParentDelegationGapForSignedGasUsage(
+            ClosingCommonSafeOtherRetailRequest request,
+            String errorDetail) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        return isMa026CompatibleNegativeGasUsage(request.gasSyry())</span>
+<span class="pc bnc" id="L151" title="All 2 branches missed.">                &amp;&amp; errorDetail.contains(&quot;gasSyry&quot;);</span>
+    }
+
+    private boolean isMa026CompatibleNegativeGasUsage(String gasSyry) {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (gasSyry == null) {</span>
+<span class="nc" id="L156">            return false;</span>
+        }
+<span class="fc" id="L158">        String normalized = gasSyry.trim();</span>
+<span class="pc bpc" id="L159" title="3 of 4 branches missed.">        if (!normalized.startsWith(&quot;-&quot;) || !SIGNED_DECIMAL_PATTERN.matcher(normalized).matches()) {</span>
+<span class="fc" id="L160">            return false;</span>
+        }
+<span class="nc" id="L162">        String unsigned = normalized.substring(1);</span>
+<span class="nc" id="L163">        String[] parts = unsigned.split(&quot;\\.&quot;, -1);</span>
+<span class="nc" id="L164">        int integerLength = parts[0].length();</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        int fractionLength = parts.length &gt; 1 ? parts[1].length() : 0;</span>
+<span class="nc bnc" id="L166" title="All 4 branches missed.">        return integerLength &lt;= MA026_GAS_USAGE_INTEGER_DIGITS</span>
+                &amp;&amp; fractionLength &lt;= MA026_GAS_USAGE_FRACTION_DIGITS;
+    }
+
+<span class="fc" id="L170">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L172">    private static final DateTimeFormatter SLASH_DATE_FORMATTER = DateTimeFormatter.ofPattern(&quot;yyyy/MM/dd&quot;);</span>
+
+<span class="fc" id="L174">    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private static final String REQUIRED_ERROR_CODE = ErrorCodeConstants.ERROR_CODE_010000011;
+
+<span class="fc" id="L178">    private static final LocalDate DETAIL_MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private static final String CLOSURE_SCREEN_ID = &quot;CXXG0082&quot;;
+
+    private static final String CONDUIT_DETAIL_TITLE = &quot;【閉栓報告内容】&quot;;
+
+    private static final String OTHER_RETAIL_LABEL = &quot;小売事業者&quot;;
+
+    private static final String OTHER_RETAIL_NAME = &quot;他小売&quot;;
+
+    private static final String CLOSING_DATE_LABEL = &quot;閉栓日&quot;;
+
+    private static final String ERROR_REASON_LABEL = &quot;エラー理由&quot;;
+
+    private static final String METER_READING_LABEL = &quot;指示数&quot;;
+
+    private static final String USAGE_LABEL = &quot;使用量&quot;;
+
+    private static final String WORK_LOCATION_LABEL = &quot;作業箇所&quot;;
+
+    private static final String WORK_LOCATION_NAME_LABEL = &quot;作業箇所名&quot;;
+
+    private static final String WORKER_LABEL = &quot;作業者&quot;;
+
+    private static final String WORKER_NAME_LABEL = &quot;作業者名&quot;;
+
+    private static final String HISTORY_MEMO_LABEL = &quot;履歴メモ&quot;;
+
+    private static final String OPENING_INFO_TITLE = &quot;【開栓時情報】&quot;;
+
+    private static final String CUSTOMER_NAME_LABEL_1 = &quot;（お名前）&quot;;
+
+    private static final String CUSTOMER_NAME_LABEL_2 = &quot;お名前&quot;;
+
+    private static final String METER_SERIAL_LABEL = &quot;メーター社番&quot;;
+
+    private static final String METER_MODEL_LABEL = &quot;型式&quot;;
+
+    private static final String METER_SIZE_LABEL = &quot;号数&quot;;
+
+    private static final String SERVICE_SYSTEM_USER_ID = &quot;KHSM074&quot;;
+
+    private static final String STATUS_NO_CHANGE = &quot;0&quot;;
+
+    private static final String ONLINE_REPORT_METHOD = &quot;4&quot;;
+
+    private static final String NON_REGULAR_METER_READING = &quot;0&quot;;
+
+    private static final String NORMAL_METER_READING_RESULT = &quot;11&quot;;
+
+    private final PreClosingInfoAcquisition preClosingInfoAcquisition;
+
+    private final KiycstdDataAccess kiycstdDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final ClosingDateErrorJudgment closingDateErrorJudgment;
+
+    private final OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment;
+
+    private final DedicatedMeterOpeningInProgressErrorJudgment
+            dedicatedMeterOpeningInProgressErrorJudgment;
+
+    private final SeriesDedicatedContractInProgressErrorJudgment
+            seriesDedicatedContractInProgressErrorJudgment;
+
+    private final TgPipelineReadingJudgment tgPipelineReadingJudgment;
+
+    private final ClosingDateErrorJudgment2 closingDateErrorJudgment2;
+
+    private final CalculationStartDateIdentificationErrorJudgment
+            calculationStartDateIdentificationErrorJudgment;
+
+    private final UsageAmountErrorJudgment usageAmountErrorJudgment;
+
+    private final UsageAgreementInProgressErrorJudgment usageAgreementInProgressErrorJudgment;
+
+    private final ComprehensiveSeriesGRelatedErrorJudgment comprehensiveSeriesGRelatedErrorJudgment;
+
+    private final SeriesGUsageVariableUsageErrorJudgment seriesGUsageVariableUsageErrorJudgment;
+
+    private final GasMeterLocationInfoUpdate gasMeterLocationInfoUpdate;
+
+    private final TransferWorkHistoryOtherSystemIntegrationDataRegistration
+            transferWorkHistoryOtherSystemIntegrationDataRegistration;
+
+    private final CustomerNameEdit customerNameEdit;
+
+    private final IdousagyourirekiDoukanJouhouCiriusAdapter conduitTransferWorkHistoryAdapter;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String otherRetailCategory;
+
+    private final String closingProcess;
+
+    private final String closingErrorJudgmentType;
+
+    private final String withExclusionDivision;
+
+    private final String gasMeterClosedStatus;
+
+    private final String caseHistoryResultTransfer;
+
+    private final String itemHistoryRegistrationDestinationPlace;
+
+    private final String transferWorkHistoryInquirySubject;
+
+    private final String customerInfoAcquisitionPossible;
+
+    private final String ownerDivisionConduit;
+
+    private final String nameEditingProcessName1;
+
+    private final String nameEditingProcessName2;
+
+    private final String supplyOutageReasonType;
+
+    private final String disasterClosureReasonType;
+
+    private final String securityClosureReasonType;
+
+    private final List&lt;String&gt; activeOrEndTransportationContractRelatedStatuses;
+
+    private final List&lt;String&gt; activeOrEndTransportationContractStatuses;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエストバリデータ
+     * @param clock システム日時プロバイダ
+     * @param preClosingInfoAcquisition 閉栓前情報取得 SV
+     * @param kiycstdDataAccess 契約お客さま DataAccess
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DataAccess
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞ DataAccess
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果 DataAccess
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞ DataAccess
+     * @param tskgmstDataAccess 託送サービス契約関連 DataAccess
+     * @param tkssvkyDataAccess 託送サービス契約 DataAccess
+     * @param closingDateErrorJudgment 閉栓日エラー判定 SV
+     * @param openingClosingInProgressErrorJudgment 開閉栓中エラー判定 SV
+     * @param dedicatedMeterOpeningInProgressErrorJudgment 専用メータ開栓中エラー判定 SV
+     * @param seriesDedicatedContractInProgressErrorJudgment 直列専用契約中エラー判定 SV
+     * @param tgPipelineReadingJudgment TG導管指示数判定 SV
+     * @param closingDateErrorJudgment2 閉栓日エラー判定 SV
+     * @param calculationStartDateIdentificationErrorJudgment 起算日特定エラー判定 SV
+     * @param usageAmountErrorJudgment 使用量エラー判定 SV
+     * @param usageAgreementInProgressErrorJudgment 使用量協定中エラー判定 SV
+     * @param comprehensiveSeriesGRelatedErrorJudgment 総合・直列G関連エラー判定 SV
+     * @param seriesGUsageVariableUsageErrorJudgment 直列G使用量・変動使用量エラー判定 SV
+     * @param gasMeterLocationInfoUpdate ガスメーター設置場所更新 SV
+     * @param transferWorkHistoryOtherSystemIntegrationDataRegistration 他システム連携登録 SV
+     * @param customerNameEdit おなまえ編集 SV
+     * @param conduitTransferWorkHistoryAdapter 導管異動・作業履歴連携アダプタ
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public ClosingCommonSafeOtherRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            PreClosingInfoAcquisition preClosingInfoAcquisition,
+            KiycstdDataAccess kiycstdDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            GmkskkdDataAccess gmkskkdDataAccess,
+            TskgmstDataAccess tskgmstDataAccess,
+            TkssvkyDataAccess tkssvkyDataAccess,
+            ClosingDateErrorJudgment closingDateErrorJudgment,
+            OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment,
+            DedicatedMeterOpeningInProgressErrorJudgment dedicatedMeterOpeningInProgressErrorJudgment,
+            SeriesDedicatedContractInProgressErrorJudgment
+                    seriesDedicatedContractInProgressErrorJudgment,
+            TgPipelineReadingJudgment tgPipelineReadingJudgment,
+            ClosingDateErrorJudgment2 closingDateErrorJudgment2,
+            CalculationStartDateIdentificationErrorJudgment
+                    calculationStartDateIdentificationErrorJudgment,
+            UsageAmountErrorJudgment usageAmountErrorJudgment,
+            UsageAgreementInProgressErrorJudgment usageAgreementInProgressErrorJudgment,
+            ComprehensiveSeriesGRelatedErrorJudgment comprehensiveSeriesGRelatedErrorJudgment,
+            SeriesGUsageVariableUsageErrorJudgment seriesGUsageVariableUsageErrorJudgment,
+            GasMeterLocationInfoUpdate gasMeterLocationInfoUpdate,
+            TransferWorkHistoryOtherSystemIntegrationDataRegistration
+                    transferWorkHistoryOtherSystemIntegrationDataRegistration,
+            CustomerNameEdit customerNameEdit,
+            IdousagyourirekiDoukanJouhouCiriusAdapter conduitTransferWorkHistoryAdapter,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L379">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L380">        this.preClosingInfoAcquisition =</span>
+<span class="fc" id="L381">                Objects.requireNonNull(preClosingInfoAcquisition, &quot;preClosingInfoAcquisition&quot;);</span>
+<span class="fc" id="L382">        this.kiycstdDataAccess = Objects.requireNonNull(kiycstdDataAccess, &quot;kiycstdDataAccess&quot;);</span>
+<span class="fc" id="L383">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L384">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L385">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L386">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L387">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L388">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L389">        this.closingDateErrorJudgment =</span>
+<span class="fc" id="L390">                Objects.requireNonNull(closingDateErrorJudgment, &quot;closingDateErrorJudgment&quot;);</span>
+<span class="fc" id="L391">        this.openingClosingInProgressErrorJudgment =</span>
+<span class="fc" id="L392">                Objects.requireNonNull(</span>
+                        openingClosingInProgressErrorJudgment,
+                        &quot;openingClosingInProgressErrorJudgment&quot;);
+<span class="fc" id="L395">        this.dedicatedMeterOpeningInProgressErrorJudgment =</span>
+<span class="fc" id="L396">                Objects.requireNonNull(</span>
+                        dedicatedMeterOpeningInProgressErrorJudgment,
+                        &quot;dedicatedMeterOpeningInProgressErrorJudgment&quot;);
+<span class="fc" id="L399">        this.seriesDedicatedContractInProgressErrorJudgment =</span>
+<span class="fc" id="L400">                Objects.requireNonNull(</span>
+                        seriesDedicatedContractInProgressErrorJudgment,
+                        &quot;seriesDedicatedContractInProgressErrorJudgment&quot;);
+<span class="fc" id="L403">        this.tgPipelineReadingJudgment =</span>
+<span class="fc" id="L404">                Objects.requireNonNull(tgPipelineReadingJudgment, &quot;tgPipelineReadingJudgment&quot;);</span>
+<span class="fc" id="L405">        this.closingDateErrorJudgment2 =</span>
+<span class="fc" id="L406">                Objects.requireNonNull(closingDateErrorJudgment2, &quot;closingDateErrorJudgment2&quot;);</span>
+<span class="fc" id="L407">        this.calculationStartDateIdentificationErrorJudgment =</span>
+<span class="fc" id="L408">                Objects.requireNonNull(</span>
+                        calculationStartDateIdentificationErrorJudgment,
+                        &quot;calculationStartDateIdentificationErrorJudgment&quot;);
+<span class="fc" id="L411">        this.usageAmountErrorJudgment =</span>
+<span class="fc" id="L412">                Objects.requireNonNull(usageAmountErrorJudgment, &quot;usageAmountErrorJudgment&quot;);</span>
+<span class="fc" id="L413">        this.usageAgreementInProgressErrorJudgment =</span>
+<span class="fc" id="L414">                Objects.requireNonNull(</span>
+                        usageAgreementInProgressErrorJudgment,
+                        &quot;usageAgreementInProgressErrorJudgment&quot;);
+<span class="fc" id="L417">        this.comprehensiveSeriesGRelatedErrorJudgment =</span>
+<span class="fc" id="L418">                Objects.requireNonNull(</span>
+                        comprehensiveSeriesGRelatedErrorJudgment,
+                        &quot;comprehensiveSeriesGRelatedErrorJudgment&quot;);
+<span class="fc" id="L421">        this.seriesGUsageVariableUsageErrorJudgment =</span>
+<span class="fc" id="L422">                Objects.requireNonNull(</span>
+                        seriesGUsageVariableUsageErrorJudgment,
+                        &quot;seriesGUsageVariableUsageErrorJudgment&quot;);
+<span class="fc" id="L425">        this.gasMeterLocationInfoUpdate =</span>
+<span class="fc" id="L426">                Objects.requireNonNull(gasMeterLocationInfoUpdate, &quot;gasMeterLocationInfoUpdate&quot;);</span>
+<span class="fc" id="L427">        this.transferWorkHistoryOtherSystemIntegrationDataRegistration =</span>
+<span class="fc" id="L428">                Objects.requireNonNull(</span>
+                        transferWorkHistoryOtherSystemIntegrationDataRegistration,
+                        &quot;transferWorkHistoryOtherSystemIntegrationDataRegistration&quot;);
+<span class="fc" id="L431">        this.customerNameEdit = Objects.requireNonNull(customerNameEdit, &quot;customerNameEdit&quot;);</span>
+<span class="fc" id="L432">        this.conduitTransferWorkHistoryAdapter =</span>
+<span class="fc" id="L433">                Objects.requireNonNull(</span>
+                        conduitTransferWorkHistoryAdapter, &quot;conduitTransferWorkHistoryAdapter&quot;);
+<span class="fc" id="L435">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L436">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L437">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L438">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L439">        this.kaiheisenConstantService = nonNullKaiheisenConstantService;</span>
+<span class="fc" id="L440">        this.otherRetailCategory =</span>
+<span class="fc" id="L441">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L445">        this.closingProcess =</span>
+<span class="fc" id="L446">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingProcessing.CLOSING_PROCESS);
+<span class="fc" id="L450">        this.closingErrorJudgmentType =</span>
+<span class="fc" id="L451">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.TYPE,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.CLOSING);
+<span class="fc" id="L455">        this.withExclusionDivision =</span>
+<span class="fc" id="L456">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.Exclusive.TYPE,
+                        ConstantLookupKeys.Kaiheisen.Exclusive.WITH_EXCLUSION);
+<span class="fc" id="L460">        this.gasMeterClosedStatus =</span>
+<span class="fc" id="L461">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L465">        this.caseHistoryResultTransfer =</span>
+<span class="fc" id="L466">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.CaseHistory.TYPE,
+                        ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER);
+<span class="fc" id="L470">        this.itemHistoryRegistrationDestinationPlace =</span>
+<span class="fc" id="L471">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                        ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.PLACE);
+<span class="fc" id="L475">        this.transferWorkHistoryInquirySubject =</span>
+<span class="fc" id="L476">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                        ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT);
+<span class="fc" id="L480">        this.customerInfoAcquisitionPossible =</span>
+<span class="fc" id="L481">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                        ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L485">        this.ownerDivisionConduit =</span>
+<span class="fc" id="L486">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.Unnamed__N3.TYPE,
+                        ConstantLookupKeys.Cirius.Unnamed__N3.CONDUIT);
+<span class="fc" id="L490">        this.nameEditingProcessName1 =</span>
+<span class="fc" id="L491">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.NameEditingProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.NameEditingProcessing.EDIT_NAME_1);
+<span class="fc" id="L495">        this.nameEditingProcessName2 =</span>
+<span class="fc" id="L496">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.NameEditingProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.NameEditingProcessing.EDIT_NAME_2);
+<span class="fc" id="L500">        this.supplyOutageReasonType =</span>
+<span class="fc" id="L501">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_OUTAGE);
+<span class="fc" id="L505">        this.disasterClosureReasonType =</span>
+<span class="fc" id="L506">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L510">        this.securityClosureReasonType =</span>
+<span class="fc" id="L511">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SECURITY_CLOSURE);
+<span class="fc" id="L515">        this.activeOrEndTransportationContractRelatedStatuses = List.of(</span>
+<span class="fc" id="L516">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING),
+<span class="fc" id="L520">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLICABLE_ENDS));
+<span class="fc" id="L524">        this.activeOrEndTransportationContractStatuses = List.of(</span>
+<span class="fc" id="L525">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT),
+<span class="fc" id="L529">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.END_OF_CONTRACT));
+<span class="fc" id="L533">    }</span>
+
+    /**
+     * MA-074 を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;閉栓共通処理-災害時閉栓・保安閉栓・供給停止-導管-他小売&quot;,
+            description = &quot;Phase C では共通コンテキストと契約整合を優先し、最小一貫の応答を返却する。&quot;,
+            operationId = &quot;postClosingCommonSafeOtherRetail&quot;)
+    @RequestBody(
+            required = true,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingCommonSafeOtherRetailRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;閉栓共通処理の実行結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingCommonSafeOtherRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(
+                            anyOf = {
+                                CommonErrorResponse.class,
+                                ClosingCommonSafeOtherRetailResponse.class
+                            })))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingCommonSafeOtherRetailResponse endpoint(ClosingCommonSafeOtherRetailRequest request) {
+<span class="fc" id="L575">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    ClosingCommonSafeOtherRetailResponse handle(ClosingCommonSafeOtherRetailRequest request) {
+<span class="fc" id="L579">        validateReportingSystemType(request.hukkSysShbt());</span>
+<span class="fc" id="L580">        LocalDate workDate = parseDate(request.hssgYmd());</span>
+<span class="fc" id="L581">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L582">        Long gasMeterLocationNumber = parseRequiredLong(request.gasMtstNo());</span>
+<span class="fc" id="L583">        TkssvkyRecord transportationServiceContract = requireTransportationServiceContract(gasMeterLocationNumber);</span>
+<span class="fc" id="L584">        PreClosingInfoAcquisitionOutput preClosingInfo =</span>
+<span class="fc" id="L585">                preClosingInfoAcquisition.execute(otherRetailCategory, gasMeterLocationNumber, workDate);</span>
+<span class="fc" id="L586">        ValidationExecutionResult validationResult =</span>
+<span class="fc" id="L587">                executeValidationSteps(</span>
+                        request,
+                        workDate,
+                        gasMeterLocationNumber,
+<span class="fc" id="L591">                        transportationServiceContract.tksuSvkyNo(),</span>
+                        preClosingInfo);
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (validationResult.earlyResponse() != null) {</span>
+<span class="nc" id="L594">            throw badRequestResponse(validationResult.earlyResponse());</span>
+        }
+<span class="fc" id="L596">        KiycstdRecord conduitCustomer = requireConduitCustomer(parseRequiredLong(request.syoKyoTrno()));</span>
+<span class="fc" id="L597">        executeUpdateSteps(</span>
+                request,
+                workDate,
+                systemDatetime,
+                gasMeterLocationNumber,
+                transportationServiceContract,
+                preClosingInfo,
+<span class="fc" id="L604">                validationResult.calculationOutput(),</span>
+                conduitCustomer);
+<span class="fc" id="L606">        return toResponse();</span>
+    }
+
+    private ClosingCommonSafeOtherRetailResponse toResponse() {
+<span class="fc" id="L610">        return new ClosingCommonSafeOtherRetailResponse(</span>
+                null,
+                null,
+                null,
+<span class="fc" id="L614">                requestContext.getCorrelationId().orElse(null),</span>
+                null,
+                null,
+                null);
+    }
+
+    private ValidationExecutionResult executeValidationSteps(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDate workDate,
+            Long gasMeterLocationNumber,
+            Long transportationServiceContractNumber,
+            PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L626">        closingDateErrorJudgment.execute(</span>
+                workDate,
+<span class="fc" id="L628">                preClosingInfo.dgrpMiRegFlg(),</span>
+<span class="pc bpc" id="L629" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdSystemDateInf() != null</span>
+<span class="nc" id="L630">                        ? preClosingInfo.gmtsetdSystemDateInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L631">                        : null,</span>
+<span class="pc bpc" id="L632" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L633">                        ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L634">                        : null);</span>
+
+<span class="fc" id="L636">        openingClosingInProgressErrorJudgment.execute(</span>
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L638">                        ? preClosingInfo.gmtsetdHsenSaymdInf().gmtKhsJtkb()</span>
+<span class="fc" id="L639">                        : null,</span>
+                closingErrorJudgmentType);
+
+<span class="fc" id="L642">        dedicatedMeterOpeningInProgressErrorJudgment.execute(</span>
+<span class="pc bpc" id="L643" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L644">                        ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L645">                        : null,</span>
+<span class="fc" id="L646">                preClosingInfo.snyKasFlg());</span>
+
+<span class="pc bpc" id="L648" title="1 of 2 branches missed.">        if (!&quot;4&quot;.equals(normalizeOptional(request.hesnJysb()))) {</span>
+<span class="fc" id="L649">            seriesDedicatedContractInProgressErrorJudgment.execute(false, preClosingInfo.snyKyktFlg());</span>
+        }
+
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">        if (!&quot;6&quot;.equals(normalizeOptional(request.hesnJysb()))) {</span>
+<span class="fc" id="L653">            tgPipelineReadingJudgment.execute(</span>
+                    closingProcess,
+<span class="fc bfc" id="L655" title="All 2 branches covered.">                    preClosingInfo.gasmtrdInf() != null ? preClosingInfo.gasmtrdInf().sjskHticSu() : null,</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">                    preClosingInfo.gasmtrdInf() != null ? preClosingInfo.gasmtrdInf().sjsuMincSu() : null,</span>
+<span class="fc" id="L657">                    parseRequiredLong(request.gmtShjSu()));</span>
+        }
+
+<span class="fc" id="L660">        closingDateErrorJudgment2.execute(</span>
+                gasMeterLocationNumber,
+                workDate,
+<span class="fc bfc" id="L663" title="All 2 branches covered.">                preClosingInfo.gasmtrdInf() != null ? preClosingInfo.gasmtrdInf().gmtkYmd() : null,</span>
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L665">                        ? preClosingInfo.gmtsetdHsenSaymdInf().kasYmd()</span>
+<span class="fc" id="L666">                        : null,</span>
+                null,
+<span class="fc" id="L668">                toClosingDateSkinKnkkInf(preClosingInfo),</span>
+<span class="fc" id="L669">                toClosingDateKnsKkaMtInf(preClosingInfo),</span>
+<span class="pc bpc" id="L670" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L671">                        ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L672">                        : null,</span>
+<span class="fc" id="L673">                preClosingInfo.snyHsngKnsFlg(),</span>
+<span class="fc" id="L674">                preClosingInfo.dgrpHesnMturFlg(),</span>
+<span class="fc" id="L675">                request.duknIsrgCd().trim(),</span>
+<span class="pc bpc" id="L676" title="1 of 2 branches missed.">                preClosingInfo.znkiKnkkInf() != null ? preClosingInfo.znkiKnkkInf().knsYmd() : null,</span>
+<span class="fc" id="L677">                normalizeOptional(request.hesnJysb()));</span>
+
+        CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput;
+        try {
+<span class="fc" id="L681">            calculationOutput =</span>
+<span class="fc" id="L682">                    calculationStartDateIdentificationErrorJudgment.execute(</span>
+                            gasMeterLocationNumber,
+                            workDate,
+<span class="fc" id="L685">                            parseRequiredLong(request.gmtShjSu()),</span>
+<span class="fc" id="L686">                            normalizeOptional(request.sjskKbn()),</span>
+<span class="pc bpc" id="L687" title="1 of 2 branches missed.">                            preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L688">                                    ? preClosingInfo.gmtsetdHsenSaymdInf().gmtKhsJtkb()</span>
+<span class="fc" id="L689">                                    : null,</span>
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">                            preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L691">                                    ? preClosingInfo.gmtsetdHsenSaymdInf().jkarSu()</span>
+<span class="fc" id="L692">                                    : null,</span>
+<span class="fc bfc" id="L693" title="All 2 branches covered.">                            preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L694">                                    ? preClosingInfo.gasmtrdInf().sjsuMincSu()</span>
+<span class="fc" id="L695">                                    : null,</span>
+<span class="fc bfc" id="L696" title="All 2 branches covered.">                            preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L697">                                    ? preClosingInfo.gasmtrdInf().sjskHticSu()</span>
+<span class="fc" id="L698">                                    : null,</span>
+<span class="fc" id="L699">                            normalizeOptional(request.hesnJysb()),</span>
+<span class="fc" id="L700">                            parseOptionalBigDecimal(request.gasSyry()),</span>
+                            DETAIL_MAX_DATE,
+<span class="pc bpc" id="L702" title="1 of 2 branches missed.">                            preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L703">                                    ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L704">                                    : null,</span>
+<span class="fc" id="L705">                            toSnyInfList(preClosingInfo),</span>
+<span class="fc" id="L706">                            toSuguGmtInfList(preClosingInfo),</span>
+<span class="fc" id="L707">                            toSnySkinKnsInfList(preClosingInfo),</span>
+<span class="fc" id="L708">                            toSuguGmtSkinKnsInfList(preClosingInfo));</span>
+<span class="nc" id="L709">        } catch (HaisenRuleHokokuShiyouryoHuicchiException exception) {</span>
+<span class="nc" id="L710">            return new ValidationExecutionResult(</span>
+<span class="nc" id="L711">                    null, buildReportUsageMismatchResponse(exception));</span>
+<span class="fc" id="L712">        }</span>
+
+<span class="pc bpc" id="L714" title="1 of 2 branches missed.">        if (!&quot;6&quot;.equals(normalizeOptional(request.hesnJysb()))) {</span>
+<span class="fc" id="L715">            usageAmountErrorJudgment.execute(</span>
+<span class="fc bfc" id="L716" title="All 2 branches covered.">                    request.warnKknInf() != null ? request.warnKknInf().shjSuKknFlg() : null,</span>
+<span class="fc" id="L717">                    normalizeOptional(request.sjskKbn()),</span>
+<span class="fc" id="L718">                    resolveUsageAmountCurrentUsage(request, calculationOutput),</span>
+<span class="fc" id="L719">                    resolveUsageAmountJudgmentThreshold(preClosingInfo));</span>
+        }
+
+        try {
+<span class="fc" id="L723">            usageAgreementInProgressErrorJudgment.execute(</span>
+<span class="fc" id="L724">                    preClosingInfo.syryKytiTyuFlg(),</span>
+<span class="fc" id="L725">                    preClosingInfo.mtgSyryKytiTyuFlg(),</span>
+<span class="fc" id="L726">                    preClosingInfo.snySyryKytiTyuFlg(),</span>
+<span class="fc bfc" id="L727" title="All 2 branches covered.">                    preClosingInfo.sogoTmtrInfList() == null ? 0 : preClosingInfo.sogoTmtrInfList().size(),</span>
+<span class="fc" id="L728">                    preClosingInfo.dgrpSyryKytiTyuFlg(),</span>
+                    gasMeterLocationNumber,
+<span class="fc" id="L730">                    preClosingInfo.mtgSyryKytiTyuMtstno(),</span>
+<span class="fc" id="L731">                    preClosingInfo.snySyryKytiTyuMtstno(),</span>
+<span class="fc" id="L732">                    preClosingInfo.dgrpSyryKytiTyuMtstno());</span>
+<span class="nc" id="L733">        } catch (HeisenRuleShiyouryoKyoteichuException exception) {</span>
+<span class="nc" id="L734">            return new ValidationExecutionResult(</span>
+<span class="nc" id="L735">                    calculationOutput, buildUsageAgreementInProgressResponse(exception));</span>
+<span class="fc" id="L736">        }</span>
+
+<span class="pc bpc" id="L738" title="1 of 2 branches missed.">        if (&quot;4&quot;.equals(normalizeOptional(request.hesnJysb()))) {</span>
+<span class="nc" id="L739">            comprehensiveSeriesGRelatedErrorJudgment.execute(</span>
+                    otherRetailCategory,
+<span class="nc" id="L741">                    normalizeOptional(request.hesnJysb()),</span>
+<span class="nc bnc" id="L742" title="All 2 branches missed.">                    preClosingInfo.sogoTmtrInfList() == null ? 0 : preClosingInfo.sogoTmtrInfList().size(),</span>
+<span class="nc" id="L743">                    preClosingInfo.dgrpKasFlg(),</span>
+<span class="nc" id="L744">                    preClosingInfo.dgrpHkhesnJiyuFlg(),</span>
+<span class="nc bnc" id="L745" title="All 2 branches missed.">                    preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L746">                            ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="nc" id="L747">                            : null);</span>
+        }
+
+<span class="pc bpc" id="L750" title="1 of 2 branches missed.">        if (!&quot;6&quot;.equals(normalizeOptional(request.hesnJysb()))) {</span>
+            try {
+<span class="fc" id="L752">                seriesGUsageVariableUsageErrorJudgment.execute(</span>
+<span class="fc bfc" id="L753" title="All 2 branches covered.">                        request.warnKknInf() != null ? request.warnKknInf().shjSuKknFlg() : null,</span>
+<span class="pc bpc" id="L754" title="1 of 2 branches missed.">                        preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L755">                                ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L756">                                : null,</span>
+<span class="pc bpc" id="L757" title="1 of 2 branches missed.">                        preClosingInfo.znkiKnkkInf() != null ? preClosingInfo.znkiKnkkInf().knsYmd() : null,</span>
+                        workDate,
+                        gasMeterLocationNumber,
+<span class="fc" id="L760">                        parseOptionalBigDecimal(request.gasSyry()),</span>
+<span class="fc" id="L761">                        preClosingInfo.snyMtrKnsu(),</span>
+<span class="pc bpc" id="L762" title="1 of 2 branches missed.">                        preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L763">                                ? preClosingInfo.gmtsetdHsenSaymdInf().gmtKhsJtkb()</span>
+<span class="fc" id="L764">                                : null,</span>
+<span class="fc bfc" id="L765" title="All 2 branches covered.">                        preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L766">                                ? preClosingInfo.gasmtrdInf().gmtGusu()</span>
+<span class="fc" id="L767">                                : null,</span>
+                        transportationServiceContractNumber,
+<span class="fc" id="L769">                        calculationOutput.gasRknKsnInf());</span>
+<span class="nc" id="L770">            } catch (HeisenRuleListException exception) {</span>
+<span class="nc" id="L771">                return new ValidationExecutionResult(</span>
+<span class="nc" id="L772">                        calculationOutput, buildWarningResponse(resolveWarningMessageIds(exception)));</span>
+<span class="fc" id="L773">            }</span>
+        }
+
+<span class="fc" id="L776">        return new ValidationExecutionResult(calculationOutput, null);</span>
+    }
+
+    private void executeUpdateSteps(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDate workDate,
+            LocalDateTime systemDatetime,
+            Long gasMeterLocationNumber,
+            TkssvkyRecord transportationServiceContract,
+            PreClosingInfoAcquisitionOutput preClosingInfo,
+            CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput,
+            KiycstdRecord conduitCustomer) {
+<span class="fc" id="L788">        executeCurrentGasMeterLocationUpdate(request, workDate, preClosingInfo);</span>
+<span class="fc" id="L789">        executeFutureGasMeterLocationUpdates(request, workDate, preClosingInfo);</span>
+<span class="fc" id="L790">        insertPreConfirmedMeterReading(</span>
+                request,
+                workDate,
+                gasMeterLocationNumber,
+<span class="fc" id="L794">                transportationServiceContract.tksuSvkyNo(),</span>
+                preClosingInfo,
+                calculationOutput);
+
+<span class="fc" id="L798">        EditedCustomerNames editedCustomerNames = editCustomerNames(conduitCustomer);</span>
+<span class="fc" id="L799">        conduitTransferWorkHistoryAdapter.register(</span>
+<span class="fc" id="L800">                toConduitTransferWorkHistoryRequest(</span>
+                        request,
+                        systemDatetime,
+                        preClosingInfo,
+                        conduitCustomer,
+                        editedCustomerNames));
+<span class="fc" id="L806">        transferWorkHistoryOtherSystemIntegrationDataRegistration.execute(</span>
+<span class="fc" id="L807">                toConduitOtherSystemIntegrationInfo(</span>
+                        request,
+                        systemDatetime,
+                        preClosingInfo,
+                        conduitCustomer,
+                        transportationServiceContract));
+<span class="fc" id="L813">    }</span>
+
+    private void executeCurrentGasMeterLocationUpdate(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDate workDate,
+            PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="pc bpc" id="L819" title="3 of 4 branches missed.">        if (preClosingInfo.gmtsetdHsenSaymdInf() == null || preClosingInfo.gmtsetkInf() == null) {</span>
+<span class="fc" id="L820">            return;</span>
+        }
+<span class="nc" id="L822">        gasMeterLocationInfoUpdate.execute(</span>
+                withExclusionDivision,
+                new GmtsetdInf(
+<span class="nc" id="L825">                        preClosingInfo.gmtsetdHsenSaymdInf().gasMtstNo(),</span>
+<span class="nc" id="L826">                        preClosingInfo.gmtsetdHsenSaymdInf().tkysYmd(),</span>
+<span class="nc" id="L827">                        preClosingInfo.gmtsetdHsenSaymdInf().tyenYmd(),</span>
+<span class="nc" id="L828">                        preClosingInfo.gmtsetdHsenSaymdInf().recUpdJnjNo()),</span>
+                new GmtsetkInf(
+<span class="nc" id="L830">                        preClosingInfo.gmtsetkInf().gasMtstNo(),</span>
+<span class="nc" id="L831">                        preClosingInfo.gmtsetkInf().tkysYmd(),</span>
+<span class="nc" id="L832">                        preClosingInfo.gmtsetkInf().recUpdJnjNo()),</span>
+                new MtsetkInf(null, null, null),
+                new GmtsetdUpdInf(
+                        gasMeterClosedStatus,
+<span class="nc" id="L836">                        preClosingInfo.gmtsetdHsenSaymdInf().kasYmd(),</span>
+                        workDate,
+<span class="nc" id="L838">                        preClosingInfo.gmtsetdHsenSaymdInf().kasJysb(),</span>
+<span class="nc" id="L839">                        normalizeOptional(request.hesnJysb()),</span>
+                        null),
+                new MtsetkUpdInf(null, null, null, null, null));
+<span class="nc" id="L842">    }</span>
+
+    private void executeFutureGasMeterLocationUpdates(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDate workDate,
+            PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="pc bpc" id="L848" title="1 of 2 branches missed.">        if (preClosingInfo.gmtsetdHsenSaymdInf() == null) {</span>
+<span class="fc" id="L849">            return;</span>
+        }
+<span class="nc" id="L851">        List&lt;GmtsetdRecord&gt; futureConduitRecords =</span>
+<span class="nc" id="L852">                gmtsetdDataAccess.findAllByGasMtstNoAndTkysYmd(</span>
+<span class="nc" id="L853">                        preClosingInfo.gmtsetdHsenSaymdInf().gasMtstNo(), workDate);</span>
+<span class="nc bnc" id="L854" title="All 2 branches missed.">        for (GmtsetdRecord futureConduitRecord : futureConduitRecords) {</span>
+<span class="nc" id="L855">            GmtsetkRecord futureRetailRecord =</span>
+                    gmtsetkDataAccess
+<span class="nc" id="L857">                            .findByGasMtstNoAndTkysYmd(</span>
+<span class="nc" id="L858">                                    futureConduitRecord.gasMtstNo(), futureConduitRecord.tkysYmd())</span>
+<span class="nc" id="L859">                            .orElseThrow(</span>
+                                    () -&gt;
+<span class="nc" id="L861">                                            DataInconsistencySupport.create(</span>
+<span class="nc" id="L862">                                                    gmtsetkDataAccess.tableName(),</span>
+                                                    GmtsetkDataAccess.CallSpecs
+                                                            .FIND_BY_GAS_MTST_NO_AND_TKYS_YMD
+<span class="nc" id="L865">                                                            .identifier(),</span>
+                                                    new FlatJsonBuilder()
+<span class="nc" id="L867">                                                            .put(&quot;gasMtstNo&quot;, futureConduitRecord.gasMtstNo())</span>
+<span class="nc" id="L868">                                                            .put(&quot;tkysYmd&quot;, futureConduitRecord.tkysYmd())));</span>
+<span class="nc" id="L869">            gasMeterLocationInfoUpdate.execute(</span>
+                    withExclusionDivision,
+                    new GmtsetdInf(
+<span class="nc" id="L872">                            futureConduitRecord.gasMtstNo(),</span>
+<span class="nc" id="L873">                            futureConduitRecord.tkysYmd(),</span>
+<span class="nc" id="L874">                            futureConduitRecord.tyenYmd(),</span>
+<span class="nc" id="L875">                            futureConduitRecord.recUpdJnjNo()),</span>
+                    new GmtsetkInf(
+<span class="nc" id="L877">                            futureRetailRecord.gasMtstNo(),</span>
+<span class="nc" id="L878">                            futureRetailRecord.tkysYmd(),</span>
+<span class="nc" id="L879">                            futureRetailRecord.recUpdJnjNo()),</span>
+                    new MtsetkInf(null, null, null),
+                    new GmtsetdUpdInf(
+                            gasMeterClosedStatus,
+<span class="nc" id="L883">                            futureConduitRecord.kasYmd(),</span>
+                            workDate,
+<span class="nc" id="L885">                            futureConduitRecord.kasJysb(),</span>
+<span class="nc" id="L886">                            normalizeOptional(request.hesnJysb()),</span>
+                            null),
+                    new MtsetkUpdInf(null, null, null, null, null));
+<span class="nc" id="L889">        }</span>
+<span class="nc" id="L890">    }</span>
+
+    private void insertPreConfirmedMeterReading(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDate workDate,
+            Long gasMeterLocationNumber,
+            Long transportationServiceContractNumber,
+            PreClosingInfoAcquisitionOutput preClosingInfo,
+            CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput) {
+<span class="fc bfc" id="L899" title="All 2 branches covered.">        if (preClosingInfo.gasmtrdInf() == null) {</span>
+<span class="fc" id="L900">            return;</span>
+        }
+<span class="fc" id="L902">        boolean disasterClosure = &quot;6&quot;.equals(normalizeOptional(request.hesnJysb()));</span>
+<span class="fc" id="L903">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L904">        ktmgmkkDataAccess.insert(</span>
+                new KtmgmkkWriteRecord(
+                        gasMeterLocationNumber,
+                        workDate,
+<span class="fc" id="L908">                        resolveNextMeterReadingResultSequence(gasMeterLocationNumber, workDate),</span>
+                        null,
+<span class="fc" id="L910">                        resolveMeterReadingResultReasonType(request.hesnJysb()),</span>
+<span class="fc" id="L911">                        0,</span>
+<span class="fc" id="L912">                        parseRequiredLong(request.gmtShjSu()),</span>
+<span class="pc bpc" id="L913" title="3 of 6 branches missed.">                        disasterClosure || calculationOutput == null || calculationOutput.konKnkkInf() == null</span>
+<span class="fc" id="L914">                                ? null</span>
+<span class="pc" id="L915">                                : calculationOutput.konKnkkInf().jkarSuKnzmGasSyry(),</span>
+                        BigDecimal.ZERO,
+<span class="pc bpc" id="L917" title="3 of 6 branches missed.">                        disasterClosure || calculationOutput == null || calculationOutput.konKnkkInf() == null</span>
+<span class="fc" id="L918">                                ? null</span>
+<span class="pc" id="L919">                                : calculationOutput.konKnkkInf().shyDdsu(),</span>
+<span class="fc" id="L920">                        normalizeOptional(request.sjskKbn()),</span>
+                        STATUS_NO_CHANGE,
+                        ONLINE_REPORT_METHOD,
+<span class="pc bpc" id="L923" title="1 of 2 branches missed.">                        request.warnKknInf() != null ? request.warnKknInf().shjSuKknFlg() : null,</span>
+                        NON_REGULAR_METER_READING,
+                        NORMAL_METER_READING_RESULT,
+                        gasMeterClosedStatus,
+<span class="pc bpc" id="L927" title="1 of 2 branches missed.">                        preClosingInfo.knsytiInf() != null ? preClosingInfo.knsytiInf().knsHuhuKbn() : null,</span>
+<span class="pc bpc" id="L928" title="1 of 2 branches missed.">                        preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L929">                                ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L930">                                : null,</span>
+<span class="pc bpc" id="L931" title="1 of 2 branches missed.">                        preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L932">                                ? preClosingInfo.gmtsetdHsenSaymdInf().mtgMtstNo()</span>
+<span class="fc" id="L933">                                : null,</span>
+                        null,
+                        null,
+<span class="fc" id="L936">                        normalizeOptional(request.gmb()),</span>
+<span class="fc" id="L937">                        preClosingInfo.gasmtrdInf().gmbTsno(),</span>
+                        transportationServiceContractNumber,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L945">                        normalizeOptional(request.hukkUsrId()),</span>
+<span class="fc" id="L946">                        systemDatetime.toLocalDate(),</span>
+                        Boolean.FALSE,
+                        null),
+<span class="fc" id="L949">                AuditContext.of(SERVICE_SYSTEM_USER_ID, decodeOriginFunctionId()));</span>
+<span class="fc" id="L950">    }</span>
+
+    private Integer resolveNextMeterReadingResultSequence(
+            Long gasMeterLocationNumber, LocalDate workDate) {
+<span class="fc" id="L954">        Optional&lt;KtmgmkkRecord&gt; preConfirmedRecord =</span>
+<span class="fc" id="L955">                ktmgmkkDataAccess.findByGasMtstNoAndKnsYmd(gasMeterLocationNumber, workDate);</span>
+<span class="fc bfc" id="L956" title="All 2 branches covered.">        if (preConfirmedRecord.isPresent()) {</span>
+<span class="fc" id="L957">            return preConfirmedRecord.map(KtmgmkkRecord::knsKkaTsno)</span>
+<span class="fc" id="L958">                    .filter(Objects::nonNull)</span>
+<span class="fc" id="L959">                    .map(value -&gt; value + 1)</span>
+<span class="fc" id="L960">                    .orElse(1);</span>
+        }
+
+<span class="fc" id="L963">        return gmkskkdDataAccess.findByGasMtstNoAndKnsYmd(gasMeterLocationNumber, workDate)</span>
+<span class="fc" id="L964">                .map(GmkskkdRecord::knsKkaTsno)</span>
+<span class="fc" id="L965">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L966">                .map(value -&gt; value + 1)</span>
+<span class="fc" id="L967">                .orElse(1);</span>
+    }
+
+    private String resolveMeterReadingResultReasonType(String hesnJysb) {
+<span class="pc bpc" id="L971" title="2 of 3 branches missed.">        return switch (normalizeOptional(hesnJysb)) {</span>
+<span class="nc" id="L972">            case &quot;4&quot; -&gt; supplyOutageReasonType;</span>
+<span class="nc" id="L973">            case &quot;6&quot; -&gt; disasterClosureReasonType;</span>
+<span class="fc" id="L974">            default -&gt; securityClosureReasonType;</span>
+        };
+    }
+
+    private EditedCustomerNames editCustomerNames(KiycstdRecord conduitCustomer) {
+<span class="pc bpc" id="L979" title="1 of 2 branches missed.">        if (conduitCustomer == null) {</span>
+<span class="nc" id="L980">            return new EditedCustomerNames(null, null);</span>
+        }
+
+<span class="fc" id="L983">        CustomerNameEditOutput editedName1 =</span>
+<span class="fc" id="L984">                customerNameEdit.execute(</span>
+<span class="fc" id="L985">                        conduitCustomer.ctnmKn1(),</span>
+<span class="fc" id="L986">                        conduitCustomer.ctnmKj1(),</span>
+<span class="fc" id="L987">                        conduitCustomer.ctnm1HujnShbt(),</span>
+<span class="fc" id="L988">                        conduitCustomer.ctnm1HshiShbt(),</span>
+<span class="fc" id="L989">                        conduitCustomer.ctnmKjhkFlg(),</span>
+                        nameEditingProcessName1);
+
+<span class="fc" id="L992">        CustomerNameEditOutput editedName2 = null;</span>
+<span class="fc bfc" id="L993" title="All 2 branches covered.">        if (!isBlank(conduitCustomer.ctnmKn2())) {</span>
+<span class="fc" id="L994">            editedName2 =</span>
+<span class="fc" id="L995">                    customerNameEdit.execute(</span>
+<span class="fc" id="L996">                            conduitCustomer.ctnmKn2(),</span>
+<span class="fc" id="L997">                            conduitCustomer.ctnmKj2(),</span>
+<span class="fc" id="L998">                            conduitCustomer.ctnm2HujnShbt(),</span>
+<span class="fc" id="L999">                            conduitCustomer.ctnm2HshiShbt(),</span>
+<span class="fc" id="L1000">                            conduitCustomer.ctnmKjhkFlg(),</span>
+                            nameEditingProcessName2);
+        }
+
+<span class="fc" id="L1004">        return new EditedCustomerNames(editedName1, editedName2);</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest toConduitTransferWorkHistoryRequest(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDateTime systemDatetime,
+            PreClosingInfoAcquisitionOutput preClosingInfo,
+            KiycstdRecord conduitCustomer,
+            EditedCustomerNames editedCustomerNames) {
+<span class="fc" id="L1013">        return new IdousagyourirekiDoukanJouhouRequest(</span>
+                new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiDoukanJouhouRenkei(
+                        new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekigyoumuKyoutsuuDoukan(
+<span class="fc" id="L1016">                                request.gasMtstNo().trim(),</span>
+                                caseHistoryResultTransfer,
+                                itemHistoryRegistrationDestinationPlace,
+<span class="fc" id="L1019">                                request.duknIsrgCd().trim(),</span>
+<span class="fc" id="L1020">                                request.duknIsrsCd().trim(),</span>
+<span class="fc" id="L1021">                                request.isrrHkkrKbn().trim(),</span>
+                                transferWorkHistoryInquirySubject,
+<span class="fc" id="L1023">                                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L1024">                                toTimeText(systemDatetime),</span>
+<span class="fc" id="L1025">                                toDateText(parseDate(request.hssgYmd())),</span>
+<span class="fc" id="L1026">                                normalizeOptional(request.hukkUsrId()),</span>
+<span class="fc" id="L1027">                                normalizeOptional(request.hukkUnmKj()),</span>
+                                CLOSURE_SCREEN_ID),
+<span class="fc" id="L1029">                        buildConduitDetails(request, preClosingInfo, conduitCustomer, editedCustomerNames),</span>
+                        customerInfoAcquisitionPossible,
+<span class="fc" id="L1031">                        toDateText(systemDatetime.toLocalDate())));</span>
+    }
+
+    private IsrrkrInf toConduitOtherSystemIntegrationInfo(
+            ClosingCommonSafeOtherRetailRequest request,
+            LocalDateTime systemDatetime,
+            PreClosingInfoAcquisitionOutput preClosingInfo,
+            KiycstdRecord conduitCustomer,
+            TkssvkyRecord transportationServiceContract) {
+<span class="fc" id="L1040">        return new IsrrkrInf(</span>
+<span class="fc" id="L1041">                parseRequiredLong(request.gasMtstNo()),</span>
+<span class="fc" id="L1042">                systemDatetime.toLocalDate(),</span>
+                ownerDivisionConduit,
+<span class="fc" id="L1044">                toHms(systemDatetime),</span>
+<span class="fc" id="L1045">                request.duknIsrgCd().trim(),</span>
+<span class="fc" id="L1046">                request.duknIsrsCd().trim(),</span>
+<span class="fc" id="L1047">                parseDate(request.hssgYmd()),</span>
+<span class="fc" id="L1048">                transportationServiceContract.tksuSvkyNo(),</span>
+                null,
+                null,
+<span class="fc" id="L1051">                normalizeOptional(request.hesnJysb()),</span>
+                null,
+                null,
+<span class="fc" id="L1054">                parseDate(request.hssgYmd()),</span>
+<span class="fc" id="L1055">                transportationServiceContract.syoKyoTrno(),</span>
+<span class="fc" id="L1056">                transportationServiceContract.syoKyoTrno(),</span>
+<span class="fc bfc" id="L1057" title="All 2 branches covered.">                preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L1058">                        ? preClosingInfo.gasmtrdInf().gmb()</span>
+<span class="fc" id="L1059">                        : normalizeOptional(request.gmb()),</span>
+<span class="fc bfc" id="L1060" title="All 2 branches covered.">                preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L1061">                        ? preClosingInfo.gasmtrdInf().gmb()</span>
+<span class="fc" id="L1062">                        : normalizeOptional(request.gmb()),</span>
+                null,
+                null,
+                BigDecimal.ZERO,
+                null,
+<span class="fc" id="L1067">                parseRequiredLong(request.gmtShjSu()),</span>
+                gasMeterClosedStatus,
+<span class="pc bpc" id="L1069" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L1070">                        ? preClosingInfo.gmtsetdHsenSaymdInf().kngmStbJtkb()</span>
+<span class="fc" id="L1071">                        : null,</span>
+<span class="fc bfc" id="L1072" title="All 2 branches covered.">                preClosingInfo.gasmtrdInf() != null ? preClosingInfo.gasmtrdInf().gmtThkgJysb() : null,</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="pc bpc" id="L1079" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L1080">                        ? preClosingInfo.gmtsetdHsenSaymdInf().ckrtGmscJtkb()</span>
+<span class="fc" id="L1081">                        : null,</span>
+<span class="pc bpc" id="L1082" title="1 of 2 branches missed.">                preClosingInfo.gmtsetdHsenSaymdInf() != null</span>
+<span class="nc" id="L1083">                        ? preClosingInfo.gmtsetdHsenSaymdInf().kkyuGmtKbn()</span>
+<span class="fc" id="L1084">                        : null,</span>
+<span class="pc bpc" id="L1085" title="1 of 2 branches missed.">                conduitCustomer != null ? conduitCustomer.bldNo() : null,</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private List&lt;IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan&gt;
+            buildConduitDetails(
+                    ClosingCommonSafeOtherRetailRequest request,
+                    PreClosingInfoAcquisitionOutput preClosingInfo,
+                    KiycstdRecord conduitCustomer,
+                    EditedCustomerNames editedCustomerNames) {
+<span class="fc" id="L1108">        return List.of(</span>
+<span class="fc" id="L1109">                detail(1, CONDUIT_DETAIL_TITLE, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1110">                detail(2, OTHER_RETAIL_LABEL, &quot;&quot;, OTHER_RETAIL_NAME),</span>
+<span class="fc" id="L1111">                detail(3, CLOSING_DATE_LABEL, &quot;&quot;, toSlashDateText(parseDate(request.hssgYmd()))),</span>
+<span class="fc" id="L1112">                detail(4, ERROR_REASON_LABEL, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1113">                detail(5, METER_READING_LABEL, &quot;&quot;, request.gmtShjSu().trim()),</span>
+<span class="fc" id="L1114">                detail(6, USAGE_LABEL, &quot;&quot;, normalizeOptional(request.gasSyry())),</span>
+<span class="fc" id="L1115">                detail(7, WORK_LOCATION_LABEL, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1116">                detail(8, WORK_LOCATION_NAME_LABEL, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1117">                detail(9, WORKER_LABEL, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1118">                detail(10, WORKER_NAME_LABEL, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1119">                detail(11, HISTORY_MEMO_LABEL, &quot;&quot;, normalizeOptional(request.rirekiMemo())),</span>
+<span class="fc" id="L1120">                detail(12, OPENING_INFO_TITLE, &quot;&quot;, &quot;&quot;),</span>
+<span class="fc" id="L1121">                detail(</span>
+                        13,
+                        CUSTOMER_NAME_LABEL_1,
+<span class="fc" id="L1124">                        resolveCustomerName2BeforeValue(conduitCustomer, editedCustomerNames),</span>
+                        &quot;&quot;),
+<span class="fc" id="L1126">                detail(</span>
+                        14,
+                        CUSTOMER_NAME_LABEL_2,
+<span class="fc" id="L1129">                        resolveCustomerNameBeforeValue(editedCustomerNames.name1()),</span>
+                        &quot;&quot;),
+<span class="fc" id="L1131">                detail(</span>
+                        15,
+                        METER_SERIAL_LABEL,
+<span class="fc bfc" id="L1134" title="All 2 branches covered.">                        preClosingInfo.gasmtrdInf() != null ? preClosingInfo.gasmtrdInf().gmb() : null,</span>
+                        &quot;&quot;),
+<span class="fc" id="L1136">                detail(</span>
+                        16,
+                        METER_MODEL_LABEL,
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">                        preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L1140">                                ? preClosingInfo.gasmtrdInf().gmkShbt()</span>
+<span class="fc" id="L1141">                                : null,</span>
+                        &quot;&quot;),
+<span class="fc" id="L1143">                detail(</span>
+                        17,
+                        METER_SIZE_LABEL,
+<span class="fc" id="L1146">                        toPlainString(</span>
+<span class="fc bfc" id="L1147" title="All 2 branches covered.">                                preClosingInfo.gasmtrdInf() != null</span>
+<span class="fc" id="L1148">                                        ? preClosingInfo.gasmtrdInf().gmtGusu()</span>
+<span class="fc" id="L1149">                                        : null),</span>
+                        &quot;&quot;));
+    }
+
+    private String resolveCustomerName2BeforeValue(
+            KiycstdRecord conduitCustomer,
+            EditedCustomerNames editedCustomerNames) {
+<span class="pc bpc" id="L1156" title="1 of 4 branches missed.">        if (conduitCustomer == null || isBlank(conduitCustomer.ctnmKn2())) {</span>
+<span class="fc" id="L1157">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L1159">        return resolveCustomerNameBeforeValue(editedCustomerNames.name2());</span>
+    }
+
+    private String resolveCustomerNameBeforeValue(CustomerNameEditOutput editedName) {
+<span class="pc bpc" id="L1163" title="1 of 2 branches missed.">        if (editedName == null) {</span>
+<span class="nc" id="L1164">            return &quot;&quot;;</span>
+        }
+<span class="fc bfc" id="L1166" title="All 2 branches covered.">        if (isBlank(editedName.hnsgCtnmKj1())) {</span>
+<span class="fc" id="L1167">            return normalizeOptional(editedName.hnsgCtnmKn1());</span>
+        }
+<span class="fc" id="L1169">        return editedName.hnsgCtnmKj1();</span>
+    }
+
+    private boolean isBlank(String value) {
+<span class="fc bfc" id="L1173" title="All 4 branches covered.">        return value == null || value.isBlank();</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan detail(
+            int order, String itemName, String beforeValue, String afterValue) {
+<span class="fc" id="L1178">        return new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan(</span>
+<span class="fc" id="L1179">                BigDecimal.valueOf(order), itemName, beforeValue, afterValue);</span>
+    }
+
+    private KiycstdRecord requireConduitCustomer(Long userCustomerNumber) {
+<span class="fc" id="L1183">        return kiycstdDataAccess</span>
+<span class="fc" id="L1184">                .findByKyoTrkNo(userCustomerNumber)</span>
+<span class="fc" id="L1185">                .orElseThrow(</span>
+                        () -&gt;
+<span class="nc" id="L1187">                                DataInconsistencySupport.create(</span>
+<span class="nc" id="L1188">                                        kiycstdDataAccess.tableName(),</span>
+<span class="nc" id="L1189">                                        KiycstdDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="nc" id="L1190">                                        new FlatJsonBuilder().put(&quot;kyoTrkNo&quot;, userCustomerNumber)));</span>
+    }
+
+    private TkssvkyRecord requireTransportationServiceContract(Long gasMeterLocationNumber) {
+<span class="fc" id="L1194">        TskgmstRecord transportationContractRelated =</span>
+                tskgmstDataAccess
+<span class="fc" id="L1196">                        .findByGasMtstNoAndTksuSvkkJtkbList(</span>
+                                gasMeterLocationNumber,
+                                activeOrEndTransportationContractRelatedStatuses)
+<span class="fc" id="L1199">                        .orElseThrow(</span>
+                                () -&gt;
+<span class="nc" id="L1201">                                        DataInconsistencySupport.create(</span>
+<span class="nc" id="L1202">                                                tskgmstDataAccess.tableName(),</span>
+                                                TskgmstDataAccess.CallSpecs
+                                                        .FIND_BY_GAS_MTST_NO_AND_TKSU_SVKK_JTKB_LIST
+<span class="nc" id="L1205">                                                        .identifier(),</span>
+                                                new FlatJsonBuilder()
+<span class="nc" id="L1207">                                                        .put(&quot;gasMtstNo&quot;, gasMeterLocationNumber)</span>
+<span class="nc" id="L1208">                                                        .put(</span>
+                                                                &quot;tksuSvkkJtkbList&quot;,
+                                                                activeOrEndTransportationContractRelatedStatuses)));
+<span class="fc" id="L1211">        return tkssvkyDataAccess</span>
+<span class="fc" id="L1212">                .findByTksuSvkyNoAndTksuSvkyJtkbList(</span>
+<span class="fc" id="L1213">                        transportationContractRelated.tksuSvkyNo(),</span>
+                        activeOrEndTransportationContractStatuses)
+<span class="fc" id="L1215">                .orElseThrow(</span>
+                        () -&gt;
+<span class="nc" id="L1217">                                DataInconsistencySupport.create(</span>
+<span class="nc" id="L1218">                                        tkssvkyDataAccess.tableName(),</span>
+                                        TkssvkyDataAccess.CallSpecs
+                                                .FIND_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB_LIST
+<span class="nc" id="L1221">                                                .identifier(),</span>
+                                        new FlatJsonBuilder()
+<span class="nc" id="L1223">                                                .put(</span>
+                                                        &quot;tksuSvkyNo&quot;,
+<span class="nc" id="L1225">                                                        transportationContractRelated.tksuSvkyNo())</span>
+<span class="nc" id="L1226">                                                .put(</span>
+                                                        &quot;tksuSvkyJtkbList&quot;,
+                                                        activeOrEndTransportationContractStatuses)));
+    }
+
+    private ClosingCommonSafeOtherRetailResponse buildReportUsageMismatchResponse(
+            HaisenRuleHokokuShiyouryoHuicchiException exception) {
+<span class="nc" id="L1233">        return new ClosingCommonSafeOtherRetailResponse(</span>
+                null,
+<span class="nc" id="L1235">                toDouble(exception.getCalculatedAmount()),</span>
+                null,
+<span class="nc" id="L1237">                requestContext.getCorrelationId().orElse(null),</span>
+                HaisenRuleHokokuShiyouryoHuicchiException.ERROR_CODE,
+<span class="nc" id="L1239">                resolveErrorDescription(exception),</span>
+<span class="nc" id="L1240">                List.of());</span>
+    }
+
+    private ClosingCommonSafeOtherRetailResponse buildUsageAgreementInProgressResponse(
+            HeisenRuleShiyouryoKyoteichuException exception) {
+<span class="nc" id="L1245">        return new ClosingCommonSafeOtherRetailResponse(</span>
+                null,
+                null,
+<span class="nc" id="L1248">                parseOptionalLong(exception.getErrorGasMtstNo()),</span>
+<span class="nc" id="L1249">                requestContext.getCorrelationId().orElse(null),</span>
+                HeisenRuleShiyouryoKyoteichuException.ERROR_CODE,
+<span class="nc" id="L1251">                resolveErrorDescription(exception),</span>
+<span class="nc" id="L1252">                List.of());</span>
+    }
+
+    private ClosingCommonSafeOtherRetailResponse buildWarningResponse(List&lt;String&gt; warnings) {
+<span class="nc" id="L1256">        return new ClosingCommonSafeOtherRetailResponse(</span>
+<span class="nc" id="L1257">                new ClosingCommonSafeOtherRetailResponse.MessageIdListInf(List.copyOf(warnings)),</span>
+                null,
+                null,
+<span class="nc" id="L1260">                requestContext.getCorrelationId().orElse(null),</span>
+                HeisenRuleListException.ERROR_CODE,
+                null,
+<span class="nc" id="L1263">                List.of());</span>
+    }
+
+    private WebApplicationException badRequestResponse(ClosingCommonSafeOtherRetailResponse response) {
+<span class="nc" id="L1267">        return new WebApplicationException(</span>
+<span class="nc" id="L1268">                Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="nc" id="L1269">                        .type(MediaType.APPLICATION_JSON_TYPE)</span>
+<span class="nc" id="L1270">                        .entity(response)</span>
+<span class="nc" id="L1271">                        .build());</span>
+    }
+
+    private List&lt;String&gt; resolveWarningMessageIds(HeisenRuleListException exception) {
+<span class="nc" id="L1275">        List&lt;String&gt; warningIds = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L1276" title="All 2 branches missed.">        for (HeisenRuleException heisenRuleException : exception.getHeisenRuleExceptionList()) {</span>
+<span class="nc" id="L1277">            String warningId = resolveWarningMessageId(heisenRuleException);</span>
+<span class="nc bnc" id="L1278" title="All 4 branches missed.">            if (warningId != null &amp;&amp; !warningId.isBlank()) {</span>
+<span class="nc" id="L1279">                warningIds.add(warningId);</span>
+            }
+<span class="nc" id="L1281">        }</span>
+<span class="nc bnc" id="L1282" title="All 2 branches missed.">        if (warningIds.isEmpty()) {</span>
+<span class="nc" id="L1283">            String warningId = resolveWarningMessageId(exception);</span>
+<span class="nc bnc" id="L1284" title="All 4 branches missed.">            if (warningId != null &amp;&amp; !warningId.isBlank()) {</span>
+<span class="nc" id="L1285">                warningIds.add(warningId);</span>
+            }
+        }
+<span class="nc" id="L1288">        return warningIds;</span>
+    }
+
+    private String resolveWarningMessageId(BusinessRuleException exception) {
+<span class="nc" id="L1292">        String messageId = exception.getCiriusMessageId();</span>
+<span class="nc bnc" id="L1293" title="All 4 branches missed.">        if (messageId != null &amp;&amp; !messageId.isBlank()) {</span>
+<span class="nc" id="L1294">            return messageId;</span>
+        }
+<span class="nc" id="L1296">        return ErrorCatalog.resolveCiriusMessageId(exception.getErrorCode());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SkinKnkkInf
+            toClosingDateSkinKnkkInf(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1301">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SkinKnkkInf(</span>
+<span class="pc bpc" id="L1302" title="1 of 2 branches missed.">                preClosingInfo.skinKnkkInf() != null</span>
+<span class="nc" id="L1303">                        ? preClosingInfo.skinKnkkInf().hsenHkkKnuKigenYmd()</span>
+<span class="fc" id="L1304">                        : null);</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KnsKkaMtInf
+            toClosingDateKnsKkaMtInf(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1309">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KnsKkaMtInf(</span>
+<span class="pc bpc" id="L1310" title="3 of 4 branches missed.">                preClosingInfo.knsKkaMtInf() != null &amp;&amp; preClosingInfo.knsKkaMtInf().skinKnkkInf() != null</span>
+<span class="nc" id="L1311">                        ? preClosingInfo.knsKkaMtInf().skinKnkkInf().hsenHkkKnuKigenYmd()</span>
+<span class="fc" id="L1312">                        : null);</span>
+    }
+
+    private ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnyInfList&gt; toSnyInfList(
+            PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1317">        ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnyInfList&gt; results =</span>
+                new ArrayList&lt;&gt;();
+<span class="pc bpc" id="L1319" title="3 of 4 branches missed.">        if (preClosingInfo.gmtsetdSnyInf() == null || preClosingInfo.gmtsetdSnyInf().snyInfList() == null) {</span>
+<span class="fc" id="L1320">            return results;</span>
+        }
+        for (jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionSnyInf value :
+<span class="nc bnc" id="L1323" title="All 2 branches missed.">                preClosingInfo.gmtsetdSnyInf().snyInfList()) {</span>
+<span class="nc" id="L1324">            results.add(</span>
+                    new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnyInfList(
+<span class="nc" id="L1326">                            value.kngmStbJtkb()));</span>
+<span class="nc" id="L1327">        }</span>
+<span class="nc" id="L1328">        return results;</span>
+    }
+
+    private ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtInfList&gt;
+            toSuguGmtInfList(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1333">        ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtInfList&gt; results =</span>
+                new ArrayList&lt;&gt;();
+<span class="fc bfc" id="L1335" title="All 2 branches covered.">        if (preClosingInfo.sogoTmtrInfList() == null) {</span>
+<span class="fc" id="L1336">            return results;</span>
+        }
+        for (jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionComprehensiveOtherMeterInfo value :
+<span class="pc bpc" id="L1339" title="1 of 2 branches missed.">                preClosingInfo.sogoTmtrInfList()) {</span>
+<span class="nc" id="L1340">            results.add(</span>
+                    new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtInfList(
+<span class="nc bnc" id="L1342" title="All 2 branches missed.">                            value.gmtsetdInf() != null ? value.gmtsetdInf().kngmStbJtkb() : null));</span>
+<span class="nc" id="L1343">        }</span>
+<span class="fc" id="L1344">        return results;</span>
+    }
+
+    private ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnySkinKnsInfList&gt;
+            toSnySkinKnsInfList(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1349">        ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnySkinKnsInfList&gt; results =</span>
+                new ArrayList&lt;&gt;();
+<span class="pc bpc" id="L1351" title="3 of 4 branches missed.">        if (preClosingInfo.knsKkaSnyInf() == null || preClosingInfo.knsKkaSnyInf().skinKnkkInfList() == null) {</span>
+<span class="fc" id="L1352">            return results;</span>
+        }
+        for (jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionSkinKnkkInf value :
+<span class="nc bnc" id="L1355" title="All 2 branches missed.">                preClosingInfo.knsKkaSnyInf().skinKnkkInfList()) {</span>
+<span class="nc" id="L1356">            results.add(</span>
+                    new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnySkinKnsInfList(
+<span class="nc" id="L1358">                            value.knsYmd()));</span>
+<span class="nc" id="L1359">        }</span>
+<span class="nc" id="L1360">        return results;</span>
+    }
+
+    private ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtSkinKnsInfList&gt;
+            toSuguGmtSkinKnsInfList(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc" id="L1365">        ArrayList&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtSkinKnsInfList&gt; results =</span>
+                new ArrayList&lt;&gt;();
+<span class="fc bfc" id="L1367" title="All 2 branches covered.">        if (preClosingInfo.sogoTmtrInfList() == null) {</span>
+<span class="fc" id="L1368">            return results;</span>
+        }
+        for (jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PreClosingInfoAcquisitionComprehensiveOtherMeterInfo value :
+<span class="pc bpc" id="L1371" title="1 of 2 branches missed.">                preClosingInfo.sogoTmtrInfList()) {</span>
+<span class="nc" id="L1372">            results.add(</span>
+                    new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtSkinKnsInfList(
+<span class="nc bnc" id="L1374" title="All 2 branches missed.">                            value.skinKnkkInf() != null ? value.skinKnkkInf().knsYmd() : null));</span>
+<span class="nc" id="L1375">        }</span>
+<span class="fc" id="L1376">        return results;</span>
+    }
+
+    private BigDecimal resolveUsageAmountCurrentUsage(
+            ClosingCommonSafeOtherRetailRequest request,
+            CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput) {
+<span class="fc" id="L1382">        Long currentMeterReading = parseOptionalLong(request.gmtShjSu());</span>
+<span class="fc" id="L1383">        Long latestMeterReading = resolveLatestMeterReading(calculationOutput);</span>
+<span class="pc bpc" id="L1384" title="3 of 6 branches missed.">        if (currentMeterReading == null || calculationOutput == null || latestMeterReading == null) {</span>
+<span class="fc" id="L1385">            return null;</span>
+        }
+<span class="nc" id="L1387">        return BigDecimal.valueOf(currentMeterReading - latestMeterReading);</span>
+    }
+
+    private Long resolveLatestMeterReading(
+            CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput) {
+<span class="pc bpc" id="L1392" title="2 of 4 branches missed.">        if (calculationOutput == null || calculationOutput.skinKnkkInf() == null) {</span>
+<span class="fc" id="L1393">            return null;</span>
+        }
+<span class="nc" id="L1395">        Object recentMeterReading = calculationOutput.skinKnkkInf();</span>
+        try {
+<span class="nc" id="L1397">            Object value = recentMeterReading.getClass().getMethod(&quot;gmtShjSu&quot;).invoke(recentMeterReading);</span>
+<span class="nc bnc" id="L1398" title="All 2 branches missed.">            return value instanceof Long latestMeterReading ? latestMeterReading : null;</span>
+<span class="nc" id="L1399">        } catch (ReflectiveOperationException exception) {</span>
+<span class="nc" id="L1400">            return null;</span>
+        }
+    }
+
+    private Long resolveUsageAmountJudgmentThreshold(PreClosingInfoAcquisitionOutput preClosingInfo) {
+<span class="fc bfc" id="L1405" title="All 2 branches covered.">        if (preClosingInfo.gasmtrdInf() == null</span>
+<span class="pc bpc" id="L1406" title="1 of 2 branches missed.">                || preClosingInfo.gasmtrdInf().sjskHticSu() == null</span>
+<span class="nc bnc" id="L1407" title="All 2 branches missed.">                || preClosingInfo.gasmtrdInf().sjsuMincSu() == null) {</span>
+<span class="fc" id="L1408">            return null;</span>
+        }
+<span class="nc" id="L1410">        return truncateToInteger12Digits(</span>
+<span class="nc" id="L1411">                preClosingInfo.gasmtrdInf().sjsuMincSu().multiply(</span>
+<span class="nc" id="L1412">                        BigDecimal.valueOf(preClosingInfo.gasmtrdInf().sjskHticSu())));</span>
+    }
+
+    private Long truncateToInteger12Digits(BigDecimal value) {
+<span class="nc" id="L1416">        BigDecimal integerValue = value.setScale(0, RoundingMode.DOWN);</span>
+<span class="nc" id="L1417">        int overflowDigits = integerValue.precision() - 12;</span>
+<span class="nc bnc" id="L1418" title="All 2 branches missed.">        if (overflowDigits &gt; 0) {</span>
+<span class="nc" id="L1419">            integerValue = integerValue.movePointLeft(overflowDigits).setScale(0, RoundingMode.DOWN);</span>
+        }
+<span class="nc" id="L1421">        return integerValue.longValueExact();</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L1425">        return requestContext</span>
+<span class="fc" id="L1426">                .getSystemDatetime()</span>
+<span class="pc" id="L1427">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L1431">        String hukkSysShbt =</span>
+                requestContext
+<span class="fc" id="L1433">                        .getHukkSysShbt()</span>
+<span class="pc" id="L1434">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L1435">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE, hukkSysShbt);
+    }
+
+    private Integer toHms(LocalDateTime value) {
+<span class="fc" id="L1440">        return Integer.valueOf(TIME_FORMATTER.format(value));</span>
+    }
+
+    private String toDateText(LocalDate value) {
+<span class="pc bpc" id="L1444" title="1 of 2 branches missed.">        return value == null ? null : DATE_FORMATTER.format(value);</span>
+    }
+
+    private String toSlashDateText(LocalDate value) {
+<span class="pc bpc" id="L1448" title="1 of 2 branches missed.">        return value == null ? null : SLASH_DATE_FORMATTER.format(value);</span>
+    }
+
+    private String toTimeText(LocalDateTime value) {
+<span class="pc bpc" id="L1452" title="1 of 2 branches missed.">        return value == null ? null : TIME_FORMATTER.format(value);</span>
+    }
+
+    private String toPlainString(BigDecimal value) {
+<span class="pc bpc" id="L1456" title="1 of 2 branches missed.">        return value == null ? null : value.stripTrailingZeros().toPlainString();</span>
+    }
+
+    private LocalDate parseDate(String dateText) {
+<span class="fc" id="L1460">        return Rfc3339LocalDateParser.parse(dateText.trim());</span>
+    }
+
+    private BigDecimal parseOptionalBigDecimal(String value) {
+<span class="fc" id="L1464">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L1465" title="1 of 2 branches missed.">        return normalized == null ? null : new BigDecimal(normalized);</span>
+    }
+
+    private Double toDouble(String value) {
+<span class="nc bnc" id="L1469" title="All 2 branches missed.">        return value == null ? null : new BigDecimal(value).doubleValue();</span>
+    }
+
+    private Long parseRequiredLong(String value) {
+<span class="fc" id="L1473">        return Long.valueOf(value.trim());</span>
+    }
+
+    private Long parseOptionalLong(String value) {
+<span class="fc" id="L1477">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L1478" title="1 of 2 branches missed.">        return normalized == null ? null : Long.valueOf(normalized);</span>
+    }
+
+    private String resolveErrorDescription(BusinessRuleException exception) {
+<span class="nc" id="L1482">        String description = ErrorCatalog.resolveErrorMessage(</span>
+<span class="nc" id="L1483">                        exception.getErrorCode(),</span>
+<span class="nc" id="L1484">                        exception.getErrorMessageEmbeddedStringList());</span>
+<span class="nc bnc" id="L1485" title="All 2 branches missed.">        return description != null ? description : exception.getMessage();</span>
+    }
+
+    private void validateReportingSystemType(String hukkSysShbt) {
+        try {
+<span class="fc" id="L1490">            kaiheisenConstantService.findNameByTypeAndValue(</span>
+                    ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L1492">                    normalizeOptional(hukkSysShbt));</span>
+<span class="fc" id="L1493">        } catch (ConstantDefinitionNotFoundException exception) {</span>
+<span class="fc" id="L1494">            throw new KaiheisenException(&quot;報告システム種別の定数定義が見つかりません&quot;, exception);</span>
+<span class="fc" id="L1495">        }</span>
+<span class="fc" id="L1496">    }</span>
+
+<span class="fc" id="L1498">    private record ValidationExecutionResult(</span>
+            CalculationStartDateIdentificationErrorJudgmentOutput calculationOutput,
+            ClosingCommonSafeOtherRetailResponse earlyResponse) {
+    }
+
+<span class="fc" id="L1503">    private record EditedCustomerNames(</span>
+            CustomerNameEditOutput name1,
+            CustomerNameEditOutput name2) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

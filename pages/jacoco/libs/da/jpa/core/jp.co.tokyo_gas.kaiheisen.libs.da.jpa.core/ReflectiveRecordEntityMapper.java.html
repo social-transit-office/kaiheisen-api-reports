@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectiveRecordEntityMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">ReflectiveRecordEntityMapper.java</span></div><h1>ReflectiveRecordEntityMapper.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.PreserveZeroValue;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.BigDecimalYearMonthConverter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.BooleanFlagStringConverter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.StringBooleanFlagConverter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.YearMonthBigDecimalConverter;
+
+/**
+ * Entity と Record の変換をリフレクションで自動実行するマッパー。
+ *
+ * &lt;p&gt;Entity フィールドと Record コンポーネントを名前照合し型変換を自動適用する。
+ *
+ * &lt;p&gt;&lt;b&gt;Entity → Record 変換ルール:&lt;/b&gt;
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;BigDecimal → Long: {@link PreserveZeroValue} ありは 0 を保持、なしは null-if-zero
+ *   &lt;li&gt;BigDecimal → Integer: {@link PreserveZeroValue} ありは 0 を保持、なしは null-if-zero
+ *   &lt;li&gt;BigDecimal → LocalDate: YYYYMMDD 変換
+ *   &lt;li&gt;BigDecimal → LocalTime: 数値時刻変換
+ *   &lt;li&gt;BigDecimal → YearMonth: YYYYMM 変換
+ *   &lt;li&gt;Short → Integer: plain conversion
+ *   &lt;li&gt;String → String: 末尾の半角/全角空白除去
+ *   &lt;li&gt;String → Boolean: フラグ変換
+ *   &lt;li&gt;同一型: identity
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;&lt;b&gt;Record → Entity 変換ルール:&lt;/b&gt;
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;Long → BigDecimal
+ *   &lt;li&gt;Integer → BigDecimal
+ *   &lt;li&gt;LocalDate → BigDecimal (YYYYMMDD)。{@link PreserveZeroValue} ありは null を 0 として書き込む
+ *   &lt;li&gt;LocalTime → BigDecimal (HHmm)
+ *   &lt;li&gt;YearMonth → BigDecimal (YYYYMM)
+ *   &lt;li&gt;Integer → Short
+ *   &lt;li&gt;Boolean → String: フラグ変換
+ *   &lt;li&gt;String → String: identity
+ *   &lt;li&gt;同一型: identity
+ * &lt;/ul&gt;
+ *
+ * @param &lt;RecordT&gt; Record 型（Java record）
+ * @param &lt;EntityT&gt; JPA Entity 型
+ */
+public final class ReflectiveRecordEntityMapper&lt;RecordT extends Record, EntityT&gt;
+        implements RecordEntityMapper&lt;RecordT, EntityT&gt; {
+
+    private final Class&lt;RecordT&gt; recordClass;
+
+    private final FieldMapping[] fieldMappings;
+
+    private final Constructor&lt;RecordT&gt; recordConstructor;
+
+    private final Constructor&lt;EntityT&gt; entityConstructor;
+
+    private ReflectiveRecordEntityMapper(
+            Class&lt;RecordT&gt; recordClass,
+            FieldMapping[] fieldMappings,
+            Constructor&lt;RecordT&gt; recordConstructor,
+<span class="fc" id="L73">            Constructor&lt;EntityT&gt; entityConstructor) {</span>
+<span class="fc" id="L74">        this.recordClass = recordClass;</span>
+<span class="fc" id="L75">        this.fieldMappings = fieldMappings;</span>
+<span class="fc" id="L76">        this.recordConstructor = recordConstructor;</span>
+<span class="fc" id="L77">        this.entityConstructor = entityConstructor;</span>
+<span class="fc" id="L78">    }</span>
+
+    /**
+     * マッパーを構築する。
+     *
+     * @param &lt;R&gt; Record 型
+     * @param &lt;E&gt; Entity 型
+     * @param recordClass Record クラス
+     * @param entityClass Entity クラス（引数なしコンストラクタ必須）
+     * @return マッパーインスタンス
+     */
+    public static &lt;R extends Record, E&gt; ReflectiveRecordEntityMapper&lt;R, E&gt; create(
+            Class&lt;R&gt; recordClass, Class&lt;E&gt; entityClass) {
+<span class="fc" id="L91">        Objects.requireNonNull(recordClass, &quot;recordClass&quot;);</span>
+<span class="fc" id="L92">        Objects.requireNonNull(entityClass, &quot;entityClass&quot;);</span>
+
+<span class="fc" id="L94">        Map&lt;String, Field&gt; entityFields = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L95">        for (Class&lt;?&gt; cls = entityClass;</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">                cls != null &amp;&amp; cls != Object.class;</span>
+<span class="fc" id="L97">                cls = cls.getSuperclass()) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (Field f : cls.getDeclaredFields()) {</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {</span>
+<span class="nc" id="L100">                    continue;</span>
+                }
+<span class="fc" id="L102">                f.setAccessible(true);</span>
+<span class="fc" id="L103">                entityFields.putIfAbsent(f.getName(), f);</span>
+            }
+        }
+
+<span class="fc" id="L107">        RecordComponent[] components = recordClass.getRecordComponents();</span>
+<span class="fc" id="L108">        FieldMapping[] mappings = new FieldMapping[components.length];</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        for (int i = 0; i &lt; components.length; i++) {</span>
+<span class="fc" id="L110">            RecordComponent comp = components[i];</span>
+<span class="fc" id="L111">            Method accessor = comp.getAccessor();</span>
+<span class="fc" id="L112">            accessor.setAccessible(true);</span>
+<span class="fc" id="L113">            Field entityField = entityFields.get(comp.getName());</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (entityField != null) {</span>
+<span class="fc" id="L115">                Function&lt;Object, Object&gt; toRecord =</span>
+<span class="fc" id="L116">                    resolveToRecordConverter(comp, entityField.getType(), comp.getType());</span>
+<span class="fc" id="L117">                Function&lt;Object, Object&gt; toEntity =</span>
+<span class="fc" id="L118">                        resolveToEntityConverter(comp.getType(), entityField.getType(), comp);</span>
+<span class="fc" id="L119">                mappings[i] = new FieldMapping(accessor, entityField, toRecord, toEntity);</span>
+            }
+        }
+
+        Constructor&lt;R&gt; recordCtor;
+        try {
+<span class="fc" id="L125">            Class&lt;?&gt;[] paramTypes = new Class&lt;?&gt;[components.length];</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (int i = 0; i &lt; components.length; i++) {</span>
+<span class="fc" id="L127">                paramTypes[i] = components[i].getType();</span>
+            }
+<span class="fc" id="L129">            recordCtor = recordClass.getDeclaredConstructor(paramTypes);</span>
+<span class="fc" id="L130">            recordCtor.setAccessible(true);</span>
+<span class="nc" id="L131">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L132">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L133">                    &quot;Record class must have a canonical constructor: &quot; + recordClass.getName(), e);</span>
+<span class="fc" id="L134">        }</span>
+
+        Constructor&lt;E&gt; ctor;
+        try {
+<span class="fc" id="L138">            ctor = entityClass.getDeclaredConstructor();</span>
+<span class="fc" id="L139">            ctor.setAccessible(true);</span>
+<span class="nc" id="L140">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L141">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L142">                    &quot;Entity class must have a no-arg constructor: &quot; + entityClass.getName(), e);</span>
+<span class="fc" id="L143">        }</span>
+
+<span class="fc" id="L145">        return new ReflectiveRecordEntityMapper&lt;&gt;(recordClass, mappings, recordCtor, ctor);</span>
+    }
+
+    @Override
+    public RecordT toRecord(EntityT entity) {
+<span class="fc" id="L150">        Objects.requireNonNull(entity, &quot;entity&quot;);</span>
+<span class="fc" id="L151">        Object[] values = new Object[fieldMappings.length];</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (int i = 0; i &lt; fieldMappings.length; i++) {</span>
+<span class="fc" id="L153">            FieldMapping mapping = fieldMappings[i];</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            if (mapping == null) {</span>
+<span class="nc" id="L155">                values[i] = null;</span>
+<span class="nc" id="L156">                continue;</span>
+            }
+            try {
+<span class="fc" id="L159">                Object entityValue = mapping.entityField.get(entity);</span>
+<span class="fc" id="L160">                values[i] = mapping.toRecord.apply(entityValue);</span>
+<span class="nc" id="L161">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L162">                throw new IllegalStateException(</span>
+<span class="nc" id="L163">                        &quot;Failed to read entity field: &quot; + mapping.entityField.getName(), e);</span>
+<span class="fc" id="L164">            }</span>
+        }
+        try {
+<span class="fc" id="L167">            return recordConstructor.newInstance(values);</span>
+<span class="nc" id="L168">        } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L169">            throw new IllegalStateException(</span>
+<span class="nc" id="L170">                    &quot;Failed to construct record: &quot; + recordClass.getName(), e);</span>
+        }
+    }
+
+    @Override
+    public EntityT toEntity(RecordT record) {
+<span class="fc" id="L176">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+        try {
+<span class="fc" id="L178">            EntityT entity = entityConstructor.newInstance();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            for (FieldMapping mapping : fieldMappings) {</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                if (mapping == null) {</span>
+<span class="nc" id="L181">                    continue;</span>
+                }
+<span class="fc" id="L183">                Object recordValue = mapping.recordAccessor.invoke(record);</span>
+<span class="fc" id="L184">                Object entityValue = mapping.toEntity.apply(recordValue);</span>
+<span class="fc" id="L185">                mapping.entityField.set(entity, entityValue);</span>
+            }
+<span class="fc" id="L187">            return entity;</span>
+<span class="nc" id="L188">        } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L189">            throw new IllegalStateException(</span>
+<span class="nc" id="L190">                    &quot;Failed to convert record to entity: &quot; + recordClass.getName(), e);</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;java:S3776&quot;)
+    private static Function&lt;Object, Object&gt; resolveToRecordConverter(
+            RecordComponent component, Class&lt;?&gt; entityType, Class&lt;?&gt; recordType) {
+<span class="fc" id="L197">        boolean preserveZero = component.isAnnotationPresent(PreserveZeroValue.class);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (entityType == recordType) {</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (entityType == String.class) {</span>
+<span class="fc" id="L200">                return v -&gt; FixedLengthFormatter.suppressSpace((String) v);</span>
+            }
+<span class="nc" id="L202">            return Function.identity();</span>
+        }
+<span class="pc bpc" id="L204" title="1 of 4 branches missed.">        if (entityType == BigDecimal.class &amp;&amp; recordType == Long.class) {</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            return preserveZero</span>
+<span class="fc" id="L206">                    ? v -&gt; JpaDbReadValues.longValue((BigDecimal) v)</span>
+<span class="fc" id="L207">                    : v -&gt; JpaDbReadValues.longOrNullIfZero((BigDecimal) v);</span>
+        }
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">        if (entityType == BigDecimal.class &amp;&amp; recordType == Integer.class) {</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            return preserveZero</span>
+<span class="fc" id="L211">                    ? v -&gt; JpaDbReadValues.integerValue((BigDecimal) v)</span>
+<span class="fc" id="L212">                    : v -&gt; JpaDbReadValues.integerOrNullIfZero((BigDecimal) v);</span>
+        }
+<span class="pc bpc" id="L214" title="2 of 4 branches missed.">        if (entityType == BigDecimal.class &amp;&amp; recordType == LocalDate.class) {</span>
+<span class="fc" id="L215">            return v -&gt; JpaDbReadValues.localDate((BigDecimal) v);</span>
+        }
+<span class="nc bnc" id="L217" title="All 4 branches missed.">        if (entityType == BigDecimal.class &amp;&amp; recordType == LocalTime.class) {</span>
+<span class="nc" id="L218">            return v -&gt; JpaDbReadValues.localTime((BigDecimal) v);</span>
+        }
+<span class="nc bnc" id="L220" title="All 4 branches missed.">        if (entityType == BigDecimal.class &amp;&amp; recordType == YearMonth.class) {</span>
+<span class="nc" id="L221">            return v -&gt; BigDecimalYearMonthConverter.INSTANCE.convert((BigDecimal) v);</span>
+        }
+<span class="nc bnc" id="L223" title="All 6 branches missed.">        if ((entityType == Short.class || entityType == short.class)</span>
+                &amp;&amp; recordType == Integer.class) {
+<span class="nc bnc" id="L225" title="All 2 branches missed.">            return v -&gt; v == null ? null : ((Short) v).intValue();</span>
+        }
+<span class="nc bnc" id="L227" title="All 4 branches missed.">        if (entityType == String.class &amp;&amp; recordType == Boolean.class) {</span>
+<span class="nc" id="L228">            return v -&gt; StringBooleanFlagConverter.INSTANCE.convert((String) v);</span>
+        }
+<span class="nc" id="L230">        return Function.identity();</span>
+    }
+
+    private static Function&lt;Object, Object&gt; resolveToEntityConverter(
+            Class&lt;?&gt; recordType, Class&lt;?&gt; entityType, RecordComponent component) {
+<span class="fc" id="L235">        boolean preserveZero = component.isAnnotationPresent(PreserveZeroValue.class);</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (recordType == entityType) {</span>
+<span class="fc" id="L237">            return Function.identity();</span>
+        }
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        if (recordType == Long.class &amp;&amp; entityType == BigDecimal.class) {</span>
+<span class="fc" id="L240">            return v -&gt; JpaDbWriteValues.bigDecimal((Long) v);</span>
+        }
+<span class="pc bpc" id="L242" title="1 of 4 branches missed.">        if (recordType == Integer.class &amp;&amp; entityType == BigDecimal.class) {</span>
+<span class="fc" id="L243">            return v -&gt; JpaDbWriteValues.bigDecimal((Integer) v);</span>
+        }
+<span class="pc bpc" id="L245" title="2 of 4 branches missed.">        if (recordType == LocalDate.class &amp;&amp; entityType == BigDecimal.class) {</span>
+<span class="fc" id="L246">            return v -&gt; {</span>
+<span class="fc bfc" id="L247" title="All 4 branches covered.">                if (v == null &amp;&amp; preserveZero) {</span>
+<span class="fc" id="L248">                    return BigDecimal.ZERO;</span>
+                }
+<span class="fc" id="L250">                return JpaDbWriteValues.ymd((LocalDate) v);</span>
+            };
+        }
+<span class="nc bnc" id="L253" title="All 4 branches missed.">        if (recordType == LocalTime.class &amp;&amp; entityType == BigDecimal.class) {</span>
+<span class="nc" id="L254">            return v -&gt; JpaDbWriteValues.localTime((LocalTime) v);</span>
+        }
+<span class="nc bnc" id="L256" title="All 4 branches missed.">        if (recordType == YearMonth.class &amp;&amp; entityType == BigDecimal.class) {</span>
+<span class="nc" id="L257">            return v -&gt; YearMonthBigDecimalConverter.INSTANCE.convert((YearMonth) v);</span>
+        }
+<span class="nc bnc" id="L259" title="All 6 branches missed.">        if (recordType == Integer.class</span>
+                &amp;&amp; (entityType == Short.class || entityType == short.class)) {
+<span class="nc" id="L261">            return v -&gt; JpaDbWriteValues.smallInt((Integer) v);</span>
+        }
+<span class="nc bnc" id="L263" title="All 4 branches missed.">        if (recordType == Boolean.class &amp;&amp; entityType == String.class) {</span>
+<span class="nc" id="L264">            return v -&gt; BooleanFlagStringConverter.INSTANCE.convert((Boolean) v);</span>
+        }
+<span class="nc" id="L266">        return Function.identity();</span>
+    }
+
+<span class="fc" id="L269">    private record FieldMapping(</span>
+            Method recordAccessor,
+            Field entityField,
+            Function&lt;Object, Object&gt; toRecord,
+            Function&lt;Object, Object&gt; toEntity) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

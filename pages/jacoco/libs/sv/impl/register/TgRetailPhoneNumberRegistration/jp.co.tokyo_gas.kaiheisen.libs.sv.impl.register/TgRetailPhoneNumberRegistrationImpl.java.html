@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TgRetailPhoneNumberRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-tgretailphonenumberregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TgRetailPhoneNumberRegistrationImpl.java</span></div><h1>TgRetailPhoneNumberRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.PhoneNumberAdditionalUpdateRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.PhoneNumberUpdateAddDeleteFunctionRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TgRetailPhoneNumberRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.NewTelInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TelnoUpdInf;
+
+/**
+ * 概要: TG小売用電話番号登録サービスの実装です。
+ *
+ * 主な仕様:
+ * 旧電話番号と新電話番号の組み合わせを正規化し、既存電話番号の有無と属性差分に応じて
+ * 電話番号削除機能または電話番号追加更新機能を呼び分けます。
+ *
+ * 既知の制約:
+ * 削除処理では下位 SV の仕様に合わせ、電話番号以外の属性は引き渡していません。
+ * 正規化処理の入れ替え考慮は先頭 2 件の更新情報を対象とした相互参照に限定しています。
+ */
+public final class TgRetailPhoneNumberRegistrationImpl implements TgRetailPhoneNumberRegistration {
+
+    /** 契約お客さま電話番号＜小売＞を参照するデータアクセスです。 */
+    private final KyotelkDataAccess kyotelkDataAccess;
+
+    /** 小売電話番号の更新・追加・削除機能を呼び出す下位 SV です。 */
+    private final PhoneNumberUpdateAddDeleteFunctionRetail phoneNumberUpdateAddDeleteFunctionRetail;
+
+    /** TG小売用電話番号追加更新を呼び出す下位 SV です。 */
+    private final PhoneNumberAdditionalUpdateRetail phoneNumberAdditionalUpdateRetail;
+
+    /** 電話番号削除時に下位 SV へ渡す処理区分です。 */
+    private final String deleteProcessingDivision;
+
+    /**
+     * 概要: 依存コンポーネントを受け取ってサービス実装を初期化します。
+     *
+     * 主な仕様:
+     * 渡された依存オブジェクトはすべて null を禁止し、生成時点で検証します。
+     *
+         * 既知の制約:
+         * 下位 SV が利用する実行時コンテキスト値の必須性判定は、それぞれの下位 SV 側に委ねます。
+     *
+     * @param kyotelkDataAccess 契約お客さま電話番号＜小売＞データアクセス
+     * @param phoneNumberUpdateAddDeleteFunctionRetail 電話番号更新・追加・削除機能-小売
+     * @param phoneNumberAdditionalUpdateRetail TG小売用電話番号追加更新
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public TgRetailPhoneNumberRegistrationImpl(
+            KyotelkDataAccess kyotelkDataAccess,
+            PhoneNumberUpdateAddDeleteFunctionRetail phoneNumberUpdateAddDeleteFunctionRetail,
+            PhoneNumberAdditionalUpdateRetail phoneNumberAdditionalUpdateRetail,
+<span class="fc" id="L61">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L62">        this.kyotelkDataAccess = Objects.requireNonNull(kyotelkDataAccess, &quot;kyotelkDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.phoneNumberUpdateAddDeleteFunctionRetail = Objects.requireNonNull(</span>
+                phoneNumberUpdateAddDeleteFunctionRetail,
+                &quot;phoneNumberUpdateAddDeleteFunctionRetail&quot;);
+<span class="fc" id="L66">        this.phoneNumberAdditionalUpdateRetail = Objects.requireNonNull(</span>
+                phoneNumberAdditionalUpdateRetail,
+                &quot;phoneNumberAdditionalUpdateRetail&quot;);
+<span class="fc" id="L69">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L70">            Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L71">        this.deleteProcessingDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+            resolvedKaiheisenConstantService,
+            ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.TYPE,
+            ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.DELETE);
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * 概要: TG小売用の電話番号登録更新を実行します。
+     *
+     * 主な仕様:
+     * 電話番号情報を正規化したうえで各要素を順次評価し、削除または追加更新を必要最小限だけ呼び出します。
+     *
+     */
+    @Override
+    public void execute(
+            Long uketkjCstRegNo,
+            Long rakKyoTrkNo,
+            ArrayList&lt;TelnoUpdInf&gt; telnoUpdInfList) {
+<span class="fc" id="L89">        List&lt;TelnoUpdInf&gt; normalizedEntries = normalizeEntries(uketkjCstRegNo, rakKyoTrkNo, telnoUpdInfList);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        for (TelnoUpdInf entry : normalizedEntries) {</span>
+<span class="fc" id="L91">            processEntry(rakKyoTrkNo, entry);</span>
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * 概要: 電話番号更新情報を下位処理向けに正規化します。
+     *
+     * 主な仕様:
+     * 受付時登録番号と落成時登録番号が不一致の場合は旧電話番号を無効化します。
+     * 先頭 2 件については新旧電話番号の入れ替わりを考慮し、相互参照された旧電話番号を無効化します。
+     *
+     * 既知の制約:
+     * 入れ替わり判定は 2 件までを前提としており、3 件以上の複雑な並び替えは扱いません。
+     */
+    private List&lt;TelnoUpdInf&gt; normalizeEntries(
+            Long uketkjCstRegNo,
+            Long rakKyoTrkNo,
+            List&lt;TelnoUpdInf&gt; originalEntries) {
+<span class="fc" id="L109">        ArrayList&lt;TelnoUpdInf&gt; normalized = new ArrayList&lt;&gt;(originalEntries.size());</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        boolean invalidateOldNumbers = !Objects.equals(uketkjCstRegNo, rakKyoTrkNo);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (TelnoUpdInf entry : originalEntries) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            normalized.add(new TelnoUpdInf(entry.newTelInf(), invalidateOldNumbers ? null : entry.oldKyoTelNo()));</span>
+<span class="fc" id="L113">        }</span>
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">        if (!invalidateOldNumbers &amp;&amp; normalized.size() &gt;= 2) {</span>
+<span class="nc" id="L115">            TelnoUpdInf first = normalized.get(0);</span>
+<span class="nc" id="L116">            TelnoUpdInf second = normalized.get(1);</span>
+<span class="nc" id="L117">            String firstNewNo = getNewPhoneNo(first);</span>
+<span class="nc" id="L118">            String secondNewNo = getNewPhoneNo(second);</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">            if (first.oldKyoTelNo() != null &amp;&amp; Objects.equals(first.oldKyoTelNo(), secondNewNo)) {</span>
+<span class="nc" id="L120">                normalized.set(0, new TelnoUpdInf(first.newTelInf(), null));</span>
+            }
+<span class="nc bnc" id="L122" title="All 4 branches missed.">            if (second.oldKyoTelNo() != null &amp;&amp; Objects.equals(second.oldKyoTelNo(), firstNewNo)) {</span>
+<span class="nc" id="L123">                normalized.set(1, new TelnoUpdInf(second.newTelInf(), null));</span>
+            }
+        }
+<span class="fc" id="L126">        return normalized;</span>
+    }
+
+    /**
+     * 概要: 正規化済みの 1 件の電話番号更新情報を処理します。
+     *
+     * 主な仕様:
+     * 旧電話番号と新電話番号の存在有無、番号一致、属性差分の有無で削除または追加更新の呼出しを分岐します。
+     *
+     * 既知の制約:
+     * 新旧電話番号の両方が null の場合は何も行わず終了します。
+     */
+    private void processEntry(Long rakKyoTrkNo, TelnoUpdInf entry) {
+<span class="fc" id="L139">        String oldKyoTelNo = entry.oldKyoTelNo();</span>
+<span class="fc" id="L140">        Optional&lt;KyotelkRecord&gt; oldRecord = findRecord(rakKyoTrkNo, oldKyoTelNo);</span>
+<span class="fc bfc" id="L141" title="All 4 branches covered.">        boolean oldPhoneExists = oldKyoTelNo != null &amp;&amp; oldRecord.isPresent();</span>
+<span class="fc bfc" id="L142" title="All 4 branches covered.">        if (oldKyoTelNo != null &amp;&amp; !oldPhoneExists) {</span>
+<span class="fc" id="L143">            oldKyoTelNo = null;</span>
+        }
+
+<span class="fc" id="L146">        NewTelInf newTelInf = entry.newTelInf();</span>
+<span class="fc" id="L147">        String newKyoTelNo = getNewPhoneNo(entry);</span>
+<span class="fc" id="L148">        boolean newPhoneExists = determineNewPhoneExists(rakKyoTrkNo, oldKyoTelNo, newKyoTelNo, oldPhoneExists);</span>
+
+<span class="fc bfc" id="L150" title="All 4 branches covered.">        if (oldKyoTelNo != null &amp;&amp; newKyoTelNo == null) {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">            if (oldPhoneExists) {</span>
+<span class="fc" id="L152">                callDeleteRetailService(rakKyoTrkNo, oldKyoTelNo);</span>
+            }
+<span class="fc" id="L154">            return;</span>
+        }
+
+<span class="fc bfc" id="L157" title="All 4 branches covered.">        if (oldKyoTelNo == null &amp;&amp; newKyoTelNo != null) {</span>
+<span class="fc" id="L158">            callAdditionalUpdateRetail(newPhoneExists, rakKyoTrkNo, newTelInf);</span>
+<span class="fc" id="L159">            return;</span>
+        }
+
+<span class="pc bpc" id="L162" title="1 of 4 branches missed.">        if (oldKyoTelNo != null &amp;&amp; newKyoTelNo != null) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (Objects.equals(oldKyoTelNo, newKyoTelNo)) {</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">                if (oldRecord.isPresent() &amp;&amp; hasDifferentPhoneAttributes(oldRecord.orElseThrow(), newTelInf)) {</span>
+<span class="fc" id="L165">                    callAdditionalUpdateRetail(newPhoneExists, rakKyoTrkNo, newTelInf);</span>
+                }
+<span class="fc" id="L167">                return;</span>
+            }
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            if (oldPhoneExists) {</span>
+<span class="fc" id="L170">                callDeleteRetailService(rakKyoTrkNo, oldKyoTelNo);</span>
+            }
+<span class="fc" id="L172">            callAdditionalUpdateRetail(newPhoneExists, rakKyoTrkNo, newTelInf);</span>
+        }
+<span class="fc" id="L174">    }</span>
+
+    /**
+     * 概要: 新電話番号が既存登録済みかどうかを判定します。
+     *
+     * 主な仕様:
+     * 新旧電話番号が同一の場合は旧電話番号の存在判定を再利用し、それ以外は DA を参照します。
+     *
+     * 既知の制約:
+     * 電話番号が null の場合は未登録として扱います。
+     */
+    private boolean determineNewPhoneExists(
+            Long rakKyoTrkNo,
+            String oldKyoTelNo,
+            String newKyoTelNo,
+            boolean oldPhoneExists) {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (newKyoTelNo == null) {</span>
+<span class="fc" id="L191">            return false;</span>
+        }
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (Objects.equals(newKyoTelNo, oldKyoTelNo)) {</span>
+<span class="fc" id="L194">            return oldPhoneExists;</span>
+        }
+<span class="fc" id="L196">        return findRecord(rakKyoTrkNo, newKyoTelNo).isPresent();</span>
+    }
+
+    /**
+     * 概要: 契約番号と電話番号で既存電話情報を検索します。
+     *
+     * 主な仕様:
+     * 電話番号が null の場合は DA を呼び出さず空結果を返します。
+     *
+     * 既知の制約:
+     * DA 例外はここでは吸収せず、そのまま呼出元へ伝播します。
+     */
+    private Optional&lt;KyotelkRecord&gt; findRecord(Long rakKyoTrkNo, String kyoTelNo) {
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (kyoTelNo == null) {</span>
+<span class="fc" id="L210">            return Optional.empty();</span>
+        }
+<span class="fc" id="L212">        return kyotelkDataAccess.findByKyoTrkNoAndKyoTelNo(rakKyoTrkNo, kyoTelNo);</span>
+    }
+
+    /**
+     * 概要: 既存電話情報と新電話情報の属性差分を判定します。
+     *
+     * 主な仕様:
+     * 電話種別、連絡先種別、電話確認済種別、電話取得手段種別、取得日、提供者名、電話続柄種別、電話申出区分を比較します。
+     *
+     * 既知の制約:
+     * 新電話情報が null の場合は差分なしとして扱います。
+     */
+    private boolean hasDifferentPhoneAttributes(KyotelkRecord existingRecord, NewTelInf newTelInf) {
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        if (newTelInf == null) {</span>
+<span class="nc" id="L226">            return false;</span>
+        }
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        return !Objects.equals(existingRecord.telShbt(), newTelInf.telShbt())</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telRrskShbt(), newTelInf.telRrskShbt())</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telKnzShbt(), newTelInf.telKnzShbt())</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telStsdShbt(), newTelInf.telStsdShbt())</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telShtkYmd(), newTelInf.telShtkYmd())</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.tetsCtnmKj(), newTelInf.tetsCtnmKj())</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telZkgrShbt(), newTelInf.telZkgrShbt())</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                || !Objects.equals(existingRecord.telMusdKbn(), newTelInf.telMusdKbn());</span>
+    }
+
+    /**
+     * 概要: 旧電話番号の削除を下位 SV に委譲します。
+     *
+     * 主な仕様:
+     * 処理区分には削除を示す固定値を使用し、電話属性は渡しません。
+     *
+     * 既知の制約:
+     * 下位 SV の仕様上、削除対象以外の属性を補完せず null のまま引き渡します。
+     */
+    private void callDeleteRetailService(Long rakKyoTrkNo, String oldKyoTelNo) {
+<span class="fc" id="L248">        phoneNumberUpdateAddDeleteFunctionRetail.execute(</span>
+                deleteProcessingDivision,
+                rakKyoTrkNo,
+                oldKyoTelNo,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+<span class="fc" id="L260">    }</span>
+
+    /**
+     * 概要: 新電話情報の追加または更新を下位 SV に委譲します。
+     *
+     * 主な仕様:
+     * 新電話情報が存在する場合のみ下位 SV を呼び出し、電話属性一式をそのまま引き渡します。
+     *
+     * 既知の制約:
+     * 新電話情報が null の場合は何も行わず終了します。
+     */
+    private void callAdditionalUpdateRetail(Boolean telNoUmFlg, Long rakKyoTrkNo, NewTelInf newTelInf) {
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (newTelInf == null) {</span>
+<span class="nc" id="L273">            return;</span>
+        }
+<span class="fc" id="L275">        phoneNumberAdditionalUpdateRetail.execute(</span>
+                telNoUmFlg,
+                rakKyoTrkNo,
+<span class="fc" id="L278">                newTelInf.kyoTelNo(),</span>
+<span class="fc" id="L279">                newTelInf.telShbt(),</span>
+<span class="fc" id="L280">                newTelInf.telRrskShbt(),</span>
+<span class="fc" id="L281">                newTelInf.telKnzShbt(),</span>
+<span class="fc" id="L282">                newTelInf.telStsdShbt(),</span>
+<span class="fc" id="L283">                newTelInf.telShtkYmd(),</span>
+<span class="fc" id="L284">                newTelInf.tetsCtnmKj(),</span>
+<span class="fc" id="L285">                newTelInf.telZkgrShbt(),</span>
+<span class="fc" id="L286">                newTelInf.telMusdKbn());</span>
+<span class="fc" id="L287">    }</span>
+
+    /**
+     * 概要: 更新情報から新電話番号を取得します。
+     *
+     * 主な仕様:
+     * 更新情報または新電話情報が null の場合は null を返します。
+     *
+     * 既知の制約:
+     * 電話番号の形式補正やトリムは行いません。
+     */
+    private String getNewPhoneNo(TelnoUpdInf entry) {
+<span class="pc bpc" id="L299" title="1 of 4 branches missed.">        return entry == null || entry.newTelInf() == null ? null : entry.newTelInf().kyoTelNo();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

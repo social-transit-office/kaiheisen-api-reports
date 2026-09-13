@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingErrorUnnecessaryRegisterTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-error-follow</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail</a> &gt; <span class="el_source">ClosingErrorUnnecessaryRegisterTgRetailResource.java</span></div><h1>ClosingErrorUnnecessaryRegisterTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail.qualifier.ClosingErrorUnnecessaryRegisterTgRetailConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail.ClosingErrorUnnecessaryRegisterTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail.ClosingErrorUnnecessaryRegisterTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.retail.retail_tg.closing_error_unnecessary_register_tg_retail.ClosingErrorUnnecessaryRegisterTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DatabaseException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.ExclusiveException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.nwkseig.NwkseigDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.nwkseig.NwkseigRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ReceptionInfoChangeNotificationApiIntegration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ApplicationTypeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ApplicationTypeAcquisitionOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-030 閉栓エラーフォロー不要登録-小売-TG小売 のリソース実装。
+ */
+@Path(ClosingErrorUnnecessaryRegisterTgRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;閉栓エラーフォロー不要登録 TG小売&quot;, description = &quot;MA-030 閉栓エラーフォロー不要登録　TG小売&quot;)
+public class ClosingErrorUnnecessaryRegisterTgRetailResource extends BaseResource&lt;ClosingErrorUnnecessaryRegisterTgRetailRequest&gt; {
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private final String flStCdNotYetStarted;
+
+    private final String flStCdCompletedNoFollowRequired;
+
+    private final String cusSvHstConOther;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+<span class="fc" id="L73">    private final String usrId = &quot;KHSM030&quot;;</span>
+
+    private final NwkseigDataAccess nwkseigDataAccess;
+
+    private final ApplicationTypeAcquisition applicationTypeAcquisition;
+
+    private final ReceptionInfoChangeNotificationApiIntegration receptionInfoChangeNotificationApiIntegration;
+
+    private final String procedureStatusCancel;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @param hseflDataAccess     閉栓EF件名テーブルDA
+     * @param ciriusConstantService CIRIUSコンスタントサービス
+     * @param kaiheisenConstantService 開閉栓コンスタントサービス
+     * @param ApplicationTypeAcquisition SV-087 申込種別取得
+     * @param ApplicationTypeAcquisition SV-092 受付情報変更通知API連携
+     */
+    @Inject
+    public ClosingErrorUnnecessaryRegisterTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            HseflDataAccess hseflDataAccess,
+            NwkseigDataAccess nwkseigDataAccess,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService,
+            @ClosingErrorUnnecessaryRegisterTgRetailConfiguration
+            ApplicationTypeAcquisition applicationTypeAcquisition,
+            @ClosingErrorUnnecessaryRegisterTgRetailConfiguration
+            ReceptionInfoChangeNotificationApiIntegration receptionInfoChangeNotificationApiIntegration) {
+<span class="fc" id="L108">        super(requestContext, requestDtoValidator, clock);</span>
+
+<span class="fc" id="L110">        CiriusConstantService resolvedciriusConstantService = Objects.requireNonNull(ciriusConstantService,</span>
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L112">        this.flStCdNotYetStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedciriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L116">        this.flStCdCompletedNoFollowRequired = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedciriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_NO_FOLLOW_REQUIRED);
+<span class="fc" id="L120">        this.cusSvHstConOther = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedciriusConstantService,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.TYPE,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.OTHERS);
+<span class="fc" id="L124">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService,</span>
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L126">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.CIRIUS);
+<span class="fc" id="L129">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT);
+<span class="fc" id="L132">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.GASTA);
+<span class="fc" id="L135">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TAXIS);
+<span class="fc" id="L138">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.KRAKEN);
+<span class="fc" id="L141">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.EAGLE);
+<span class="fc" id="L144">        RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.HURRY);
+<span class="fc" id="L147">        this.kaiheisenConstantService = resolvedKaiheisenConstantService;</span>
+<span class="fc" id="L148">        this.procedureStatusCancel = RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.TYPE,
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.CANCELLATION_OF_PROCEDURE);
+<span class="fc" id="L151">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L152">        this.nwkseigDataAccess = Objects.requireNonNull(nwkseigDataAccess, &quot;nwkseigDataAccess&quot;);</span>
+<span class="fc" id="L153">        this.applicationTypeAcquisition = Objects.requireNonNull(applicationTypeAcquisition, &quot;applicationTypeAcquisition&quot;);</span>
+<span class="fc" id="L154">        this.receptionInfoChangeNotificationApiIntegration = Objects.requireNonNull(</span>
+                receptionInfoChangeNotificationApiIntegration, &quot;receptionInfoChangeNotificationApiIntegration&quot;);
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * MA-030 閉栓エラーフォロー不要登録　TG小売 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return 閉栓エラーフォロー不要登録　TG小売 レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;閉栓エラーフォロー不要登録　TG小売&quot;,
+            description = &quot;TG小売客番に閉栓エラーフォロー不要登録を行う&quot;,
+            operationId = &quot;postClosingErrorUnnecessaryRegisterTgRetailResource&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;閉栓エラーフォロー不要後の結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingErrorUnnecessaryRegisterTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingErrorUnnecessaryRegisterTgRetailResponse endpoint(ClosingErrorUnnecessaryRegisterTgRetailRequest request) {
+<span class="fc" id="L189">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L190">            Long gasMtstNo = Long.valueOf(request.gasMtstNo());</span>
+<span class="fc" id="L191">            LocalDate hssgYmd = Rfc3339LocalDateParser.parse(request.hssgYmd());</span>
+<span class="fc" id="L192">            LocalDate hesnHukkYmd = Rfc3339LocalDateParser.parse(request.hesnHukkYmd());</span>
+<span class="fc" id="L193">            Integer regTsno = Integer.valueOf(request.regTsno());</span>
+<span class="fc" id="L194">            Integer recUpdJnjNo = Integer.valueOf(request.recUpdJnjNo());</span>
+<span class="fc" id="L195">            LocalDateTime systemDatetime = this.requestContext.getSystemDatetime()</span>
+<span class="fc" id="L196">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set in RequestContext&quot;));</span>
+            // DA-141-U001パラメータ設定
+<span class="fc" id="L198">            LocalDate systemLocalDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L199">            HseflWriteRecord record = new HseflWriteRecord(gasMtstNo, hssgYmd, hesnHukkYmd, regTsno, null, null,</span>
+                    flStCdCompletedNoFollowRequired, systemLocalDate, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+<span class="fc" id="L202">            Set&lt;HseflColumn&gt; targetColumns = Set.of(HseflColumn.FLW_ST_CD, HseflColumn.FLTK_YMD);</span>
+<span class="fc" id="L203">            HseflU001UpdateKey key = new HseflU001UpdateKey(gasMtstNo, hssgYmd, hesnHukkYmd, regTsno, recUpdJnjNo);</span>
+<span class="fc" id="L204">            String hukkSysShbt = this.requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L205">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;hukkSysShbt is not set in RequestContext&quot;));</span>
+<span class="fc" id="L206">            String decodedHkkSysSyb = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                    ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE, hukkSysShbt);
+
+<span class="fc" id="L209">            AuditContext context = new AuditContext(usrId, decodedHkkSysSyb);</span>
+
+            // DA-141-U001:GMB・KASG_YMD・KAS_HUKK_YMD・SGY_ANKN_NO・REC_UPD_JNJ_NOによる更新
+            try {
+<span class="fc" id="L213">                hseflDataAccess.updateByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(</span>
+                        record, targetColumns, key, context);
+<span class="fc" id="L215">            } catch (DatabaseException e) {</span>
+<span class="fc" id="L216">                String daIdentifier = e.getDaIdentifier();</span>
+<span class="fc" id="L217">                String sql = e.getSql();</span>
+<span class="fc" id="L218">                Object[] sqlBindPar = e.getSqlBindParameters();</span>
+<span class="fc" id="L219">                Throwable cause = e.getCause();</span>
+                // DA-141-U001で取得したエラーコード  = &quot;030400001 &quot; (排他エラー)が返却された場合
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                if (cause.getCause() instanceof ExclusiveException) {</span>
+                    // DA-141-R001 による取得
+<span class="fc" id="L223">                    HseflRecord hseflRecord1 = findHseflRecord(gasMtstNo, hssgYmd, hesnHukkYmd, regTsno);</span>
+                    // フォロー状態の判定
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                    if (!flStCdNotYetStarted.equals(hseflRecord1.flwStCd())) {</span>
+<span class="fc" id="L226">                        throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000043);</span>
+                    } else {
+<span class="fc" id="L228">                        throw new DatabaseException(</span>
+                                daIdentifier,
+                                sql,
+                                sqlBindPar,
+                                cause
+                                );
+                    }
+                } else {
+<span class="fc" id="L236">                    throw e ;</span>
+                }
+<span class="fc" id="L238">            }</span>
+            // DA-141-U001で取得したエラーコード  =　未設定　の場合
+            // DA-141-R001 による取得
+<span class="fc" id="L241">            HseflRecord hseflRecord2 = findHseflRecord(gasMtstNo, hssgYmd, hesnHukkYmd, regTsno);</span>
+            // SV-087 申込種別取得
+<span class="fc" id="L243">            String correlationId = this.requestContext.getCorrelationId()</span>
+<span class="fc" id="L244">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;));</span>
+<span class="fc" id="L245">            String hesnJysb = hseflRecord2.hesnJysb();</span>
+<span class="fc" id="L246">            String htyoSysShbtCd = hseflRecord2.hukkSysShbt();</span>
+<span class="fc" id="L247">            ApplicationTypeAcquisitionOutput applicationTypeAcquisitionOutput =</span>
+<span class="fc" id="L248">                    applicationTypeAcquisition.execute(null, hesnJysb, htyoSysShbtCd);</span>
+
+            // DA-141-R001の受付インデックス番号 = 未設定 以外、かつSV-087の申込種別 = 未設定 以外の場合
+<span class="fc" id="L251">            Optional&lt;String&gt; utidxNo = Optional.ofNullable(hseflRecord2.utidxNo());</span>
+<span class="fc" id="L252">            Optional&lt;String&gt; mkSbt = Optional.ofNullable(applicationTypeAcquisitionOutput.mkSbt());</span>
+<span class="fc bfc" id="L253" title="All 4 branches covered.">            if (!utidxNo.isEmpty() &amp;&amp; !mkSbt.isEmpty() ) {</span>
+                // DA-135-R001 ＮＷ箇所名を取得する
+<span class="fc" id="L255">                String nwkCd = hseflRecord2.hssgNwkCd();</span>
+<span class="fc" id="L256">                NwkseigRecord nwkseigRecord = findNwkseigRecord(nwkCd, hssgYmd);</span>
+                // SV-092 受付情報変更通知API連携
+<span class="fc" id="L258">                String utidxNo2 = hseflRecord2.utidxNo();</span>
+<span class="fc" id="L259">                String uketkSeiriNo = hseflRecord2.sgyAnknNo();</span>
+<span class="fc" id="L260">                Long cstRegNo = hseflRecord2.syoKyoTrno();</span>
+<span class="fc" id="L261">                String nwknKj = nwkseigRecord.nwknKj();</span>
+<span class="fc" id="L262">                String sagyoSyaName = hseflRecord2.sgytSinnKj();</span>
+<span class="fc" id="L263">                receptionInfoChangeNotificationApiIntegration.execute(</span>
+                        utidxNo2, uketkSeiriNo, null, procedureStatusCancel, gasMtstNo, cstRegNo,
+                        cusSvHstConOther, nwknKj, sagyoSyaName,
+<span class="fc" id="L266">                        applicationTypeAcquisitionOutput.mkSbt(), hssgYmd, LocalDate.of(1900, 1, 1),</span>
+                        null, null);
+            }
+<span class="fc" id="L269">            return new ClosingErrorUnnecessaryRegisterTgRetailResponse(correlationId);</span>
+        });
+    }
+
+    private HseflRecord findHseflRecord(Long gasMtstNo, LocalDate hssgYmd, LocalDate hesnHukkYmd, Integer regTsno) {
+
+<span class="fc" id="L275">        Optional&lt;HseflRecord&gt; record = hseflDataAccess.findByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsno(</span>
+                gasMtstNo, hssgYmd, hesnHukkYmd, regTsno);
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        if (!record.isEmpty()) {</span>
+<span class="fc" id="L278">            return record.get();</span>
+        }
+<span class="fc" id="L280">        throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L281">                hseflDataAccess.tableName(),</span>
+<span class="fc" id="L282">                HseflDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L284">                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L285">                .put(&quot;hssgYmd&quot;, hssgYmd)</span>
+<span class="fc" id="L286">                .put(&quot;hesnHukkYmd&quot;, hesnHukkYmd)</span>
+<span class="fc" id="L287">                .put(&quot;regTsno&quot;, regTsno));</span>
+
+    }
+
+    private NwkseigRecord findNwkseigRecord(String nwkCd, LocalDate hssgYmd) {
+
+<span class="fc" id="L293">        Optional&lt;NwkseigRecord&gt; record = nwkseigDataAccess.findByNwkCdAndTkysYmdAndTyenYmd(nwkCd, hssgYmd);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (!record.isEmpty()) {</span>
+<span class="fc" id="L295">            return record.get();</span>
+        }
+<span class="fc" id="L297">        throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L298">                nwkseigDataAccess.tableName(),</span>
+<span class="fc" id="L299">                NwkseigDataAccess.CallSpecs.FIND_BY_NWK_CD_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L301">                .put(&quot;nwkCd&quot;, nwkCd)</span>
+<span class="fc" id="L302">                .put(&quot;hssgYmd&quot;, hssgYmd));</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

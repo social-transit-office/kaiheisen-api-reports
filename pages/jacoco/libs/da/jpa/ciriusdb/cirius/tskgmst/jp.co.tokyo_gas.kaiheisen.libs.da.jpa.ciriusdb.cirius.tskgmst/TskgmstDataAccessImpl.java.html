@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TskgmstDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-tskgmst</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.tskgmst</a> &gt; <span class="el_source">TskgmstDataAccessImpl.java</span></div><h1>TskgmstDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.tskgmst;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessPhaseRecorder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** TSKGMST データアクセスの JPA 実装。 */
+public class TskgmstDataAccessImpl extends DataAccessBase implements TskgmstDataAccess {
+
+    private static final String TABLE_NAME = &quot;TSKGMST&quot;;
+
+    private static final String INVALID_STATUS_CODE = &quot;00&quot;;
+
+    private static final String U002_WHERE_CLAUSE =
+            &quot;GAS_MTST_NO = ? AND TKSU_SVKY_NO = ? AND SKNO = ?&quot;;
+
+<span class="fc" id="L43">    private static final ReflectiveRecordEntityMapper&lt;TskgmstRecord, TskgmstEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L44">            ReflectiveRecordEntityMapper.create(TskgmstRecord.class, TskgmstEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;TskgmstWriteRecord, TskgmstEntity&gt;
+<span class="fc" id="L47">            WRITE_MAPPER =</span>
+<span class="fc" id="L48">                    ReflectiveRecordEntityMapper.create(</span>
+                            TskgmstWriteRecord.class, TskgmstEntity.class);
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;TskgmstEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;TskgmstWriteRecord, TskgmstEntity, TskgmstColumn&gt;
+            insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;TskgmstWriteRecord, TskgmstEntity, TskgmstColumn&gt;
+            updateSupport;
+
+    /** コンストラクタ。 */
+    public TskgmstDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="fc" id="L70">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L75">    }</span>
+
+    TskgmstDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L81">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L82">    }</span>
+
+    TskgmstDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L88">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L89">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L90">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L91">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L92">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L93">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(TskgmstEntity.class);</span>
+<span class="fc" id="L94">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L95">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L96">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        TskgmstWriteDefinition.INSTANCE,
+                        TskgmstEntity.class,
+<span class="fc" id="L102">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L103">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        TskgmstWriteDefinition.INSTANCE,
+                        TskgmstEntity.class,
+<span class="fc" id="L109">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L110">    }</span>
+
+    @Override
+    public int insert(TskgmstWriteRecord record, AuditContext context) {
+<span class="fc" id="L114">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L115">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L116">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L119">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L120">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public List&lt;TskgmstRecord&gt; findAllByGasMtstNoAndTksuSvkkJtkb(
+            Long gasMtstNo, String tksuSvkkJtkb) {
+<span class="fc" id="L126">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L127">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L128">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L129">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L130">        JpaWhere.eq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L131">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkkJtkb(
+            Long gasMtstNo, String tksuSvkkJtkb) {
+<span class="fc" id="L137">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L138">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L139">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L140">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L141">        JpaWhere.eq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L142">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkkJtkbList(
+            Long gasMtstNo, List&lt;String&gt; tksuSvkkJtkbList) {
+<span class="fc" id="L148">        R003Parameters parameters = DataAccessPhaseRecorder.measure(</span>
+                DataAccessPhaseRecorder.PARAMETER_CONVERSION,
+                () -&gt; {
+<span class="fc" id="L151">                    Objects.requireNonNull(tksuSvkkJtkbList, &quot;tksuSvkkJtkbList&quot;);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                    if (tksuSvkkJtkbList.isEmpty()) {</span>
+<span class="fc" id="L153">                        return new R003Parameters(null, List.of());</span>
+                    }
+<span class="fc" id="L155">                    BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L156">                    List&lt;String&gt; safeStatusList = tksuSvkkJtkbList.stream()</span>
+<span class="fc" id="L157">                            .map(value -&gt; safeTksuSvkkJtkb(value, &quot;tksuSvkkJtkbList&quot;))</span>
+<span class="fc" id="L158">                            .toList();</span>
+<span class="fc" id="L159">                    return new R003Parameters(safeGasMtstNo, safeStatusList);</span>
+                });
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (parameters.tksuSvkkJtkbList().isEmpty()) {</span>
+<span class="fc" id="L162">            return Optional.empty();</span>
+        }
+<span class="fc" id="L164">        var builder = DataAccessPhaseRecorder.measure(</span>
+                DataAccessPhaseRecorder.QUERY_CONSTRUCTION,
+                () -&gt; {
+<span class="fc" id="L167">                    var queryBuilder =</span>
+<span class="fc" id="L168">                            criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L169">                    JpaWhere.eq(queryBuilder, &quot;gasMtstNo&quot;, parameters.gasMtstNo());</span>
+<span class="fc" id="L170">                    JpaWhere.in(</span>
+                            queryBuilder,
+                            &quot;tksuSvkkJtkb&quot;,
+<span class="fc" id="L173">                            parameters.tksuSvkkJtkbList());</span>
+<span class="fc" id="L174">                    queryBuilder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L175">                    return queryBuilder.setMaxResults(1);</span>
+                });
+<span class="fc" id="L177">        List&lt;TskgmstEntity&gt; entities = DataAccessPhaseRecorder.measure(</span>
+                DataAccessPhaseRecorder.SQL_EXECUTION_RESULT_FETCH,
+<span class="fc" id="L179">                builder::getResultList);</span>
+<span class="fc" id="L180">        return DataAccessPhaseRecorder.measure(</span>
+                DataAccessPhaseRecorder.RECORD_CONVERSION,
+<span class="fc" id="L182">                () -&gt; entities.stream().map(READ_MAPPER::toRecord).findFirst());</span>
+    }
+
+<span class="fc" id="L185">    private record R003Parameters(</span>
+            BigDecimal gasMtstNo,
+            List&lt;String&gt; tksuSvkkJtkbList) {
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tyenYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L193">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L194">        BigDecimal safeTyenYmd = safeYmd(tyenYmd, &quot;tyenYmd&quot;);</span>
+<span class="fc" id="L195">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L196">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L197">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L198">        JpaWhere.eq(builder, &quot;tyenYmd&quot;, safeTyenYmd);</span>
+<span class="fc" id="L199">        JpaWhere.eq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L200">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L201">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tkysYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L207">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L208">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L209">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L210">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L211">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L212">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeTkysYmd);</span>
+<span class="fc" id="L213">        JpaWhere.notEq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L214">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L215">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TskgmstRecord&gt; findAllByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate knskKjnYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L221">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L222">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L223">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L224">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L225">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L226">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L227">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L228">        JpaWhere.eq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L229">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkyNoAndTksuSvkkJtkb(
+            Long gasMtstNo, Long tksuSvkyNo, String tksuSvkkJtkb) {
+<span class="fc" id="L235">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L236">        BigDecimal safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L237">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L238">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L239">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L240">        JpaWhere.eq(builder, &quot;tksuSvkyNo&quot;, safeTksuSvkyNo);</span>
+<span class="fc" id="L241">        JpaWhere.notEq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L242">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L243">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate knskKjnYmd, List&lt;String&gt; tksuSvkkJtkbList) {
+<span class="fc" id="L249">        Objects.requireNonNull(tksuSvkkJtkbList, &quot;tksuSvkkJtkbList&quot;);</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        if (tksuSvkkJtkbList.isEmpty()) {</span>
+<span class="nc" id="L251">            return Optional.empty();</span>
+        }
+<span class="fc" id="L253">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L254">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L255">        List&lt;String&gt; safeTksuSvkkJtkbList =</span>
+<span class="fc" id="L256">                tksuSvkkJtkbList.stream()</span>
+<span class="fc" id="L257">                        .map(value -&gt; safeTksuSvkkJtkb(value, &quot;tksuSvkkJtkbList&quot;))</span>
+<span class="fc" id="L258">                        .toList();</span>
+<span class="fc" id="L259">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L260">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L261">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L262">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L263">        JpaWhere.in(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkbList);</span>
+<span class="fc" id="L264">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L265">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdBeforeAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tkysYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L271">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L272">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L273">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L274">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L275">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L276">        JpaWhere.lt(builder, &quot;tkysYmd&quot;, safeTkysYmd);</span>
+<span class="fc" id="L277">        JpaWhere.notEq(builder, &quot;tksuSvkkJtkb&quot;, safeTksuSvkkJtkb);</span>
+<span class="fc" id="L278">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L279">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(
+            TskgmstWriteRecord record,
+            Set&lt;TskgmstColumn&gt; targetColumns,
+            TskgmstUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L288">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L289">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L290">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L291">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L292">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L293">        BigDecimal safeGasMtstNo = safeLong(updateKey.gasMtstNo(), &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L294">        BigDecimal safeTksuSvkyNo = safeLong(updateKey.tksuSvkyNo(), &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L295">        BigDecimal safeSkno = safeInt(updateKey.skno(), &quot;skno&quot;);</span>
+
+<span class="fc" id="L297">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L301">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L302">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L306">                PreparedWhere.of(</span>
+                        U002_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L309">                            int nextIndex = JpaBind.set(query, startIndex, safeGasMtstNo);</span>
+<span class="fc" id="L310">                            nextIndex = JpaBind.set(query, nextIndex, safeTksuSvkyNo);</span>
+<span class="fc" id="L311">                            return JpaBind.set(query, nextIndex, safeSkno);</span>
+                        },
+                        safeGasMtstNo,
+                        safeTksuSvkyNo,
+                        safeSkno),
+<span class="fc" id="L316">                updateKey.recUpdJnjNo(),</span>
+                TskgmstDataAccess.CallSpecs
+                        .UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L319">                        .identifier());</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findAtBaseDateExcludeInvalid(
+            Long gasMtstNo, LocalDate baseDate) {
+<span class="fc" id="L325">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L326">        BigDecimal safeBaseDate = safeYmd(baseDate, &quot;baseDate&quot;);</span>
+<span class="fc" id="L327">        var builder = criteriaBuilderFactory.create(entityManager, TskgmstEntity.class);</span>
+<span class="fc" id="L328">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L329">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeBaseDate);</span>
+<span class="fc" id="L330">        JpaWhere.notEq(builder, &quot;tksuSvkkJtkb&quot;, INVALID_STATUS_CODE);</span>
+<span class="fc" id="L331">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L332">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByPK(Long gasMtstNo, Long tksuSvkyNo, Integer skno) {
+<span class="fc" id="L337">        TskgmstId id =</span>
+                new TskgmstId(
+<span class="fc" id="L339">                        safeLong(gasMtstNo, &quot;gasMtstNo&quot;),</span>
+<span class="fc" id="L340">                        safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;),</span>
+<span class="fc" id="L341">                        safeInt(skno, &quot;skno&quot;));</span>
+<span class="fc" id="L342">        TskgmstEntity entity = entityManager.find(TskgmstEntity.class, id);</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (entity == null) {</span>
+<span class="nc" id="L344">            return Optional.empty();</span>
+        }
+<span class="fc" id="L346">        return Optional.of(READ_MAPPER.toRecord(entity));</span>
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L350">        return WhereParamGuard.complement(JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInt(Integer value, String paramName) {
+<span class="fc" id="L354">        return WhereParamGuard.complement(JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L358">        return WhereParamGuard.complement(JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeTksuSvkkJtkb(String value, String paramName) {
+<span class="fc" id="L362">        return WhereParamGuard.fixedLengthNotNull(value, paramName, 2);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

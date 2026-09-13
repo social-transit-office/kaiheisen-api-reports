@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CustomerInfoGetResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-opening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.common.retail_common.customer_info_get</a> &gt; <span class="el_source">CustomerInfoGetResource.java</span></div><h1>CustomerInfoGetResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.common.retail_common.customer_info_get;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.common.retail_common.customer_info_get.qualifier.CustomerInfoGetConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.CustomerInfoGetEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.CustomerInfoGetRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.CustomerInfoGetResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.model.GasmtrdInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.model.GmtsetdInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.model.KiycstdInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.model.KnsKkaInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_common.customer_info_get.model.TkssvkyInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningClosingInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OriginGasMeterOpeningInProgressConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.SuspendedRemovedErrorJudgment;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-001 お客さま情報取得-共通 API のリソース実装。
+ */
+@Path(CustomerInfoGetEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;オンライン開栓報告お客さま情報取得&quot;, description = &quot;MA-001 オンライン開栓報告お客さま情報取得 API&quot;)
+public class CustomerInfoGetResource extends BaseResource&lt;CustomerInfoGetRequest&gt; {
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final KiycstdDataAccess kiycstdDataAccess;
+
+    private final SuspendedRemovedErrorJudgment suspendedRemovedErrorJudgment;
+
+    private final OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment;
+
+    private final OriginGasMeterOpeningInProgressConfirmation originGasMeterOpeningInProgressConfirmation;
+
+    private final MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening;
+
+    private final RetailTypeJudgment retailTypeJudgment;
+
+    private final MeterReadingResultInfoAcquisition meterReadingResultInfoAcquisition;
+
+    private final String khsSyoriKbn;
+
+<span class="fc" id="L82">    private final String shrKbn = &quot;2&quot;;</span>
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @
+     */
+    @Inject
+    public CustomerInfoGetResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            @CustomerInfoGetConfiguration
+            SuspendedRemovedErrorJudgment suspendedRemovedErrorJudgment,
+            @CustomerInfoGetConfiguration
+            OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment,
+            @CustomerInfoGetConfiguration
+            OriginGasMeterOpeningInProgressConfirmation originGasMeterOpeningInProgressConfirmation,
+            @CustomerInfoGetConfiguration
+            MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening,
+            @CustomerInfoGetConfiguration
+            RetailTypeJudgment retailTypeJudgment,
+            @CustomerInfoGetConfiguration
+            MeterReadingResultInfoAcquisition meterReadingResultInfoAcquisition,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GasmtrdDataAccess gasmtrdDataAccess,
+            KiycstdDataAccess kiycstdDataAccess,
+            KaiheisenConstantService kaiheisenConstantService
+    ) {
+<span class="fc" id="L114">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L115">        this.suspendedRemovedErrorJudgment = Objects.requireNonNull(</span>
+                suspendedRemovedErrorJudgment,
+                &quot;suspendedRemovedErrorJudgment&quot;);
+<span class="fc" id="L118">        this.openingClosingInProgressErrorJudgment = Objects.requireNonNull(</span>
+                openingClosingInProgressErrorJudgment,
+                &quot;openingClosingInProgressErrorJudgment&quot;);
+<span class="fc" id="L121">        this.originGasMeterOpeningInProgressConfirmation = Objects.requireNonNull(</span>
+                originGasMeterOpeningInProgressConfirmation,
+                &quot;originGasMeterOpeningInProgressConfirmation&quot;);
+<span class="fc" id="L124">        this.meterReadingInfoAcquisitionForOpening = Objects.requireNonNull(</span>
+                meterReadingInfoAcquisitionForOpening,
+                &quot;meterReadingInfoAcquisitionForOpening&quot;);
+<span class="fc" id="L127">        this.retailTypeJudgment = Objects.requireNonNull(</span>
+                retailTypeJudgment,
+                &quot;retailTypeJudgment&quot;);
+<span class="fc" id="L130">        this.meterReadingResultInfoAcquisition = Objects.requireNonNull(</span>
+                meterReadingResultInfoAcquisition,
+                &quot;meterReadingResultInfoAcquisition&quot;);
+<span class="fc" id="L133">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L134">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L135">        this.kiycstdDataAccess = Objects.requireNonNull(kiycstdDataAccess, &quot;kiycstdDataAccess&quot;);</span>
+<span class="fc" id="L136">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService,</span>
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L138">        this.khsSyoriKbn = RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.OpeningClosingProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.OpeningClosingProcessing.OPENING_PROCESS);
+
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * MA-001 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;オンライン開栓お客さま情報取得&quot;,
+            description = &quot;オンライン開栓お客さま情報を取得する&quot;,
+            operationId = &quot;getCustomerInfoGet&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;オンライン開栓お客さま情報取得結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CustomerInfoGetResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public CustomerInfoGetResponse endpoint(@BeanParam CustomerInfoGetRequest request) {
+<span class="fc" id="L175">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L176">            Long gasMtstNo = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc" id="L177">            LocalDate knskKjnYmd = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L178">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set in RequestContext&quot;))</span>
+<span class="fc" id="L179">                    .toLocalDate();</span>
+<span class="fc" id="L180">            KiycstdRecord kiycstdRecord = null;</span>
+            // DA-033-R006 ガスメーター設置場所＜導管＞情報の取得
+<span class="fc" id="L182">            GmtsetdRecord gmtsetdRecord = requireGmtsetd(gasMtstNo, knskKjnYmd);</span>
+            // SV-136 休止・撤去済エラー判定
+<span class="fc" id="L184">            suspendedRemovedErrorJudgment.execute(gmtsetdRecord.kngmStbJtkb());</span>
+            // SV-138 開栓中・閉栓中エラー判定
+<span class="fc" id="L186">            openingClosingInProgressErrorJudgment.execute(gmtsetdRecord.gmtKhsJtkb(), this.khsSyoriKbn);</span>
+            // SV-269 元ガスメーター開栓中確認
+<span class="fc" id="L188">            originGasMeterOpeningInProgressConfirmation.execute(gmtsetdRecord.ckrtGmscJtkb(), gmtsetdRecord.mtgMtstNo());</span>
+            // DA-110-R003
+<span class="fc" id="L190">            GasmtrdRecord gasmtrdRecord = requireGasmtrd(gasMtstNo, null);</span>
+            // SV-027 検針情報(開栓)を取得する
+<span class="fc" id="L192">            Optional&lt;MeterReadingInfoAcquisitionForOpeningOutput&gt; meterReadingInfoAcquisitionForOpeningOutput =</span>
+<span class="fc" id="L193">                    Optional.of(gmtsetdRecord.gasMtstNo())</span>
+<span class="fc" id="L194">                    .map(v -&gt; gmtsetdRecord.gasMtstNo())</span>
+<span class="fc" id="L195">                    .map(meterReadingInfoAcquisitionForOpening::execute);</span>
+            // SV-001 小売判定用（TG小売/他小売）
+<span class="fc" id="L197">            RetailTypeJudgmentOutput retailTypeJudgmentOutput = retailTypeJudgment.execute(shrKbn, gasMtstNo, knskKjnYmd);</span>
+            // SV-001にて使用者契約お客さま登録番号が未設定ではない場合
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (retailTypeJudgmentOutput.tkssvkyInf().syoKyoTrno() != null) {</span>
+            // DA-104-R001 契約お客さま情報＜導管＞情報の取得
+<span class="fc" id="L201">                kiycstdRecord = requireKiycstd(retailTypeJudgmentOutput.tkssvkyInf().syoKyoTrno());</span>
+            }
+            // SV-042 検針結果情報取得
+<span class="fc" id="L204">            MeterReadingResultInfoAcquisitionOutput meterReadingResultInfoAcquisitionOutput =</span>
+<span class="fc" id="L205">                    meterReadingResultInfoAcquisition.execute(gmtsetdRecord.hesnJysb()</span>
+                            , gasMtstNo
+<span class="fc" id="L207">                            , retailTypeJudgmentOutput.kuHntKbn()</span>
+<span class="fc" id="L208">                            , meterReadingInfoAcquisitionForOpeningOutput.get().knsYmd()</span>
+<span class="fc" id="L209">                            , meterReadingInfoAcquisitionForOpeningOutput.get().gmtShjSu()</span>
+<span class="fc" id="L210">                            , meterReadingInfoAcquisitionForOpeningOutput.get().knkkSsjyShbt());</span>
+<span class="fc" id="L211">            return toResponse(</span>
+                    gasMtstNo,
+                    gmtsetdRecord,
+                    gasmtrdRecord,
+                    kiycstdRecord,
+                    meterReadingInfoAcquisitionForOpeningOutput,
+                    retailTypeJudgmentOutput,
+                    meterReadingResultInfoAcquisitionOutput);
+        });
+    }
+
+    /**
+     * レスポンス成型する。
+     *
+     * @param gmtsetdRecord ガスメーター設置場所＜導管＞情報
+     * @param gasmtrdRecord ガスメーター情報
+     * @param kiycstdRecord 契約お客さま＜導管＞情報
+     * @param meterReadingInfoAcquisitionForOpeningOutput 検針情報取得（開栓）の出力
+     * @param retailTypeJudgmentOutput 小売判定の出力
+     * @param meterReadingResultInfoAcquisitionOutput 検針結果情報の出力
+     * @return CustomerInfoGetResponse レスポンス
+     */
+    private CustomerInfoGetResponse toResponse(
+            Long gasMtstNo,
+            GmtsetdRecord gmtsetdRecord,
+            GasmtrdRecord gasmtrdRecord,
+            KiycstdRecord kiycstdRecord,
+            Optional&lt;MeterReadingInfoAcquisitionForOpeningOutput&gt; meterReadingInfoAcquisitionForOpeningOutput,
+            RetailTypeJudgmentOutput retailTypeJudgmentOutput,
+            MeterReadingResultInfoAcquisitionOutput meterReadingResultInfoAcquisitionOutput
+    ) {
+<span class="fc" id="L242">        return new CustomerInfoGetResponse(</span>
+<span class="fc" id="L243">                createGmtsetdInfoResponse(gmtsetdRecord, gasMtstNo),</span>
+<span class="fc" id="L244">                createGasmtrdInfoResponse(gasmtrdRecord),</span>
+<span class="fc" id="L245">                createKnsKkaInfoResponse(meterReadingResultInfoAcquisitionOutput),</span>
+<span class="fc" id="L246">                createTkssvkyInfoResponse(retailTypeJudgmentOutput),</span>
+<span class="fc" id="L247">                createKiycstdInfoResponse(kiycstdRecord),</span>
+<span class="fc" id="L248">                requestContext.getCorrelationId().orElseThrow(() -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;))</span>
+                );
+
+    }
+
+    /**
+     * DA-033-R006取得処理
+     * 主な仕様:
+     * - ガスメーター設置場所番号、検索基準年月日を引数にガスメーター＜導管＞の検索を行う
+     * - 取得件数が0件の場合、データ不整合エラーを送出する
+     * @param gmtsetdNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return gmtsetdRecords
+     */
+    private GmtsetdRecord requireGmtsetd(Long gmtsetdNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L263">        Optional&lt;GmtsetdRecord&gt; gmtsetdRecords =</span>
+<span class="fc" id="L264">                gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(gmtsetdNo, knskKjnYmd);</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (gmtsetdRecords.isEmpty()) {</span>
+<span class="fc" id="L266">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L267">            gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L268">            GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L270">                    .put(&quot;gasMtstNo&quot;, gmtsetdNo)</span>
+<span class="fc" id="L271">                    .put(&quot;tkysYmd&quot;, knskKjnYmd)</span>
+<span class="fc" id="L272">                    .put(&quot;tyenYmd&quot;, knskKjnYmd));</span>
+        }
+<span class="fc" id="L274">        return gmtsetdRecords.get();</span>
+    }
+
+    /**
+     * ガスメーター設置場所＜導管＞情報のレスポンスを生成する。
+     *
+     * @return GmtsetdInfoResponse レスポンス
+     */
+    private GmtsetdInfoResponse createGmtsetdInfoResponse(GmtsetdRecord gmtsetdRecord, Long gasMtstNo) {
+<span class="fc" id="L283">        return new GmtsetdInfoResponse(</span>
+                gasMtstNo,
+<span class="fc" id="L285">                gmtsetdRecord.kngmStbJtkb(),</span>
+<span class="fc" id="L286">                gmtsetdRecord.gmtKhsJtkb(),</span>
+<span class="fc" id="L287">                gmtsetdRecord.hesnSdnShbt(),</span>
+<span class="fc" id="L288">                gmtsetdRecord.hesnJysb(),</span>
+<span class="fc" id="L289">                formatDate(gmtsetdRecord.kngmSbmsYmd()),</span>
+<span class="fc" id="L290">                formatDate(gmtsetdRecord.kasYmd()),</span>
+<span class="fc" id="L291">                formatDate(gmtsetdRecord.hesnYmd()),</span>
+<span class="fc" id="L292">                formatDate(gmtsetdRecord.kusYmd()));</span>
+    }
+
+    /**
+     * DA-110-R007取得処理
+     * 主な仕様:
+     * - ガスメーター設置場所番号、検索基準年月日を引数にガスメーター＜導管＞の検索を行う
+     * - 取得件数が0件の場合、データ不整合エラーを送出する
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return gasmtrdRecords
+     */
+    private GasmtrdRecord requireGasmtrd(Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L305">        Optional&lt;GasmtrdRecord&gt; gasmtrdRecords =</span>
+<span class="fc" id="L306">                gasmtrdDataAccess.findByTtkGmsbNoAndGmtThkgYmd(gasMtstNo, knskKjnYmd);</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        if (gasmtrdRecords.isEmpty()) {</span>
+<span class="fc" id="L308">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L309">            gasmtrdDataAccess.tableName(),</span>
+<span class="fc" id="L310">            GasmtrdDataAccess.CallSpecs.FIND_BY_TTK_GMSB_NO_AND_GMT_THKG_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L312">                    .put(&quot;ttkGmsbNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L313">                    .put(&quot;gmtThkgkYmd&quot;, knskKjnYmd));</span>
+        }
+<span class="fc" id="L315">        return gasmtrdRecords.get();</span>
+    }
+
+    /**
+     * ガスメーター情報のレスポンスを生成する。
+     *
+     * @return GasmtrdInfoResponse レスポンス
+     */
+    private GasmtrdInfoResponse createGasmtrdInfoResponse(GasmtrdRecord gasmtrdRecord) {
+<span class="fc" id="L324">        return new GasmtrdInfoResponse(</span>
+<span class="fc" id="L325">                gasmtrdRecord.sjsuMincSu());</span>
+    }
+
+    /**
+     * 検針結果情報のレスポンスを生成する。
+     *
+     * @return KnsKkaInfoResponse レスポンス
+     */
+    private KnsKkaInfoResponse createKnsKkaInfoResponse(MeterReadingResultInfoAcquisitionOutput meterReadingResultInfoAcquisitionOutput) {
+<span class="fc" id="L334">        return new KnsKkaInfoResponse(</span>
+<span class="fc" id="L335">                meterReadingResultInfoAcquisitionOutput.knkkSsjyShbt(),</span>
+<span class="fc" id="L336">                formatDate(meterReadingResultInfoAcquisitionOutput.sokKnsnYmd()),</span>
+<span class="fc" id="L337">                meterReadingResultInfoAcquisitionOutput.gmtShjSu()</span>
+                );
+    }
+
+    /**
+     * 託送サービス契約情報のレスポンスを生成する。
+     *
+     * @return KiycstInfoResponse レスポンス
+     */
+    private TkssvkyInfoResponse createTkssvkyInfoResponse(RetailTypeJudgmentOutput retailTypeJudgmentOutput) {
+<span class="fc" id="L347">        return new TkssvkyInfoResponse(</span>
+<span class="fc" id="L348">                retailTypeJudgmentOutput.tkssvkyInf().tksuSvkyJtkb(),</span>
+<span class="fc" id="L349">                retailTypeJudgmentOutput.tkssvkyInf().tksuKijsCd());</span>
+    }
+
+    /**
+     * DA-104-R001取得処理
+     * 主な仕様:
+     * - 契約お客さま登録番号を引数に契約お客さま＜導管＞の検索を行う
+     * - 取得件数が0件の場合、データ不整合エラーを送出する
+     * @param kiyTrkNo 契約お客さま登録番号
+     * @return kiycstdRecords
+     */
+    private KiycstdRecord requireKiycstd(Long kiyTrkNo) {
+<span class="fc" id="L361">        Optional&lt;KiycstdRecord&gt; kiycstdRecords =</span>
+<span class="fc" id="L362">                kiycstdDataAccess.findByKyoTrkNo(kiyTrkNo);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (kiycstdRecords.isEmpty()) {</span>
+<span class="fc" id="L364">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L365">            kiycstdDataAccess.tableName(),</span>
+<span class="fc" id="L366">            KiycstdDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L368">                    .put(&quot;kyoTrkNo&quot;, kiyTrkNo));</span>
+        }
+<span class="fc" id="L370">        return kiycstdRecords.get();</span>
+    }
+
+    /**
+     * お客さま情報1のレスポンスを生成する。
+     *
+     * @return CstInf1Response レスポンス
+     */
+    private KiycstdInfoResponse createKiycstdInfoResponse(KiycstdRecord kiycstdRecord) {
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (kiycstdRecord == null) {</span>
+<span class="fc" id="L380">            return new KiycstdInfoResponse(</span>
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        } else {
+<span class="fc" id="L392">            return new KiycstdInfoResponse(</span>
+<span class="fc" id="L393">                kiycstdRecord.ctnmKn1(),</span>
+<span class="fc" id="L394">                kiycstdRecord.ctnmKj1(),</span>
+<span class="fc" id="L395">                kiycstdRecord.ctnmKjhkFlg(),</span>
+<span class="fc" id="L396">                kiycstdRecord.ctnmKn2(),</span>
+<span class="fc" id="L397">                kiycstdRecord.ctnmKj2(),</span>
+<span class="fc" id="L398">                kiycstdRecord.ctnm2HujnShbt(),</span>
+<span class="fc" id="L399">                kiycstdRecord.ctnm2HshiShbt(),</span>
+<span class="fc" id="L400">                kiycstdRecord.ctnm1HujnShbt(),</span>
+<span class="fc" id="L401">                kiycstdRecord.ctnm1HshiShbt(),</span>
+<span class="fc" id="L402">                kiycstdRecord.kyoTrkNo());</span>
+        }
+    }
+
+    /**
+     * LocalDate型の日付をString型に変換
+     *
+     * @return value String型の日付
+     */
+    private static String formatDate(LocalDate value) {
+<span class="fc bfc" id="L412" title="All 2 branches covered.">        return value == null ? null : value.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceContractRevivalTgRetailImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-servicecontractrevivaltgretail</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">ServiceContractRevivalTgRetailImpl.java</span></div><h1>ServiceContractRevivalTgRetailImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess.CallSpecs.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO_KEY_ONLY;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.DedicatedMeterTransportServiceContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractRevivalTgRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractRevivalTgRetailOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractMeterLocationUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractMeterLocationUpdateForRevivalOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvmstkrInf;
+
+/**
+ * 概要: SV-106（サービス契約復活（TG小売））のサービス実装。
+ * 主な仕様:
+ * - 契約復活対象の場合は SV-108 を実行し、対象のサービス契約・メーター設置場所関連を更新する。
+ * - 直列ガスメーター設置状態区分に応じて SV-110、SV-111、DA-089-D001 を分岐実行する。
+ * - DA-041-U002 および DA-033-R006 の 0 件は DataInconsistencyException に変換する。
+ */
+public final class ServiceContractRevivalTgRetailImpl
+        implements ServiceContractRevivalTgRetail {
+
+    static final String SERVICE_USER_ID = &quot;KHSS106&quot;;
+
+<span class="fc" id="L48">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final DktksryDataAccess dktksryDataAccess;
+
+    private final ServiceContractUpdateForRevival serviceContractUpdateForRevival;
+
+    private final TransportServiceContractMeterLocationUpdateForRevival
+            transportServiceContractMeterLocationUpdateForRevival;
+
+    private final DedicatedMeterTransportServiceContractUpdateForRevival
+            dedicatedMeterTransportServiceContractUpdateForRevival;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String relatedValidStatus;
+
+    private final String originalGasMeterStatus;
+
+    private final String dedicatedGasMeterStatus;
+
+    /**
+     * 必須依存と定数を初期化する。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DA
+     * @param dktksryDataAccess 導管通知確定使用量 DA
+     * @param serviceContractUpdateForRevival サービス契約更新（契約復活）SV
+     * @param transportServiceContractMeterLocationUpdateForRevival 託送サービス契約更新（契約復活）SV
+     * @param dedicatedMeterTransportServiceContractUpdateForRevival 専用メーター託送サービス契約更新（契約復活）SV
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ServiceContractRevivalTgRetailImpl(
+            final SvmstkrDataAccess svmstkrDataAccess,
+            final GmtsetdDataAccess gmtsetdDataAccess,
+            final DktksryDataAccess dktksryDataAccess,
+            final ServiceContractUpdateForRevival serviceContractUpdateForRevival,
+            final TransportServiceContractMeterLocationUpdateForRevival transportServiceContractMeterLocationUpdateForRevival,
+            final DedicatedMeterTransportServiceContractUpdateForRevival dedicatedMeterTransportServiceContractUpdateForRevival,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L96">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L97">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L98">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L99">        this.dktksryDataAccess = Objects.requireNonNull(dktksryDataAccess, &quot;dktksryDataAccess&quot;);</span>
+<span class="fc" id="L100">        this.serviceContractUpdateForRevival = Objects.requireNonNull(</span>
+                serviceContractUpdateForRevival,
+                &quot;serviceContractUpdateForRevival&quot;);
+<span class="fc" id="L103">        this.transportServiceContractMeterLocationUpdateForRevival = Objects.requireNonNull(</span>
+                transportServiceContractMeterLocationUpdateForRevival,
+                &quot;transportServiceContractMeterLocationUpdateForRevival&quot;);
+<span class="fc" id="L106">        this.dedicatedMeterTransportServiceContractUpdateForRevival = Objects.requireNonNull(</span>
+                dedicatedMeterTransportServiceContractUpdateForRevival,
+                &quot;dedicatedMeterTransportServiceContractUpdateForRevival&quot;);
+<span class="fc" id="L109">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L110">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L113">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L116">        this.relatedValidStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L120">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L124">        this.dedicatedGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L128">    }</span>
+
+    /**
+     * TG 小売のサービス契約復活処理を実行する。
+     *
+     * @param svckyaInf サービス契約情報
+     * @param trkKnsYmd 取消対象検針年月日
+     * @param svmstkrInfList サービス契約・メーター設置場所関連情報リスト
+     * @param gmtsetdInf ガスメーター設置場所＜導管＞情報
+     * @return サービス契約復活処理結果
+     */
+    @Override
+    public ServiceContractRevivalTgRetailOutput execute(
+            final SvckyaInf svckyaInf,
+            final LocalDate trkKnsYmd,
+            final List&lt;SvmstkrInf&gt; svmstkrInfList,
+            final GmtsetdInf gmtsetdInf) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (!isRevivalTarget(svckyaInf.rkkiEndYmd(), trkKnsYmd)) {</span>
+<span class="fc" id="L146">            return new ServiceContractRevivalTgRetailOutput(false, false, null);</span>
+        }
+
+<span class="fc" id="L149">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L150">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L152">        serviceContractUpdateForRevival.execute(</span>
+<span class="fc" id="L153">                svckyaInf.svkyNo(),</span>
+                trkKnsYmd,
+<span class="fc" id="L155">                svckyaInf.sziKziKbn(),</span>
+<span class="fc" id="L156">                svckyaInf.skno(),</span>
+<span class="fc" id="L157">                svckyaInf.kyttSkno());</span>
+
+<span class="fc" id="L159">        Long firstCustomerRegistrationNumber = null;</span>
+<span class="fc" id="L160">        boolean capturedCustomerRegistrationNumber = false;</span>
+<span class="fc" id="L161">        LocalDate nextMeterReadingDate = trkKnsYmd.plusDays(1);</span>
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (SvmstkrInf svmstkrInf : svmstkrInfList) {</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            if (!Objects.equals(svmstkrInf.rkkiEndYmd(), svckyaInf.rkkiEndYmd())) {</span>
+<span class="fc" id="L165">                continue;</span>
+            }
+
+<span class="fc" id="L168">            updateRelatedServiceContractMeterLocation(</span>
+                    svmstkrInf,
+                    auditContext,
+                    decodedOriginFunctionId);
+
+<span class="fc" id="L173">            GmtsetdRecord gasMeterLocation = gmtsetdDataAccess</span>
+<span class="fc" id="L174">                    .findByGasMtstNoAndTkysYmdAndTyenYmd(svmstkrInf.mtstNo(), trkKnsYmd)</span>
+<span class="fc" id="L175">                    .orElseThrow(() -&gt; createGasMeterLocationMissingException(</span>
+<span class="fc" id="L176">                            svmstkrInf.mtstNo(),</span>
+                            trkKnsYmd));
+
+<span class="fc" id="L179">            String seriesGasMeterStatus = gasMeterLocation.ckrtGmscJtkb();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (!dedicatedGasMeterStatus.equals(seriesGasMeterStatus)) {</span>
+<span class="fc" id="L181">                TransportServiceContractMeterLocationUpdateForRevivalOutput output =</span>
+<span class="fc" id="L182">                        transportServiceContractMeterLocationUpdateForRevival.execute(</span>
+<span class="fc" id="L183">                                svmstkrInf.mtstNo(),</span>
+                                trkKnsYmd);
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                if (!capturedCustomerRegistrationNumber) {</span>
+<span class="fc" id="L186">                    firstCustomerRegistrationNumber = output.syoKyoTrno();</span>
+<span class="fc" id="L187">                    capturedCustomerRegistrationNumber = true;</span>
+                }
+            }
+
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (originalGasMeterStatus.equals(seriesGasMeterStatus)) {</span>
+<span class="fc" id="L192">                dedicatedMeterTransportServiceContractUpdateForRevival.execute(</span>
+<span class="fc" id="L193">                        svmstkrInf.mtstNo(),</span>
+                        trkKnsYmd,
+                        gmtsetdInf);
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            } else if (dedicatedGasMeterStatus.equals(seriesGasMeterStatus)) {</span>
+<span class="fc" id="L197">                dktksryDataAccess.deleteByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L198">                        svmstkrInf.mtstNo(),</span>
+                        nextMeterReadingDate,
+<span class="fc" id="L200">                        0,</span>
+                        null);
+            }
+<span class="fc" id="L203">        }</span>
+
+<span class="fc" id="L205">        return new ServiceContractRevivalTgRetailOutput(</span>
+<span class="fc" id="L206">                true,</span>
+<span class="fc" id="L207">                true,</span>
+                firstCustomerRegistrationNumber);
+    }
+
+    private boolean isRevivalTarget(
+            final LocalDate serviceContractEndDate,
+            final LocalDate cancellationMeterReadingDate) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        return !MAX_DATE.equals(serviceContractEndDate)</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">                &amp;&amp; !serviceContractEndDate.isBefore(cancellationMeterReadingDate);</span>
+    }
+
+    private void updateRelatedServiceContractMeterLocation(
+            final SvmstkrInf svmstkrInf,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L222">        int updatedCount = svmstkrDataAccess.updateByMtstNoAndSvkyNoAndSkno(</span>
+<span class="fc" id="L223">                buildSvmstkrWriteRecord(svmstkrInf),</span>
+<span class="fc" id="L224">                Set.of(</span>
+                        SvmstkrColumn.RKKI_KNRN_JTKB,
+                        SvmstkrColumn.RKKI_END_YMD),
+                new SvmstkrSknoUpdateKey(
+<span class="fc" id="L228">                        svmstkrInf.mtstNo(),</span>
+<span class="fc" id="L229">                        svmstkrInf.svkyNo(),</span>
+<span class="fc" id="L230">                        svmstkrInf.skno(),</span>
+<span class="fc" id="L231">                        svmstkrInf.recUpdJnjNo()),</span>
+                auditContext);
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L234">            throw createRelatedServiceContractMeterLocationUpdateException(</span>
+                    svmstkrInf,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L238">    }</span>
+
+    private SvmstkrWriteRecord buildSvmstkrWriteRecord(final SvmstkrInf svmstkrInf) {
+<span class="fc" id="L241">        return new SvmstkrWriteRecord(</span>
+<span class="fc" id="L242">                svmstkrInf.mtstNo(),</span>
+<span class="fc" id="L243">                svmstkrInf.svkyNo(),</span>
+<span class="fc" id="L244">                svmstkrInf.skno(),</span>
+                null,
+                null,
+                relatedValidStatus,
+                null,
+                MAX_DATE,
+                null);
+    }
+
+    private RuntimeException createRelatedServiceContractMeterLocationUpdateException(
+            final SvmstkrInf svmstkrInf,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L256">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L257">                svmstkrDataAccess.tableName(),</span>
+<span class="fc" id="L258">                UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO_KEY_ONLY.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L260">                        .put(&quot;mtstNo&quot;, svmstkrInf.mtstNo())</span>
+<span class="fc" id="L261">                        .put(&quot;svkyNo&quot;, svmstkrInf.svkyNo())</span>
+<span class="fc" id="L262">                        .put(&quot;skno&quot;, svmstkrInf.skno())</span>
+<span class="fc" id="L263">                        .put(&quot;rkkiKnrnJtkb&quot;, relatedValidStatus)</span>
+<span class="fc" id="L264">                        .put(&quot;rkkiEndYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L265">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L266">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private RuntimeException createGasMeterLocationMissingException(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L272">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L273">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L274">                FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L276">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L277">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L281">        String hukkSysShbt = requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L282">                () -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L283">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">        if (decodedOriginFunctionId == null) {</span>
+<span class="nc" id="L287">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L292">        return decodedOriginFunctionId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

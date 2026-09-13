@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SsvsbhwDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-ssvsbhw</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.ssvsbhw</a> &gt; <span class="el_source">SsvsbhwDataAccessImpl.java</span></div><h1>SsvsbhwDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.ssvsbhw;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ssvsbhw.SsvsbhwDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ssvsbhw.SsvsbhwRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+
+/** DA-157-R001 の SQL をインメモリで再現する実装。 */
+<span class="fc" id="L16">public class SsvsbhwDataAccessImpl extends DataAccessBase implements SsvsbhwDataAccess {</span>
+
+    private static final int SQSVS_HWSB_LENGTH = 4;
+
+    private static final int SIK_SVC_SHBT_LENGTH = 2;
+
+<span class="fc" id="L22">    private final List&lt;SsvsbhwRecord&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * テストデータを追加する。
+     *
+     * @param row 行データ
+     * @return このインスタンス
+     */
+    public SsvsbhwDataAccessImpl addRow(SsvsbhwRecord row) {
+<span class="fc" id="L31">        rows.add(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L32">        return this;</span>
+    }
+
+    @Override
+    public Optional&lt;SsvsbhwRecord&gt; findBySqsvsHwsbAndSikSvcShbtAndKnskKjnYmdOrderByTkysYmdDesc(
+            String sqsvsHwsb,
+            String sikSvcShbt,
+            LocalDate knskKjnYmd) {
+<span class="fc" id="L40">        String safeSqsvsHwsb =</span>
+<span class="fc" id="L41">                WhereParamGuard.fixedLengthNotNull(sqsvsHwsb, &quot;sqsvsHwsb&quot;, SQSVS_HWSB_LENGTH);</span>
+<span class="fc" id="L42">        String safeSikSvcShbt =</span>
+<span class="fc" id="L43">                WhereParamGuard.fixedLengthNotNull(sikSvcShbt, &quot;sikSvcShbt&quot;, SIK_SVC_SHBT_LENGTH);</span>
+<span class="fc" id="L44">        LocalDate safeKnskKjnYmd = WhereParamGuard.complement(knskKjnYmd, &quot;knskKjnYmd&quot;, LocalDate.MIN);</span>
+
+<span class="fc" id="L46">        return rows.stream()</span>
+<span class="fc" id="L47">                .filter(row -&gt; normalizeFixed(row.sqsvsHwsb(), SQSVS_HWSB_LENGTH).equals(safeSqsvsHwsb))</span>
+<span class="fc" id="L48">                .filter(row -&gt; normalizeFixed(row.sikSvcShbt(), SIK_SVC_SHBT_LENGTH).equals(safeSikSvcShbt))</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                .filter(row -&gt; normalizeDate(row.tkysYmd()).compareTo(safeKnskKjnYmd) &lt;= 0)</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                .filter(row -&gt; normalizeDate(row.tyenYmd()).compareTo(safeKnskKjnYmd) &gt;= 0)</span>
+<span class="fc" id="L51">                .sorted(Comparator.comparing(SsvsbhwDataAccessImpl::sortDate, Comparator.reverseOrder()))</span>
+<span class="fc" id="L52">                .map(SsvsbhwDataAccessImpl::normalizeRecord)</span>
+<span class="fc" id="L53">                .findFirst();</span>
+    }
+
+    private static String normalizeFixed(String value, int length) {
+<span class="fc" id="L57">        return WhereParamGuard.fixedLengthNotNull(value, &quot;value&quot;, length);</span>
+    }
+
+    private static LocalDate normalizeDate(LocalDate value) {
+<span class="fc" id="L61">        return WhereParamGuard.complement(value, &quot;value&quot;, LocalDate.MIN);</span>
+    }
+
+    private static LocalDate sortDate(SsvsbhwRecord row) {
+<span class="nc" id="L65">        return normalizeDate(row.tkysYmd());</span>
+    }
+
+    private static SsvsbhwRecord normalizeRecord(SsvsbhwRecord row) {
+<span class="fc" id="L69">        return new SsvsbhwRecord(</span>
+<span class="fc" id="L70">                normalizeResultText(row.sqsvsHwsb()),</span>
+<span class="fc" id="L71">                normalizeResultText(row.sikSvcShbt()),</span>
+<span class="fc" id="L72">                normalizeResultDate(row.tkysYmd()),</span>
+<span class="fc" id="L73">                normalizeResultDate(row.tyenYmd()),</span>
+<span class="fc" id="L74">                normalizeResultText(row.sqsvsHnsb()),</span>
+<span class="fc" id="L75">                row.regTsmp(),</span>
+<span class="fc" id="L76">                normalizeResultText(row.regUsrId()),</span>
+<span class="fc" id="L77">                row.updTsmp(),</span>
+<span class="fc" id="L78">                normalizeResultText(row.updUsrId()),</span>
+<span class="fc" id="L79">                normalizeResultText(row.updKtnKinoId()),</span>
+<span class="fc" id="L80">                normalizeResultInteger(row.recUpdJnjNo()));</span>
+    }
+
+    private static String normalizeResultText(String value) {
+<span class="fc" id="L84">        return FixedLengthFormatter.suppressSpace(value);</span>
+    }
+
+    private static LocalDate normalizeResultDate(LocalDate value) {
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">        if (value == null || LocalDate.MIN.equals(value)) {</span>
+<span class="fc" id="L89">            return null;</span>
+        }
+<span class="fc" id="L91">        return value;</span>
+    }
+
+    private static Integer normalizeResultInteger(Integer value) {
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">        if (value == null || value == 0) {</span>
+<span class="fc" id="L96">            return null;</span>
+        }
+<span class="fc" id="L98">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

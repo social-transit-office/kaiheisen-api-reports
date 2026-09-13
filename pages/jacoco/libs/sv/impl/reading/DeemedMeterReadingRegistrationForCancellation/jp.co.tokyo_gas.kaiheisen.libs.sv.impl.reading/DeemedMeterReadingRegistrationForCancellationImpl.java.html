@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeemedMeterReadingRegistrationForCancellationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-deemedmeterreadingregistrationforcancellation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">DeemedMeterReadingRegistrationForCancellationImpl.java</span></div><h1>DeemedMeterReadingRegistrationForCancellationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.DeemedMeterReadingRegistrationForCancellation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.SogoTmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.SvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.DeemedMeterReadingRegistration;
+
+/**
+ * 解約用みなし検針登録サービス実装。
+ */
+public class DeemedMeterReadingRegistrationForCancellationImpl
+        implements DeemedMeterReadingRegistrationForCancellation {
+
+    private static final String DEEMED_METER_READING_REQUIRED = &quot;1&quot;;
+
+<span class="fc" id="L34">    private static final Integer DEEMED_METER_READING_SEQUENCE = 0;</span>
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final DeemedMeterReadingRegistration deemedMeterReadingRegistration;
+
+    private final RequestContext requestContext;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String ghpEquipmentGasMeter;
+
+    private final String closedGasMeterStatus;
+
+    private final List&lt;String&gt; rkkiKnrnJtkbList;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞データアクセス
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連データアクセス
+     * @param deemedMeterReadingRegistration みなし検針登録サービス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public DeemedMeterReadingRegistrationForCancellationImpl(
+            final GmtsetkDataAccess gmtsetkDataAccess,
+            final GmtsetdDataAccess gmtsetdDataAccess,
+            final SvmstkrDataAccess svmstkrDataAccess,
+            final DeemedMeterReadingRegistration deemedMeterReadingRegistration,
+            final RequestContext requestContext,
+<span class="fc" id="L71">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L72">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L73">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.deemedMeterReadingRegistration =</span>
+<span class="fc" id="L76">                Objects.requireNonNull(deemedMeterReadingRegistration, &quot;deemedMeterReadingRegistration&quot;);</span>
+<span class="fc" id="L77">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L78">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L79">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L80">        this.dedicatedGasMeterStatus =</span>
+<span class="fc" id="L81">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L85">        this.ghpEquipmentGasMeter =</span>
+<span class="fc" id="L86">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.EquipmentGasMeter.TYPE,
+                        ConstantLookupKeys.Cirius.EquipmentGasMeter.FOR_GHP_EQUIPMENT);
+<span class="fc" id="L90">        this.rkkiKnrnJtkbList =</span>
+<span class="fc" id="L91">                List.of(</span>
+<span class="fc" id="L92">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID),
+<span class="fc" id="L96">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03));
+<span class="fc" id="L100">        this.closedGasMeterStatus =</span>
+<span class="fc" id="L101">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L105">    }</span>
+
+    /**
+        * ガスメーター設置場所番号に紐づく解約用みなし検針を登録する。
+        * 直列専用メーターの場合は当該メーターに紐づく直列元契約を用いて登録し、
+        * GHP 機器用メーターの場合は入力された総合他ガスメーター情報リストを走査して総合他ガスメーター分も登録する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param tkenYmdYoku 適用終了年月日翌日
+        * @param sogoTmtrInfList GHP 機器用メーターの場合に走査して登録対象とする総合他ガスメーター情報リスト
+     */
+    @Override
+        public void execute(
+            final Long gasMtstNo,
+            final LocalDate tkenYmdYoku,
+            final List&lt;SogoTmtrInf&gt; sogoTmtrInfList) {
+<span class="fc" id="L121">        LocalDateTime systemDatetime = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L122">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+
+<span class="fc" id="L124">        GmtsetkRecord retailMeter = requireRetailMeter(gasMtstNo, systemDatetime.toLocalDate());</span>
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (isDedicatedMeter(retailMeter.ckrtGmscJtkb())) {</span>
+<span class="fc" id="L127">            executeDeemedMeterReading(gasMtstNo, tkenYmdYoku, requireSeriesOriginContract(retailMeter.mtgMtstNo()));</span>
+        }
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (isGhpMeter(retailMeter.kkyuGmtKbn())) {</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            for (SogoTmtrInf sogoTmtrInf : normalizeSogoTmtrInfList(sogoTmtrInfList)) {</span>
+<span class="fc" id="L132">                executeForComprehensiveMeter(sogoTmtrInf, tkenYmdYoku);</span>
+<span class="fc" id="L133">            }</span>
+        }
+<span class="fc" id="L135">    }</span>
+
+    private void executeForComprehensiveMeter(
+            final SogoTmtrInf sogoTmtrInf,
+            final LocalDate tkenYmdYoku) {
+<span class="fc" id="L140">        Long sogoGasMtstNo = requireSogoGasMtstNo(sogoTmtrInf);</span>
+<span class="fc" id="L141">        GmtsetdRecord pipelineMeter = requirePipelineMeter(sogoGasMtstNo, tkenYmdYoku);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (!isDedicatedMeter(pipelineMeter.ckrtGmscJtkb())) {</span>
+<span class="fc" id="L143">            return;</span>
+        }
+<span class="fc" id="L145">        executeDeemedMeterReading(</span>
+                sogoGasMtstNo,
+                tkenYmdYoku,
+<span class="fc" id="L148">                requireSeriesOriginContract(pipelineMeter.mtgMtstNo()));</span>
+<span class="fc" id="L149">    }</span>
+
+    private void executeDeemedMeterReading(
+            final Long gasMtstNo,
+            final LocalDate tkenYmdYoku,
+            final SvmstkrRecord svmstkrRecord) {
+<span class="fc" id="L155">        deemedMeterReadingRegistration.execute(</span>
+                DEEMED_METER_READING_REQUIRED,
+                tkenYmdYoku,
+                gasMtstNo,
+                DEEMED_METER_READING_SEQUENCE,
+<span class="fc" id="L160">                svmstkrRecord.svkyNo(),</span>
+                closedGasMeterStatus);
+<span class="fc" id="L162">    }</span>
+
+    private GmtsetkRecord requireRetailMeter(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L167">        return gmtsetkDataAccess</span>
+<span class="fc" id="L168">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, knskKjnYmd)</span>
+<span class="fc" id="L169">                .orElseThrow(() -&gt; dataInconsistencyForGmtsetk(gasMtstNo, knskKjnYmd));</span>
+    }
+
+    private GmtsetdRecord requirePipelineMeter(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L175">        return gmtsetdDataAccess</span>
+<span class="fc" id="L176">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, knskKjnYmd)</span>
+<span class="fc" id="L177">                .orElseThrow(() -&gt; dataInconsistencyForGmtsetd(gasMtstNo, knskKjnYmd));</span>
+    }
+
+    private SvmstkrRecord requireSeriesOriginContract(final Long mtstNo) {
+<span class="fc" id="L181">        return svmstkrDataAccess</span>
+<span class="fc" id="L182">                                .findByMtstNoAndRkkiKnrnJtkb(mtstNo, rkkiKnrnJtkbList)</span>
+<span class="fc" id="L183">                .orElseThrow(() -&gt; dataInconsistencyForSvmstkr(mtstNo));</span>
+    }
+
+    private Long requireSogoGasMtstNo(final SogoTmtrInf sogoTmtrInf) {
+<span class="pc bpc" id="L187" title="3 of 6 branches missed.">        if (sogoTmtrInf == null || sogoTmtrInf.svmstkrInf() == null || sogoTmtrInf.svmstkrInf().mtstNo() == null) {</span>
+<span class="nc" id="L188">            throw new IllegalArgumentException(&quot;sogoTmtrInf.svmstkrInf.mtstNo is required&quot;);</span>
+        }
+<span class="fc" id="L190">        return sogoTmtrInf.svmstkrInf().mtstNo();</span>
+    }
+
+    private List&lt;SogoTmtrInf&gt; normalizeSogoTmtrInfList(final List&lt;SogoTmtrInf&gt; sogoTmtrInfList) {
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        return sogoTmtrInfList == null ? List.of() : sogoTmtrInfList;</span>
+    }
+
+    private boolean isDedicatedMeter(final String ckrtGmscJtkb) {
+<span class="fc" id="L198">        return dedicatedGasMeterStatus.equals(ckrtGmscJtkb);</span>
+    }
+
+    private boolean isGhpMeter(final String kkyuGmtKbn) {
+<span class="fc" id="L202">        return ghpEquipmentGasMeter.equals(kkyuGmtKbn);</span>
+    }
+
+    private DataInconsistencyException dataInconsistencyForGmtsetk(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L208">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L209">                gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L210">                GmtsetkDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L212">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L213">                        .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+    }
+
+    private DataInconsistencyException dataInconsistencyForGmtsetd(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L219">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L220">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L221">                GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L223">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L224">                        .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+    }
+
+    private DataInconsistencyException dataInconsistencyForSvmstkr(final Long mtstNo) {
+<span class="fc" id="L228">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L229">                svmstkrDataAccess.tableName(),</span>
+<span class="fc" id="L230">                SvmstkrDataAccess.CallSpecs.FIND_BY_MTST_NO_AND_RKKI_KNRN_JTKB_LIST.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L232">                        .put(&quot;mtstNo&quot;, mtstNo)</span>
+<span class="fc" id="L233">                        .put(&quot;rkkiKnrnJtkbList&quot;, rkkiKnrnJtkbList));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

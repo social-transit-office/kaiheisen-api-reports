@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SamedayReportCancelUpdateOpeningReportCancelResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-cancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_common</a> &gt; <span class="el_source">SamedayReportCancelUpdateOpeningReportCancelResource.java</span></div><h1>SamedayReportCancelUpdateOpeningReportCancelResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_common;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.exception_mapper.MaErrorResponseResolver;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.ErrorResponseBody;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_common.SamedayReportCancelUpdateOpeningReportCancelEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_common.SamedayReportCancelUpdateOpeningReportCancelRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_common.SamedayReportCancelUpdateOpeningReportCancelResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelBffCallErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelBffCallErrorJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailIsrrkrUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailTkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TkssvkyInfo;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-041 当日報告取消更新-オンライン開栓報告取消-小売-共通 API のリソース実装。
+ * 400 系は MA-041 個別契約に合わせて本クラスでレスポンス DTO を組み立て、500 系は共通 ExceptionMapper へ委譲する。
+ */
+@Path(SamedayReportCancelUpdateOpeningReportCancelEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-041&quot;, name = &quot;当日報告取消更新-オンライン開栓報告取消-小売-共通 API&quot;)
+@Tag(name = &quot;当日報告取消更新-オンライン開栓報告取消-小売-共通&quot;, description = &quot;MA-041&quot;)
+public class SamedayReportCancelUpdateOpeningReportCancelResource
+        extends BaseResource&lt;SamedayReportCancelUpdateOpeningReportCancelRequest&gt; {
+
+    private static final String CORRELATION_ID_HEADER_NAME = &quot;X-Correlation-Id&quot;;
+
+    private static final String SHR_KBN_APPLIED = &quot;1&quot;;
+
+    @Context
+    HttpHeaders httpHeaders;
+
+    private final OpeningCancelBffCallErrorJudgment openingCancelBffCallErrorJudgment;
+
+    private final RetailTypeJudgment retailTypeJudgment;
+
+    private final OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetail onlineReportTgRetailService;
+
+    /**
+     * MA-041 Resource を生成する。
+     */
+    @Inject
+    SamedayReportCancelUpdateOpeningReportCancelResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            OpeningCancelBffCallErrorJudgment openingCancelBffCallErrorJudgment,
+            RetailTypeJudgment retailTypeJudgment,
+            OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetail onlineReportTgRetailService) {
+<span class="fc" id="L83">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L84">        this.openingCancelBffCallErrorJudgment = Objects.requireNonNull(</span>
+                openingCancelBffCallErrorJudgment,
+                &quot;openingCancelBffCallErrorJudgment&quot;);
+<span class="fc" id="L87">        this.retailTypeJudgment = Objects.requireNonNull(retailTypeJudgment, &quot;retailTypeJudgment&quot;);</span>
+<span class="fc" id="L88">        this.onlineReportTgRetailService = Objects.requireNonNull(</span>
+                onlineReportTgRetailService,
+                &quot;onlineReportTgRetailService&quot;);
+<span class="fc" id="L91">    }</span>
+
+    /**
+     * MA-041 を実行する。
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(summary = &quot;当日報告取消更新-オンライン開栓報告取消-小売-共通&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常終了&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(
+                            implementation = SamedayReportCancelUpdateOpeningReportCancelResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(
+                            implementation = SamedayReportCancelUpdateOpeningReportCancelResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public Response endpoint(
+            @RequestBody(required = true,
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON,
+                            schema = @Schema(
+                                    implementation =
+                                            SamedayReportCancelUpdateOpeningReportCancelRequest.class)))
+            SamedayReportCancelUpdateOpeningReportCancelRequest request) {
+<span class="fc" id="L127">        bindCorrelationIdFromBodyIfPresent(request);</span>
+        try {
+<span class="fc" id="L129">            return Response.ok(execute(request, () -&gt; handle(request)))</span>
+<span class="fc" id="L130">                    .type(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L131">                    .build();</span>
+<span class="fc" id="L132">        } catch (ValidationException | BusinessRuleException exception) {</span>
+<span class="fc" id="L133">            return badRequestErrorResponse(exception);</span>
+        }
+    }
+
+    /**
+     * MA-041 の実処理を実行する。
+     */
+    public SamedayReportCancelUpdateOpeningReportCancelResponse handle(
+            SamedayReportCancelUpdateOpeningReportCancelRequest request) {
+<span class="fc" id="L142">        LocalDate trkKnsYmd = Rfc3339LocalDateParser.parse(request.trkKnsYmd().trim());</span>
+
+<span class="fc" id="L144">        OpeningCancelBffCallErrorJudgmentOutput historyDetailCode =</span>
+<span class="fc" id="L145">                openingCancelBffCallErrorJudgment.execute(request.gasMtstNo(), request.trkIsrrGymCd());</span>
+<span class="fc" id="L146">        RetailTypeJudgmentOutput retailType =</span>
+<span class="fc" id="L147">                retailTypeJudgment.execute(SHR_KBN_APPLIED, request.gasMtstNo(), trkKnsYmd);</span>
+
+<span class="fc" id="L149">        onlineReportTgRetailService.execute(</span>
+<span class="fc" id="L150">                request.gasMtstNo(),</span>
+                trkKnsYmd,
+<span class="fc" id="L152">                request.trkIsrrGymCd(),</span>
+<span class="fc" id="L153">                request.hukkUsrId(),</span>
+<span class="fc" id="L154">                request.hukkUnmKj(),</span>
+<span class="fc" id="L155">                request.rirekiMemo(),</span>
+<span class="fc" id="L156">                toOnlineReportTkssvkyInfo(retailType),</span>
+<span class="fc" id="L157">                toHistoryInfo(historyDetailCode));</span>
+
+<span class="fc" id="L159">        return response();</span>
+    }
+
+    private SamedayReportCancelUpdateOpeningReportCancelResponse response() {
+<span class="fc" id="L163">        return new SamedayReportCancelUpdateOpeningReportCancelResponse(</span>
+<span class="fc" id="L164">                resolveResponseCorrelationId(),</span>
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private Response badRequestErrorResponse(KaiheisenException exception) {
+<span class="fc" id="L173">        ErrorResponseBody body = MaErrorResponseResolver.fromKaiheisenException(exception);</span>
+<span class="fc" id="L174">        return Response.status(MaErrorResponseResolver.resolveHttpStatus(exception))</span>
+<span class="fc" id="L175">                .type(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L176">                .entity(new SamedayReportCancelUpdateOpeningReportCancelResponse(</span>
+<span class="fc" id="L177">                        resolveResponseCorrelationId(),</span>
+<span class="fc" id="L178">                        body.errorCode(),</span>
+<span class="fc" id="L179">                        body.errorDescription(),</span>
+<span class="fc" id="L180">                        body.errorDetailList(),</span>
+<span class="fc" id="L181">                        body.crsMsgId(),</span>
+<span class="fc" id="L182">                        body.crsMsgEmbStrList()))</span>
+<span class="fc" id="L183">                .build();</span>
+    }
+
+    private static OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailTkssvkyInf
+            toOnlineReportTkssvkyInfo(RetailTypeJudgmentOutput retailType) {
+<span class="fc" id="L188">        TkssvkyInfo tkssvkyInfo = retailType.tkssvkyInf();</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if (tkssvkyInfo == null) {</span>
+<span class="nc" id="L190">            return null;</span>
+        }
+<span class="fc" id="L192">        return new OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailTkssvkyInf(</span>
+<span class="fc" id="L193">                tkssvkyInfo.tksuSvkyNo(),</span>
+<span class="fc" id="L194">                tkssvkyInfo.tkysYmd(),</span>
+<span class="fc" id="L195">                tkssvkyInfo.tksuSvksJysb(),</span>
+<span class="fc" id="L196">                tkssvkyInfo.tksuKijsCd());</span>
+    }
+
+    private static OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailIsrrkrUpdInf
+            toHistoryInfo(OpeningCancelBffCallErrorJudgmentOutput output) {
+<span class="fc" id="L201">        return new OpeningCancelReportCancelAvailabilityCheckOnlineReportTgRetailIsrrkrUpdInf(</span>
+<span class="fc" id="L202">                output.duknIsrgCd(),</span>
+<span class="fc" id="L203">                output.duknIsrsCd(),</span>
+<span class="fc" id="L204">                output.isrrGymCd(),</span>
+<span class="fc" id="L205">                output.isrrGmssCd());</span>
+    }
+
+    private void bindCorrelationIdFromBodyIfPresent(
+            SamedayReportCancelUpdateOpeningReportCancelRequest request) {
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L211">            return;</span>
+        }
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (hasRequestCorrelationIdHeader()) {</span>
+<span class="fc" id="L214">            return;</span>
+        }
+<span class="fc" id="L216">        String correlationId = normalizeOptional(request.correlationId());</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (correlationId == null) {</span>
+<span class="fc" id="L218">            return;</span>
+        }
+<span class="fc" id="L220">        requestContext.setCorrelationId(correlationId);</span>
+<span class="fc" id="L221">    }</span>
+
+    void setHttpHeaders(HttpHeaders httpHeaders) {
+<span class="fc" id="L224">        this.httpHeaders = httpHeaders;</span>
+<span class="fc" id="L225">    }</span>
+
+    private boolean hasRequestCorrelationIdHeader() {
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (httpHeaders == null) {</span>
+<span class="fc" id="L229">            return false;</span>
+        }
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        return normalizeOptional(httpHeaders.getHeaderString(CORRELATION_ID_HEADER_NAME)) != null;</span>
+    }
+
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L235">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L236">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="fc" id="L237">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L238">            return generated;</span>
+        });
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformApiIntegrationForClosingImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-billingcollectionplatformapiintegrationforclosing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">BillingCollectionPlatformApiIntegrationForClosingImpl.java</span></div><h1>BillingCollectionPlatformApiIntegrationForClosingImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhou;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhouTourokuCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhouTourokuRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.BillingCollectionPlatformApiIntegrationForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.BillingCollectionPlatformApiIntegrationForClosingOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.BillingCollectionPlatformApiIntegrationForClosingSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ServiceSuspensionCancellationReasonTypeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ServiceSuspensionCancellationReasonTypeAcquisitionOutput;
+
+/**
+ * 概要: SV-034（請求回収基盤API連携（閉栓））の実装。
+ * 主な仕様:
+ * - step 1 で請求管理番号と請求対象契約番号の整合を判定し、業務エラーを送出する。
+ * - step 2〜4 で他-045 向け連携値を編集する。
+ * - step 5 で SV-035、step 6 で 他-045 を連鎖呼び出しする。
+ * 既知の制約:
+ * - RequestContext から参照する値のうち、本機能では systemDatetime のみを必須値として扱う。
+ */
+public final class BillingCollectionPlatformApiIntegrationForClosingImpl
+        implements BillingCollectionPlatformApiIntegrationForClosing {
+
+<span class="fc" id="L37">    private static final DateTimeFormatter BASIC_DATE = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private static final long FIXED_GAS_METER_LOCATION_NUMBER = 11111111111L;
+
+    private static final int ZERO_DATE = 0;
+
+    private final ServiceSuspensionCancellationReasonTypeAcquisition reasonTypeAcquisition;
+
+    private final HeisenkannrenjiIdoujouhouTourokuCiriusAdapter other045Adapter;
+
+    private final RequestContext requestContext;
+
+    private final String presenceFlagNothing;
+
+    private final String presenceFlagYes;
+
+    private final String paymentContractStatusApplying;
+
+    private final String paymentContractStatusApplicableEnds;
+
+    private final String onlineCancellationReport;
+
+    private final String billablePaymentManagementTransfer;
+
+    private final String billableContractManagementTransfer;
+
+    /**
+     * 概要: 必須依存と定数を解決して初期化する。
+     *
+     * @param reasonTypeAcquisition SV-035 API
+     * @param other045Adapter 他-045 adapter
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param requestContext RequestContext
+     */
+    @Inject
+    public BillingCollectionPlatformApiIntegrationForClosingImpl(
+            ServiceSuspensionCancellationReasonTypeAcquisition reasonTypeAcquisition,
+            HeisenkannrenjiIdoujouhouTourokuCiriusAdapter other045Adapter,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L76">            RequestContext requestContext) {</span>
+<span class="fc" id="L77">        this.reasonTypeAcquisition = Objects.requireNonNull(reasonTypeAcquisition, &quot;reasonTypeAcquisition&quot;);</span>
+<span class="fc" id="L78">        this.other045Adapter = Objects.requireNonNull(other045Adapter, &quot;other045Adapter&quot;);</span>
+<span class="fc" id="L79">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L80">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L81">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L82">        this.presenceFlagNothing = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.NOTHING);
+<span class="fc" id="L86">        this.presenceFlagYes = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.YES);
+<span class="fc" id="L90">        this.paymentContractStatusApplying = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L94">        this.paymentContractStatusApplicableEnds = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLICABLE_ENDS);
+<span class="fc" id="L98">        this.onlineCancellationReport = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.ONLINE_CANCELLATION_REPORT);
+<span class="fc" id="L102">        this.billablePaymentManagementTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_PAYMENT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L106">        this.billableContractManagementTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_CONTRACT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L110">    }</span>
+
+    /** 概要: 閉栓時の請求回収基盤連携を実行する。 */
+    @Override
+    public BillingCollectionPlatformApiIntegrationForClosingOutput execute(
+            LocalDate tyenYmd,
+            String svkyEndJysb,
+            BillingCollectionPlatformApiIntegrationForClosingSvckyaInf svckyaInf,
+            SihakyInf sihakyInf,
+            int suguTgmtKnsu,
+            String isrrGymCd,
+            LocalDate rkkiSttYmd,
+            boolean sihakyEndFlg,
+            String hesnJysb,
+            YearMonth ikskEndYm) {
+<span class="fc" id="L125">        LocalDateTime systemDatetime = requireRequestContext();</span>
+
+<span class="fc" id="L127">        Long originalBillingManagementNumberValue = sihakyInf.sikKrno();</span>
+<span class="fc" id="L128">        String targetContractNumber = svckyaInf.sqtiKiyNo();</span>
+<span class="fc bfc" id="L129" title="All 4 branches covered.">        if (originalBillingManagementNumberValue == null &amp;&amp; targetContractNumber == null) {</span>
+<span class="fc" id="L130">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000078);</span>
+        }
+
+<span class="fc" id="L133">        boolean paymentContractEndTarget = sihakyEndFlg;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        Long billingManagementNumber = paymentContractEndTarget</span>
+<span class="fc" id="L135">                ? originalBillingManagementNumberValue</span>
+<span class="fc" id="L136">                : Long.valueOf(0L);</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        String paymentContractStatus = paymentContractEndTarget</span>
+<span class="fc" id="L139">                ? paymentContractStatusApplicableEnds</span>
+<span class="fc" id="L140">                : paymentContractStatusApplying;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        LocalDate billingEndDate = paymentContractEndTarget ? systemDatetime.toLocalDate() : null;</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        long gasMeterLocationNumber = suguTgmtKnsu &gt; 0</span>
+<span class="fc" id="L144">                ? svckyaInf.svkyNo()</span>
+<span class="fc" id="L145">                : FIXED_GAS_METER_LOCATION_NUMBER;</span>
+<span class="fc" id="L146">        boolean onlineCancellation = onlineCancellationReport.equals(isrrGymCd);</span>
+
+<span class="fc" id="L148">        ServiceSuspensionCancellationReasonTypeAcquisitionOutput reasonTypeOutput =</span>
+<span class="fc" id="L149">                reasonTypeAcquisition.execute(svkyEndJysb, hesnJysb);</span>
+
+<span class="fc" id="L151">        HeisenkannrenjiIdoujouhou other045Payload = buildOther045Request(</span>
+                svckyaInf,
+                billingManagementNumber,
+                paymentContractStatus,
+                gasMeterLocationNumber,
+                tyenYmd,
+                rkkiSttYmd,
+                billingEndDate,
+                onlineCancellation,
+                systemDatetime,
+                ikskEndYm,
+<span class="fc" id="L162">                reasonTypeOutput.svkjyShbt());</span>
+<span class="fc" id="L163">        validateSequentialControlKeys(other045Payload);</span>
+<span class="fc" id="L164">        other045Adapter.register(new HeisenkannrenjiIdoujouhouTourokuRequest(other045Payload));</span>
+
+<span class="fc" id="L166">        return new BillingCollectionPlatformApiIntegrationForClosingOutput(</span>
+<span class="fc" id="L167">                gasMeterLocationNumber,</span>
+<span class="fc" id="L168">                false,</span>
+<span class="fc" id="L169">                onlineCancellation,</span>
+<span class="fc" id="L170">                svckyaInf.svkyNo(),</span>
+                tyenYmd,
+                billingManagementNumber,
+                targetContractNumber);
+    }
+
+    /** 概要: 他-045 連携 DTO を組み立てる。 */
+    private HeisenkannrenjiIdoujouhou buildOther045Request(
+            BillingCollectionPlatformApiIntegrationForClosingSvckyaInf svckyaInf,
+            Long billingManagementNumber,
+            String paymentContractStatus,
+            long gasMeterLocationNumber,
+            LocalDate tyenYmd,
+            LocalDate rkkiSttYmd,
+            LocalDate billingEndDate,
+            boolean onlineCancellation,
+            LocalDateTime systemDatetime,
+            YearMonth ikskEndYm,
+            String svkjyShbt) {
+<span class="fc" id="L189">        String skrkGrpkJhu = &quot;&quot;;</span>
+<span class="fc" id="L190">        Long skrkSqkrJhu = billingManagementNumber;</span>
+<span class="fc" id="L191">        String skrkSqtkJhu = svckyaInf.sqtiKiyNo();</span>
+<span class="fc" id="L192">        Long svkyNo = svckyaInf.svkyNo();</span>
+<span class="fc" id="L193">        Integer svkySkno = svckyaInf.skno();</span>
+<span class="fc" id="L194">        String sihKiyJtkb = paymentContractStatus;</span>
+<span class="fc" id="L195">        Long gasMtstNo = gasMeterLocationNumber;</span>
+<span class="fc" id="L196">        Integer tkysYmd = toYmd(rkkiSttYmd);</span>
+<span class="fc" id="L197">        Integer khsYmd = toYmd(tyenYmd);</span>
+<span class="fc" id="L198">        String trksUmFlg = presenceFlagNothing;</span>
+<span class="fc" id="L199">        String sikeKykUmFlg = presenceFlagNothing;</span>
+<span class="fc" id="L200">        String tishSikeGrpUmFlg = presenceFlagNothing;</span>
+<span class="fc" id="L201">        String tishSikeGrpTishUmFlg = presenceFlagNothing;</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        String olkyUmFlg = onlineCancellation ? presenceFlagYes : presenceFlagNothing;</span>
+<span class="fc" id="L203">        Integer shrYmd = toYmd(systemDatetime.toLocalDate());</span>
+<span class="fc" id="L204">        String stskHkirIsrrGymCd = billablePaymentManagementTransfer;</span>
+<span class="fc" id="L205">        Integer sikEndYmd = toYmdOrZero(billingEndDate);</span>
+<span class="fc" id="L206">        Integer svtkYmd = toYmd(tyenYmd);</span>
+<span class="fc" id="L207">        Integer kiyEndYmd = toYmdOrZero(tyenYmd);</span>
+<span class="fc" id="L208">        String stkrHkirIsrrGymCd = billableContractManagementTransfer;</span>
+<span class="fc" id="L209">        Integer convertedIkskEndYm = toYmOrZero(ikskEndYm);</span>
+<span class="fc" id="L210">        String stsiHkirIrimSksgNo = &quot;&quot;;</span>
+<span class="fc" id="L211">        String stsiHkirIsrrGymCd = &quot;&quot;;</span>
+<span class="fc" id="L212">        Long stsiHkirSqtsIriNo = 0L;</span>
+<span class="fc" id="L213">        Integer sqtsEndYmd = ZERO_DATE;</span>
+<span class="fc" id="L214">        String sqttHkirIrimSksgNo = &quot;&quot;;</span>
+<span class="fc" id="L215">        String sqttHkirIsrrGymCd = &quot;&quot;;</span>
+<span class="fc" id="L216">        Long sqttHkirSqtsIriNo = 0L;</span>
+<span class="fc" id="L217">        Integer sqttSqsrYmd = ZERO_DATE;</span>
+
+<span class="fc" id="L219">        return new HeisenkannrenjiIdoujouhou(</span>
+                skrkGrpkJhu,
+                skrkSqkrJhu,
+                skrkSqtkJhu,
+                svkyNo,
+                svkySkno,
+                sihKiyJtkb,
+                gasMtstNo,
+                tkysYmd,
+                khsYmd,
+                trksUmFlg,
+                sikeKykUmFlg,
+                tishSikeGrpUmFlg,
+                tishSikeGrpTishUmFlg,
+                olkyUmFlg,
+                shrYmd,
+                stskHkirIsrrGymCd,
+                sikEndYmd,
+                svkjyShbt,
+                svtkYmd,
+                kiyEndYmd,
+                stkrHkirIsrrGymCd,
+                convertedIkskEndYm,
+                stsiHkirIrimSksgNo,
+                stsiHkirIsrrGymCd,
+                stsiHkirSqtsIriNo,
+                sqtsEndYmd,
+                sqttHkirIrimSksgNo,
+                sqttHkirIsrrGymCd,
+                sqttHkirSqtsIriNo,
+                sqttSqsrYmd);
+    }
+
+    /** 概要: 他-045 送信時に Gx・9x・Sx のいずれかが設定されていることを確認する。 */
+    private void validateSequentialControlKeys(HeisenkannrenjiIdoujouhou payload) {
+<span class="pc bpc" id="L254" title="2 of 4 branches missed.">        boolean groupKeyMissing = payload.skrkGrpkJhu() == null || payload.skrkGrpkJhu().isBlank();</span>
+<span class="fc bfc" id="L255" title="All 4 branches covered.">        boolean billingKeyMissing = payload.skrkSqkrJhu() == null || payload.skrkSqkrJhu() == 0L;</span>
+<span class="fc bfc" id="L256" title="All 4 branches covered.">        boolean contractKeyMissing = payload.skrkSqtkJhu() == null || payload.skrkSqtkJhu().isBlank();</span>
+<span class="pc bpc" id="L257" title="1 of 6 branches missed.">        if (groupKeyMissing &amp;&amp; billingKeyMissing &amp;&amp; contractKeyMissing) {</span>
+<span class="fc" id="L258">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000078);</span>
+        }
+<span class="fc" id="L260">    }</span>
+
+    /** 概要: 実行に必要な RequestContext.systemDatetime を取得する。 */
+    private LocalDateTime requireRequestContext() {
+<span class="fc" id="L264">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L265">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /** 概要: LocalDate を yyyyMMdd 形式の数値へ変換する。 */
+    private Integer toYmd(LocalDate value) {
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        return value == null ? null : Integer.valueOf(value.format(BASIC_DATE));</span>
+    }
+
+    /** 概要: LocalDate の null を 0、それ以外を yyyyMMdd 形式の数値へ変換する。 */
+    private Integer toYmdOrZero(LocalDate value) {
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        return value == null ? ZERO_DATE : Integer.valueOf(value.format(BASIC_DATE));</span>
+    }
+
+    /** 概要: YearMonth を yyyyMM 形式の数値へ変換する。 */
+    private Integer toYmOrZero(YearMonth value) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        return value == null ? ZERO_DATE : value.toYmInt();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

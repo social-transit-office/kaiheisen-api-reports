@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServicePaymentContractInfoUpdateForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-servicepaymentcontractinfoupdatefortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">ServicePaymentContractInfoUpdateForTerminationImpl.java</span></div><h1>ServicePaymentContractInfoUpdateForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrSknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServicePaymentContractInfoUpdateForTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.common.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvsihkrInf;
+
+/**
+ * 概要: SV-044（サービス契約・支払契約関連情報更新（契約終了））のサービス実装。
+ * 主な仕様:
+ * - 入力レコードを契約終了状態へ更新した後、他商材情報を取得して同様の更新を繰り返す。
+ * - 下位 DA が DataInconsistencyException をスローした場合は、必要な入力値を補って送出する。
+ * 既知の制約:
+ * - hukkSysShbt と systemDatetime は RequestContext から取得する。
+ */
+public class ServicePaymentContractInfoUpdateForTerminationImpl
+        implements ServicePaymentContractInfoUpdateForTermination {
+
+    static final String SERVICE_USER_ID = &quot;KHSS044&quot;;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String paymentContractStatusApplying;
+
+    private final String paymentContractStatusApplicableEnds;
+
+    private final List&lt;String&gt; targetSingleBillingPartyIdentificationTypes;
+
+    /**
+     * 概要: SV-044 実装を初期化する。
+     * 主な仕様:
+     * - 必須依存を fail-fast で検証する。
+     * - 契約終了更新と他商材検索に必要な定数値を事前解決する。
+     * 既知の制約:
+     * - RequestContext の実値は execute 呼出し時に評価する。
+     *
+     * @param svsihkrDataAccess サービス契約・支払契約関連情報 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public ServicePaymentContractInfoUpdateForTerminationImpl(
+            final SvsihkrDataAccess svsihkrDataAccess,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L69">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L70">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L71">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L72">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L75">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L78">        this.paymentContractStatusApplying = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L82">        this.paymentContractStatusApplicableEnds = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLICABLE_ENDS);
+<span class="fc" id="L86">        this.targetSingleBillingPartyIdentificationTypes = List.of(</span>
+<span class="fc" id="L87">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TYPE,
+                        ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TOTAL),
+<span class="fc" id="L91">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TYPE,
+                        ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.SINGLE_SAME_NAME_SAME_PAYMENT_METHOD));
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * 概要: 支払契約番号に紐づくサービス契約・支払契約関連情報を契約終了状態へ更新する。
+     * 主な仕様:
+        * - 初回更新を行い、下位 DA が業務例外をスローした場合は後続処理へ進めない。
+        * - 他商材ごとに同じ契約終了更新を繰り返す。
+     * 既知の制約:
+     * - public 引数の null ガードは追加しない。
+     *
+     * @param svckyaInf サービス契約情報
+     * @param svsihkrInf サービス契約・支払契約関連情報
+     */
+    @Override
+    public void execute(final SvckyaInf svckyaInf, final SvsihkrInf svsihkrInf) {
+<span class="fc" id="L110">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L111">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L112">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L113">                .toLocalDate();</span>
+<span class="fc" id="L114">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L116">        updateServicePaymentRelation(</span>
+<span class="fc" id="L117">                svsihkrInf.sihKiyNo(),</span>
+<span class="fc" id="L118">                svsihkrInf.svkyNo(),</span>
+<span class="fc" id="L119">                svsihkrInf.skno(),</span>
+<span class="fc" id="L120">                svsihkrInf.recUpdJnjNo(),</span>
+<span class="fc" id="L121">                svsihkrInf.ikskEndYm(),</span>
+                systemDate,
+                auditContext);
+
+<span class="fc" id="L125">        List&lt;SvsihkrRecord&gt; relatedRecords = svsihkrDataAccess</span>
+<span class="fc" id="L126">                .findAllBySnskSvkyNoAndSihKiyJtkbAndTdssSbtShbt(</span>
+<span class="fc" id="L127">                        svckyaInf.svkyNo(),</span>
+                        paymentContractStatusApplying,
+                        targetSingleBillingPartyIdentificationTypes);
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (SvsihkrRecord relatedRecord : relatedRecords) {</span>
+<span class="fc" id="L131">            updateServicePaymentRelation(</span>
+<span class="fc" id="L132">                    relatedRecord.sihKiyNo(),</span>
+<span class="fc" id="L133">                    relatedRecord.svkyNo(),</span>
+<span class="fc" id="L134">                    relatedRecord.skno(),</span>
+<span class="fc" id="L135">                    relatedRecord.recUpdJnjNo(),</span>
+<span class="fc" id="L136">                    svsihkrInf.ikskEndYm(),</span>
+                    systemDate,
+                    auditContext);
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * 概要: サービス契約・支払契約関連情報を契約終了状態へ更新する。
+     * 主な仕様:
+     * - 適用終了年月日、支払契約状態区分、一括請求終了年月を更新する。
+        * - 下位 DA が generic な DataInconsistencyException をスローした場合は、SV 入力値を付与して再構築する。
+     * 既知の制約:
+     * - recUpdJnjNo は null の場合でも updateKey に保持する。
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param svkyNo サービス契約番号
+     * @param skno 世代管理番号
+     * @param recUpdJnjNo レコード更新排他制御順序番号
+     * @param ikskEndYm 一括請求終了年月
+     * @param systemDate システム日付
+     * @param auditContext 更新監査情報
+     */
+    private void updateServicePaymentRelation(
+            final Long sihKiyNo,
+            final Long svkyNo,
+            final Integer skno,
+            final Integer recUpdJnjNo,
+            final YearMonth ikskEndYm,
+            final LocalDate systemDate,
+            final AuditContext auditContext) {
+<span class="fc" id="L166">        SvsihkrWriteRecord updateRecord =</span>
+<span class="fc" id="L167">                buildUpdateRecord(sihKiyNo, svkyNo, skno, ikskEndYm, systemDate);</span>
+<span class="fc" id="L168">        SvsihkrSknoJnjUpdateKey updateKey =</span>
+                new SvsihkrSknoJnjUpdateKey(sihKiyNo, svkyNo, skno, recUpdJnjNo);
+        try {
+<span class="fc" id="L171">            svsihkrDataAccess.updateBySihKiyNoAndSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                    updateRecord,
+<span class="fc" id="L173">                    EnumSet.of(</span>
+                            SvsihkrColumn.TYEN_YMD,
+                            SvsihkrColumn.SIH_KIY_JTKB,
+                            SvsihkrColumn.IKSK_END_YM),
+                    updateKey,
+                    auditContext);
+<span class="fc" id="L179">        } catch (DataInconsistencyException ex) {</span>
+<span class="fc" id="L180">            throw createUpdateDataInconsistency(</span>
+                    sihKiyNo,
+                    svkyNo,
+                    skno,
+                    recUpdJnjNo,
+                    ikskEndYm,
+                    systemDate,
+                    auditContext,
+                    ex);
+<span class="fc" id="L189">        }</span>
+<span class="fc" id="L190">    }</span>
+
+    private DataInconsistencyException createUpdateDataInconsistency(
+            final Long sihKiyNo,
+            final Long svkyNo,
+            final Integer skno,
+            final Integer recUpdJnjNo,
+            final YearMonth ikskEndYm,
+            final LocalDate systemDate,
+            final AuditContext auditContext,
+            final DataInconsistencyException cause) {
+<span class="fc" id="L201">        FlatJsonBuilder parameterJsonBuilder = new FlatJsonBuilder()</span>
+<span class="fc" id="L202">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L203">                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L204">                .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L205">                .putIfNonNull(&quot;recUpdJnjNo&quot;, recUpdJnjNo)</span>
+<span class="fc" id="L206">                .put(&quot;tyenYmd&quot;, systemDate)</span>
+<span class="fc" id="L207">                .put(&quot;sihKiyJtkb&quot;, paymentContractStatusApplicableEnds)</span>
+<span class="fc" id="L208">                .put(&quot;ikskEndYm&quot;, formatYearMonth(ikskEndYm))</span>
+<span class="fc" id="L209">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L210">                .put(&quot;updKtnKinoId&quot;, auditContext.kinoId());</span>
+<span class="fc" id="L211">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L212">                svsihkrDataAccess.tableName(),</span>
+<span class="fc" id="L213">                SvsihkrDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                parameterJsonBuilder,
+                cause);
+    }
+
+    /**
+     * 概要: SVSIHKR 更新用の write record を組み立てる。
+     * 主な仕様:
+     * - 更新対象列以外は null のまま保持する。
+     * - 更新対象列は設計書の SET 句に対応する。
+     * 既知の制約:
+     * - targetColumns で指定しない列は DA で更新されない前提とする。
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param svkyNo サービス契約番号
+     * @param skno 世代管理番号
+     * @param ikskEndYm 一括請求終了年月
+     * @param systemDate システム日付
+     * @return 更新用 write record
+     */
+    private SvsihkrWriteRecord buildUpdateRecord(
+            final Long sihKiyNo,
+            final Long svkyNo,
+            final Integer skno,
+            final YearMonth ikskEndYm,
+            final LocalDate systemDate) {
+<span class="fc" id="L239">        return new SvsihkrWriteRecord(</span>
+                sihKiyNo,
+                svkyNo,
+                skno,
+                null,
+                systemDate,
+                paymentContractStatusApplicableEnds,
+                null,
+                null,
+                ikskEndYm,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別を報告元機能 ID にデコードする。
+     * 主な仕様:
+     * - RequestContext から hukkSysShbt を取得し、開閉栓定数サービスで名称へ変換する。
+     * - 返却値は AuditContext の kinoId として使用する。
+     * - KH001 の name は監査列へ格納する機能 ID と同じ値を返す前提とする。
+     * 既知の制約:
+     * - hukkSysShbt の補完は行わない。
+     *
+     * @return デコード済み報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L269">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L270">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L271">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        if (decodedOriginFunctionId == null) {</span>
+<span class="fc" id="L275">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L280">        return decodedOriginFunctionId;</span>
+    }
+
+    private String formatYearMonth(final YearMonth value) {
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">        return value == null ? null : value.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

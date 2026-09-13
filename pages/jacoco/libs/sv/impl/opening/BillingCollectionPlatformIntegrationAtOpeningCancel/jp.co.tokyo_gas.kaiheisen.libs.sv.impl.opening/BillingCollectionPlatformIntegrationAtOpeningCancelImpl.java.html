@@ -1,0 +1,551 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationAtOpeningCancelImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformintegrationatopeningcancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationAtOpeningCancelImpl.java</span></div><h1>BillingCollectionPlatformIntegrationAtOpeningCancelImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationAtContractOpeningCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationAtOpeningCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformintegrationatopeningcancel.model.GmtsetdOgaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformintegrationatopeningcancel.model.SihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformintegrationatopeningcancel.model.SuguGmtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformintegrationatopeningcancel.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.BillingCollectionPlatformApiIntegrationForOpeningCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ServiceSuspensionCancellationReasonTypeAcquisition;
+
+/**
+ * 概要: SV-054（開栓取消時請求回収基盤連携）の実装。
+ * 主な仕様:
+ * - 条件に応じて `SV-055` または `SV-196` を呼び分ける。
+ * - `SV-055.tsv` / `SV-035.tsv` / `SV-196.tsv` の補助資料を一次資料として grouped input を編集する。
+ */
+public final class BillingCollectionPlatformIntegrationAtOpeningCancelImpl
+        implements BillingCollectionPlatformIntegrationAtOpeningCancel {
+
+    static final long FIXED_GAS_METER_LOCATION_NO = 11111111111L;
+
+    private final String categorySupplyResumed;
+
+    private final String categoryContinuationOfPreviousContract;
+
+    private final String categoryCancellationOfOpening;
+
+    private final String closureReasonSupplyOutage;
+
+    private final String serviceContractStartReasonContinuation;
+
+    private final String paymentContractStatusInvalid;
+
+    private final String serviceContractStatusInvalid;
+
+    private final String billablePaymentManagementTransfer;
+
+    private final String billableContractManagementTransfer;
+
+    private final String chargeCalculationRelatedStatusInvalid;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final BillingCollectionPlatformIntegrationAtContractOpeningCancel
+            billingCollectionPlatformIntegrationAtContractOpeningCancel;
+
+    private final ServiceSuspensionCancellationReasonTypeAcquisition
+            serviceSuspensionCancellationReasonTypeAcquisition;
+
+    private final BillingCollectionPlatformApiIntegrationForOpeningCancel
+            billingCollectionPlatformApiIntegrationForOpeningCancel;
+
+    private final CiriusConstantService ciriusConstantService;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * 概要: 依存コンポーネントと定数定義を初期化する。
+     * 主な仕様:
+     * - 必須依存は `Objects.requireNonNull` で fail-fast する。
+     * - 処理中に参照する Cirius/Kaiheisen 定数はコンストラクタで解決して保持する。
+     * 既知の制約:
+     * - 必要な定数定義が存在しない場合は生成時に例外となる。
+     */
+    @Inject
+    public BillingCollectionPlatformIntegrationAtOpeningCancelImpl(
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            SvmstkrDataAccess svmstkrDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            BillingCollectionPlatformIntegrationAtContractOpeningCancel
+                    billingCollectionPlatformIntegrationAtContractOpeningCancel,
+            ServiceSuspensionCancellationReasonTypeAcquisition
+                    serviceSuspensionCancellationReasonTypeAcquisition,
+            BillingCollectionPlatformApiIntegrationForOpeningCancel
+                    billingCollectionPlatformApiIntegrationForOpeningCancel,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L104">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L105">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L106">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L107">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L108">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L109">        this.billingCollectionPlatformIntegrationAtContractOpeningCancel = Objects.requireNonNull(</span>
+                billingCollectionPlatformIntegrationAtContractOpeningCancel,
+                &quot;billingCollectionPlatformIntegrationAtContractOpeningCancel&quot;);
+<span class="fc" id="L112">        this.serviceSuspensionCancellationReasonTypeAcquisition = Objects.requireNonNull(</span>
+                serviceSuspensionCancellationReasonTypeAcquisition,
+                &quot;serviceSuspensionCancellationReasonTypeAcquisition&quot;);
+<span class="fc" id="L115">        this.billingCollectionPlatformApiIntegrationForOpeningCancel = Objects.requireNonNull(</span>
+                billingCollectionPlatformApiIntegrationForOpeningCancel,
+                &quot;billingCollectionPlatformApiIntegrationForOpeningCancel&quot;);
+<span class="fc" id="L118">        this.ciriusConstantService = Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L119">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L121">        this.categorySupplyResumed = requireKaiheisenConstant(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory
+                        .SUPPLY_RESUMED);
+<span class="fc" id="L126">        this.categoryContinuationOfPreviousContract = requireKaiheisenConstant(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory
+                        .CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L131">        this.categoryCancellationOfOpening = requireKaiheisenConstant(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory
+                        .CANCELLATION_OF_OPENING);
+<span class="fc" id="L136">        this.closureReasonSupplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L140">        this.serviceContractStartReasonContinuation = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType
+                        .CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L145">        this.paymentContractStatusInvalid = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID);
+<span class="fc" id="L149">        this.serviceContractStatusInvalid = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.INVALID);
+<span class="fc" id="L153">        this.billablePaymentManagementTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_PAYMENT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L158">        this.billableContractManagementTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_CONTRACT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L163">        this.chargeCalculationRelatedStatusInvalid = RequiredConstantResolver.requireCiriusConstant(</span>
+                this.ciriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.INVALID);
+<span class="fc" id="L167">    }</span>
+
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate trkKnsYmd,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            Long tksuSvkyNoOga,
+            Long tksuSvkyNo,
+            SvckyaInf svckyaInf,
+            SihakyInf sihakyInf,
+            Boolean ksenYukuFlg,
+            List&lt;SuguGmtInf&gt; suguGmtInfList,
+            Boolean ksenFlg,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg,
+            Boolean suguKbnUpdFlg) {
+<span class="fc" id="L184">        LocalDate previousDay = trkKnsYmd.minusDays(1);</span>
+<span class="fc" id="L185">        CollaborationDecision decision = determineCollaborationDecision(</span>
+                gasMtstNo,
+                tksuSvkyNoOga,
+                tksuSvkyNo,
+                svckyaInf,
+                sihakyInf,
+                ksenYukuFlg,
+                gmtsetdOgaInf,
+                kkytskrKktUmFlg,
+                kkytskrUmFlg,
+                previousDay);
+
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (decision.collaborationCategory() == null) {</span>
+<span class="fc" id="L198">            return;</span>
+        }
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (isSv055Category(decision.collaborationCategory())) {</span>
+<span class="fc" id="L202">            executeSv055(</span>
+<span class="fc" id="L203">                    decision.collaborationCategory(),</span>
+                    gasMtstNo,
+                    gmtsetdOgaInf,
+                    svckyaInf,
+                    sihakyInf,
+                    ksenFlg,
+                    suguGmtInfList,
+                    kkytskrKktUmFlg,
+                    kkytskrUmFlg,
+                    suguKbnUpdFlg,
+<span class="fc" id="L213">                    decision.previousContext());</span>
+<span class="fc" id="L214">            return;</span>
+        }
+
+<span class="fc" id="L217">        executeSv196(gmtsetdOgaInf, svckyaInf, sihakyInf, decision.previousContext());</span>
+<span class="fc" id="L218">    }</span>
+
+    /**
+     * 概要: 設計書 stepNo2 に従って請求回収基盤連携区分と前契約文脈を判定する。
+     * 主な仕様:
+     * - 開栓有効フラグが true の場合は供給再開分岐のみを評価し、非該当時は連携対象外とする。
+     * - 前契約継続候補のときだけ DA-044-R005 と DA-075-R004 を実行する。
+     * - 支払契約不一致時は開栓取消区分とし、SV-196 用の前契約文脈を取得する。
+     * 既知の制約:
+     * - 前契約文脈の取得では前日基準日のデータが必須で、不足時はデータ不整合例外となる。
+     */
+    private CollaborationDecision determineCollaborationDecision(
+            Long gasMtstNo,
+            Long tksuSvkyNoOga,
+            Long tksuSvkyNo,
+            SvckyaInf svckyaInf,
+            SihakyInf sihakyInf,
+            Boolean ksenYukuFlg,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg,
+            LocalDate previousDay) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (Boolean.TRUE.equals(ksenYukuFlg)) {</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (isSupplyResumedBranch(gmtsetdOgaInf, kkytskrKktUmFlg, kkytskrUmFlg)) {</span>
+<span class="fc" id="L242">                return new CollaborationDecision(</span>
+                        categorySupplyResumed,
+<span class="fc" id="L244">                        loadPreviousContext(gasMtstNo, previousDay));</span>
+            }
+<span class="fc" id="L246">            return new CollaborationDecision(null, null);</span>
+        }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (!isPreviousContractCandidate(tksuSvkyNoOga, tksuSvkyNo, svckyaInf)) {</span>
+<span class="fc" id="L249">            return new CollaborationDecision(categoryCancellationOfOpening, null);</span>
+        }
+
+<span class="fc" id="L252">        SvsihkrRecord previousRelation = findPreviousRelation(svckyaInf.svkyNo(), previousDay);</span>
+<span class="fc" id="L253">        SihakyRecord previousPaymentContract =</span>
+<span class="fc" id="L254">                findPreviousPaymentContract(previousRelation.sihKiyNo(), previousDay);</span>
+<span class="fc" id="L255">        PreviousContext previousContext = loadPreviousContext(gasMtstNo, previousDay);</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (Objects.equals(sihakyInf.sihKiyNo(), previousPaymentContract.sihKiyNo())) {</span>
+<span class="fc" id="L257">            return new CollaborationDecision(categoryContinuationOfPreviousContract, previousContext);</span>
+        }
+<span class="fc" id="L259">        return new CollaborationDecision(categoryCancellationOfOpening, previousContext);</span>
+    }
+
+    /**
+     * 概要: 供給再開区分に該当するかを判定する。
+     * 主な仕様:
+     * - 閉栓事由が供給停止以外であれば true を返す。
+     * - 供給停止でも供給再開関連フラグのいずれかが true の場合は true を返す。
+     * 既知の制約:
+     * - `gmtsetdOgaInf` の事由種別は呼出元で正しく設定済みであることを前提とする。
+     */
+    private boolean isSupplyResumedBranch(
+            GmtsetdOgaInf gmtsetdOgaInf,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg) {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        return !closureReasonSupplyOutage.equals(gmtsetdOgaInf.hesnJysb())</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">                || Boolean.TRUE.equals(kkytskrUmFlg)</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">                || Boolean.TRUE.equals(kkytskrKktUmFlg);</span>
+    }
+
+    /**
+     * 概要: 前契約継続判定の前提条件を満たすかを判定する。
+     * 主な仕様:
+     * - 1世代前託送サービス契約番号と託送サービス契約番号の一致を確認する。
+     * - あわせてサービス契約開始事由が前契約継続であることを確認する。
+     * 既知の制約:
+     * - 開始事由種別の比較は定数値との完全一致で判定する。
+     */
+    private boolean isPreviousContractCandidate(
+            Long tksuSvkyNoOga,
+            Long tksuSvkyNo,
+            SvckyaInf svckyaInf) {
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        return Objects.equals(tksuSvkyNoOga, tksuSvkyNo)</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">                &amp;&amp; isPreviousContractStartReason(svckyaInf);</span>
+    }
+
+    /**
+     * 概要: サービス契約開始事由が前契約継続かを判定する。
+     * 主な仕様:
+     * - Cirius 定数 `前契約継続` と入力 DTO の開始事由種別を比較する。
+     * 既知の制約:
+     * - 入力値が null の場合は false 扱いになる。
+     */
+    private boolean isPreviousContractStartReason(SvckyaInf svckyaInf) {
+<span class="fc" id="L303">        return serviceContractStartReasonContinuation.equals(svckyaInf.svkySttJysb());</span>
+    }
+
+    /**
+     * 概要: SV-055 呼出し対象の連携区分かを判定する。
+     * 主な仕様:
+     * - 供給再開または前契約継続の区分のみ true を返す。
+     * 既知の制約:
+     * - 連携区分はコンストラクタで解決した定数値を前提とする。
+     */
+    private boolean isSv055Category(String collaborationCategory) {
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        return categorySupplyResumed.equals(collaborationCategory)</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                || categoryContinuationOfPreviousContract.equals(collaborationCategory);</span>
+    }
+
+    /**
+     * 概要: SV-055 へ grouped input を組み立てて委譲する。
+     * 主な仕様:
+     * - 即時開栓情報の先頭要素を `svmstkrInf.mtstNo` に転送する。
+     * - 現契約 DTO と前契約 DTO を SV-055 用モデルへ詰め替える。
+     * 既知の制約:
+     * - `suguGmtInfList` は 1 件以上必須で、空の場合は `IllegalArgumentException` とする。
+     */
+    private void executeSv055(
+            String collaborationCategory,
+            Long gasMtstNo,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            SvckyaInf svckyaInf,
+            SihakyInf sihakyInf,
+            Boolean ksenFlg,
+            List&lt;SuguGmtInf&gt; suguGmtInfList,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg,
+            Boolean suguKbnUpdFlg,
+            PreviousContext previousContext) {
+<span class="pc bpc" id="L338" title="1 of 4 branches missed.">        if (suguGmtInfList == null || suguGmtInfList.isEmpty()) {</span>
+<span class="fc" id="L339">            throw new IllegalArgumentException(&quot;suguGmtInfList must contain at least one item for SV-055 branch&quot;);</span>
+        }
+<span class="fc" id="L341">        SuguGmtInf firstMeter = suguGmtInfList.get(0);</span>
+<span class="fc" id="L342">        billingCollectionPlatformIntegrationAtContractOpeningCancel.execute(</span>
+                collaborationCategory,
+<span class="fc" id="L344">                suguGmtInfList.size(),</span>
+                ksenFlg,
+                kkytskrKktUmFlg,
+                kkytskrUmFlg,
+                suguKbnUpdFlg,
+                gasMtstNo,
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SihakyInf(
+<span class="fc" id="L351">                        sihakyInf.sihKiyNo(),</span>
+<span class="fc" id="L352">                        sihakyInf.skno(),</span>
+<span class="fc" id="L353">                        sihakyInf.tkysYmd(),</span>
+<span class="fc" id="L354">                        sihakyInf.sikKrno(),</span>
+<span class="fc" id="L355">                        sihakyInf.shsyKyoTrno()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf(
+<span class="fc" id="L357">                        svckyaInf.svkyNo(),</span>
+<span class="fc" id="L358">                        svckyaInf.skno(),</span>
+<span class="fc" id="L359">                        svckyaInf.rkkiSttYmd(),</span>
+<span class="fc" id="L360">                        svckyaInf.rkkiEndYmd(),</span>
+<span class="fc" id="L361">                        svckyaInf.sqtiKiyNo()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaOgaInf(
+<span class="fc" id="L363">                        previousContext.previousSvckyaRecord().svkyEndJysb(),</span>
+<span class="fc" id="L364">                        previousContext.previousSvckyaRecord().rkkiEndYmd(),</span>
+<span class="fc" id="L365">                        previousContext.previousSvckyaRecord().szirHtyoYmd()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdOgaInf(
+<span class="fc" id="L367">                        gmtsetdOgaInf.hesnYmd(),</span>
+<span class="fc" id="L368">                        gmtsetdOgaInf.hesnJysb()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf(
+<span class="fc" id="L370">                        firstMeter.gasMtstNo()));</span>
+<span class="fc" id="L371">    }</span>
+
+    /**
+     * 概要: SV-196 呼出し用の内部変数を構築して委譲する。
+     * 主な仕様:
+     * - 前契約継続事由の場合は SV-035 を実行する。
+     * - 前契約文脈がある場合のみ CCFX08 変更依頼情報の補完項目を設定する。
+     * 既知の制約:
+     * - ガスメータ設置場所番号は補助資料に合わせた固定値を使用する。
+     */
+    private void executeSv196(
+            GmtsetdOgaInf gmtsetdOgaInf,
+            SvckyaInf svckyaInf,
+            SihakyInf sihakyInf,
+            PreviousContext previousContext) {
+<span class="fc" id="L386">        String transferBusinessCode = null;</span>
+<span class="fc" id="L387">        String serviceSuspensionCancellationReasonType = null;</span>
+<span class="fc" id="L388">        LocalDate serviceSuspensionCancellationDate = null;</span>
+<span class="fc" id="L389">        LocalDate contractEndDate = null;</span>
+<span class="fc" id="L390">        LocalDate consumptionTaxDeterminationDate = null;</span>
+
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        if (isPreviousContractStartReason(svckyaInf)) {</span>
+<span class="fc" id="L393">            transferBusinessCode = billableContractManagementTransfer;</span>
+<span class="fc" id="L394">            serviceSuspensionCancellationReasonType =</span>
+<span class="fc" id="L395">                    serviceSuspensionCancellationReasonTypeAcquisition.execute(</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">                                    previousContext == null</span>
+<span class="fc" id="L397">                                            ? null</span>
+<span class="fc" id="L398">                                            : previousContext.previousSvckyaRecord().svkyEndJysb(),</span>
+<span class="fc" id="L399">                                    gmtsetdOgaInf.hesnJysb())</span>
+<span class="fc" id="L400">                            .svkjyShbt();</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">            if (previousContext != null) {</span>
+<span class="fc" id="L402">                SvckyaRecord previousSvckyaRecord = previousContext.previousSvckyaRecord();</span>
+<span class="fc" id="L403">                serviceSuspensionCancellationDate = previousSvckyaRecord.rkkiEndYmd();</span>
+<span class="fc" id="L404">                contractEndDate = previousSvckyaRecord.rkkiEndYmd();</span>
+<span class="fc" id="L405">                consumptionTaxDeterminationDate = previousSvckyaRecord.szirHtyoYmd();</span>
+            }
+        }
+
+<span class="fc" id="L409">        billingCollectionPlatformApiIntegrationForOpeningCancel.execute(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SkkbRkySgjhInf(
+                        null,
+<span class="fc" id="L412">                        sihakyInf.sikKrno(),</span>
+<span class="fc" id="L413">                        svckyaInf.sqtiKiyNo(),</span>
+<span class="fc" id="L414">                        svckyaInf.svkyNo(),</span>
+<span class="fc" id="L415">                        svckyaInf.skno(),</span>
+<span class="fc" id="L416">                        sihakyInf.sihKiyNo(),</span>
+<span class="fc" id="L417">                        sihakyInf.skno(),</span>
+<span class="fc" id="L418">                        FIXED_GAS_METER_LOCATION_NO,</span>
+<span class="fc" id="L419">                        svckyaInf.rkkiSttYmd(),</span>
+<span class="fc" id="L420">                        svckyaInf.rkkiEndYmd()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SktsSihDlirInf(
+                        billablePaymentManagementTransfer),
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SktsKykDlirInf(
+                        billableContractManagementTransfer),
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SktsKykHkirInf(
+                        transferBusinessCode,
+                        serviceSuspensionCancellationReasonType,
+                        serviceSuspensionCancellationDate,
+                        contractEndDate,
+                        consumptionTaxDeterminationDate));
+<span class="fc" id="L431">    }</span>
+
+    /**
+     * 概要: SV-055/SV-196 で利用する前契約文脈を取得する。
+     * 主な仕様:
+     * - DA-041-R010 相当のメータ契約取得後、DA-038-R012 相当の前契約サービス契約を取得する。
+     * - いずれかが 0 件の場合は DA 識別子付きのデータ不整合例外を送出する。
+     * 既知の制約:
+     * - 基準日は常に引数の前日で評価される。
+     */
+    private PreviousContext loadPreviousContext(Long gasMtstNo, LocalDate previousDay) {
+<span class="fc" id="L442">        SvmstkrRecord previousSvmstkrRecord = svmstkrDataAccess</span>
+<span class="fc" id="L443">                .findByMtstNoAndRkkiSttYmdAndRkkiKnrnJtkb(</span>
+                        gasMtstNo,
+                        previousDay,
+                        chargeCalculationRelatedStatusInvalid)
+<span class="fc" id="L447">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L448">                        svmstkrDataAccess.tableName(),</span>
+                        SvmstkrDataAccess.CallSpecs
+<span class="fc" id="L450">                                .FIND_BY_MTST_NO_AND_RKKI_STT_YMD_AND_RKKI_KNRN_JTKB.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L452">                                .put(&quot;mtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L453">                                .put(&quot;kkiSttYmd&quot;, previousDay)</span>
+<span class="fc" id="L454">                                .put(&quot;rkkiKnrnJtkb&quot;, chargeCalculationRelatedStatusInvalid)));</span>
+<span class="fc" id="L455">        SvckyaRecord previousSvckyaRecord = svckyaDataAccess</span>
+<span class="fc" id="L456">                .findLatestBySvkyNoAtKnskKjnYmdAndSvkyJtkbNotOrderByRkkiSttYmd(</span>
+<span class="fc" id="L457">                        previousSvmstkrRecord.svkyNo(),</span>
+                        previousDay,
+                        serviceContractStatusInvalid)
+<span class="fc" id="L460">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L461">                        svckyaDataAccess.tableName(),</span>
+                        SvckyaDataAccess.CallSpecs
+                                .FIND_LATEST_BY_SVKY_NO_AT_KNSK_KJN_YMD_AND_SVKY_JTKB_NOT_ORDER_BY_RKKI_STT_YMD
+<span class="fc" id="L464">                                .identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L466">                                .put(&quot;svkyNo&quot;, previousSvmstkrRecord.svkyNo())</span>
+<span class="fc" id="L467">                                .put(&quot;knskKjnYmd&quot;, previousDay)</span>
+<span class="fc" id="L468">                                .put(&quot;svkyJtkb&quot;, serviceContractStatusInvalid)));</span>
+<span class="fc" id="L469">        return new PreviousContext(previousSvmstkrRecord, previousSvckyaRecord);</span>
+    }
+
+    /**
+     * 概要: 前契約のサービス・支払契約関連を取得する。
+     * 主な仕様:
+     * - DA-044-R005 を実行し、対象日時点で有効な支払契約紐付を 1 件取得する。
+     * - 0 件時は検索条件を含むデータ不整合例外を送出する。
+     * 既知の制約:
+     * - 無効ステータス除外はコンストラクタで解決した定数値に依存する。
+     */
+    private SvsihkrRecord findPreviousRelation(Long svkyNo, LocalDate previousDay) {
+<span class="fc" id="L481">        return svsihkrDataAccess</span>
+<span class="fc" id="L482">                .findBySvkyNoAndTkysYmdAndNotSihKiyJtkb(</span>
+                        svkyNo,
+                        previousDay,
+                        paymentContractStatusInvalid)
+<span class="fc" id="L486">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L487">                        svsihkrDataAccess.tableName(),</span>
+                        SvsihkrDataAccess.CallSpecs
+<span class="fc" id="L489">                                .FIND_BY_SVKY_NO_AND_TKYS_YMD_AND_NOT_SIH_KIY_JTKB.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L491">                                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L492">                                .put(&quot;tkysYmd&quot;, previousDay)</span>
+<span class="fc" id="L493">                                .put(&quot;sihKiyJtkb&quot;, paymentContractStatusInvalid)));</span>
+    }
+
+    /**
+     * 概要: 前契約側の支払契約情報を取得する。
+     * 主な仕様:
+     * - DA-075-R004 を実行し、対象日時点で有効な支払契約を 1 件取得する。
+     * - 0 件時は検索条件を含むデータ不整合例外を送出する。
+     * 既知の制約:
+     * - 無効ステータス除外はコンストラクタで解決した定数値に依存する。
+     */
+    private SihakyRecord findPreviousPaymentContract(Long sihKiyNo, LocalDate previousDay) {
+<span class="fc" id="L505">        return sihakyDataAccess</span>
+<span class="fc" id="L506">                .findBySihKiyNoAndTkysYmdAndNotSihKiyJtkb(</span>
+                        sihKiyNo,
+                        previousDay,
+                        paymentContractStatusInvalid)
+<span class="fc" id="L510">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L511">                        sihakyDataAccess.tableName(),</span>
+                        SihakyDataAccess.CallSpecs
+<span class="fc" id="L513">                                .FIND_BY_SIH_KIY_NO_AND_TKYS_YMD_AND_NOT_SIH_KIY_JTKB.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L515">                                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L516">                                .put(&quot;tkysYmd&quot;, previousDay)</span>
+<span class="fc" id="L517">                                .put(&quot;sihKiyJtkb&quot;, paymentContractStatusInvalid)));</span>
+    }
+
+    /**
+     * 概要: 開閉栓定数を必須取得する。
+     * 主な仕様:
+     * - `type` と `value` で名称解決できることを検証し、戻り値には `value` 自体を返す。
+     * - 未定義時は `ConstantDefinitionNotFoundException` を送出する。
+     * 既知の制約:
+     * - 名称自体は使用せず、存在確認のためだけに検索する。
+     */
+    private static String requireKaiheisenConstant(
+            KaiheisenConstantService kaiheisenConstantService,
+            String type,
+            String value) {
+<span class="fc" id="L532">        String name = kaiheisenConstantService.findNameByTypeAndValue(type, value);</span>
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc" id="L534">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + type + &quot;, value=&quot; + value);
+        }
+<span class="fc" id="L538">        return value;</span>
+    }
+
+<span class="fc" id="L541">    private record CollaborationDecision(</span>
+            String collaborationCategory,
+            PreviousContext previousContext) {
+    }
+
+<span class="fc" id="L546">    private record PreviousContext(</span>
+            SvmstkrRecord previousSvmstkrRecord,
+            SvckyaRecord previousSvckyaRecord) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

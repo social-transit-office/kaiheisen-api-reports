@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingResultInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-meterReadingResultInfoAcquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">MeterReadingResultInfoAcquisitionImpl.java</span></div><h1>MeterReadingResultInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultInfoAcquisitionOutput;
+
+/**
+ * 検針結果情報取得サービス実装
+ */
+public class MeterReadingResultInfoAcquisitionImpl implements MeterReadingResultInfoAcquisition {
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final DktksryDataAccess dktksryDataAccess;
+
+    private final String closureReasonTypeSupplyOutage;
+
+    private final String reasonTypeForCreatingMeterReadingResultsSupplyOutage;
+
+    private final String supplyStopPaymentStatusSupplyOutage;
+
+    /**
+     * コンストラクタ
+     *
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param kkytskrDataAccess 供給停止管理情報 データアクセス
+     * @param dktksryDataAccess 導管通知確定使用量 データアクセス
+     *
+     */
+    public MeterReadingResultInfoAcquisitionImpl(
+            CiriusConstantService ciriusConstantService,
+            KkytskrDataAccess kkytskrDataAccess,
+<span class="fc" id="L43">            DktksryDataAccess dktksryDataAccess) {</span>
+
+<span class="fc" id="L45">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L46">        this.dktksryDataAccess = Objects.requireNonNull(dktksryDataAccess, &quot;dktksryDataAccess&quot;);</span>
+
+<span class="fc" id="L48">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+
+<span class="fc" id="L52">        this.closureReasonTypeSupplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+
+<span class="fc" id="L57">        this.reasonTypeForCreatingMeterReadingResultsSupplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_OUTAGE);
+
+<span class="fc" id="L62">        this.supplyStopPaymentStatusSupplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_OUTAGE);
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * 概要:検針結果情報を取得する
+     * 主な仕様:
+     * - 各処理を呼び出す
+     * - 処理1 recordsearch：KKYTSKR,DKTKSRYの取得を行う
+     * - 処理2 kkysSisnJtkbSettings：戻り値の供給停止状態区分を設定する
+     * - 処理3 responseResultSetting：戻り値の即検針年月日、ガスメーター指示数、検針結果作成事由種別を設定する
+     * @param hesnJysb 閉栓事由種別
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param hntKkaCd 判定結果コード
+     * @param knsYmd 検針年月日
+     * @param gmtShjSu ガスメーター指示数
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     */
+    @Override
+    public MeterReadingResultInfoAcquisitionOutput execute(
+            String hesnJysb,
+            Long gasMtstNo,
+            String hntKkaCd,
+            LocalDate knsYmd,
+            Long gmtShjSu,
+            String knkkSsjyShbt) {
+
+        //処理1
+<span class="fc" id="L92">        RecordSearchResult recordSearchResult = recordsearch(</span>
+                hesnJysb,
+                gasMtstNo);
+        //処理2
+<span class="fc" id="L96">        String responseJtkb = kkysSisnJtkbSetting(</span>
+                hesnJysb,
+<span class="fc" id="L98">                recordSearchResult.kkytskrRecords(),</span>
+                hntKkaCd);
+        //処理3
+<span class="fc" id="L101">        ResponseResult responseResult = responseResultSetting(</span>
+<span class="fc" id="L102">                recordSearchResult.kkytskrRecords(),</span>
+<span class="fc" id="L103">                recordSearchResult.dktksryRecords(),</span>
+                knsYmd,
+                gmtShjSu,
+                knkkSsjyShbt);
+
+<span class="fc" id="L108">        return new MeterReadingResultInfoAcquisitionOutput(</span>
+                responseJtkb,
+<span class="fc" id="L110">                responseResult.responseYmd(),</span>
+<span class="fc" id="L111">                responseResult.responseShjSu(),</span>
+<span class="fc" id="L112">                responseResult.responseShbt());</span>
+    }
+
+    /**
+     * 概要:KKYTSKR,DKTKSRYの取得を行う
+     * 主な使用
+     * - 引数の閉栓事由種別が【J0273 4：供給停止】の場合KKYTSKRの取得を行う
+     * - 引数の閉栓事由種別が【J0273 4：供給停止】以外の場合処理なし
+     * - KKYTSKRの取得結果がある場合DKTKSRYの取得を行う
+     * @param hesnJysb 閉栓事由種別
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return kkytskrRecords KKYTSKRレコード
+     * @return dktksryRecords DKTKSRYレコード
+     */
+    private RecordSearchResult recordsearch(String hesnJysb, Long gasMtstNo) {
+
+<span class="fc" id="L128">        KkytskrRecord kkytskrRecords = null;</span>
+<span class="fc" id="L129">        DktksryRecord dktksryRecords = null;</span>
+
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (closureReasonTypeSupplyOutage.equals(hesnJysb)) {</span>
+<span class="fc" id="L132">            Optional&lt;KkytskrRecord&gt; kkytskrRecord = kkytskrDataAccess</span>
+<span class="fc" id="L133">                    .findByGasMtstNo(gasMtstNo);</span>
+<span class="fc" id="L134">            kkytskrRecords = kkytskrRecord.orElse(null);</span>
+
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (kkytskrRecords != null) {</span>
+<span class="fc" id="L137">                Optional&lt;DktksryRecord&gt; dktksryRecord = dktksryDataAccess.</span>
+<span class="fc" id="L138">                    findByGasMtstNoAndKnsYmdAndKnkkSksiJysb(</span>
+                            gasMtstNo,
+<span class="fc" id="L140">                            kkytskrRecords.hesnYmd(),</span>
+                            reasonTypeForCreatingMeterReadingResultsSupplyOutage);
+<span class="fc" id="L142">                dktksryRecords = dktksryRecord.orElse(null);</span>
+            }
+        }
+<span class="fc" id="L145">        return new RecordSearchResult(kkytskrRecords, dktksryRecords);</span>
+    }
+
+    /**
+     * 概要:戻り値の供給停止状態区分を設定する
+     * 主な仕様:
+     * - 引数の閉栓事由種別が【J0273 4：供給停止】かつ、引数の判定結果コードが〔KH031 1：TG小売〕の場合KKYTSKRで取得した供給停止精算状態区分を設定
+     * - 引数の閉栓事由種別が【J0273 4：供給停止】かつ、引数の判定結果コードが〔KH031 1：TG小売〕ではない場合【J0275 3：供給停止】を設定する
+     * - 引数の閉栓事由種別が【J0273 4：供給停止】ではない場合未設定を設定する
+     * 既知の制約
+     * - 未設定はnullとする
+     * @param hesnJysb 閉栓事由種別
+     * @param kkytskrRecords 供給停止管理レコード
+     * @param hntKkaCd 判定結果コード
+     * @return 供給停止精算状態区分
+     */
+    private String kkysSisnJtkbSetting(
+            String hesnJysb,
+            KkytskrRecord kkytskrRecords,
+            String hntKkaCd) {
+
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        if (closureReasonTypeSupplyOutage.equals(hesnJysb)) {</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (RetailTypeJudgmentCode.TOKYO_GAS.code().equals(hntKkaCd)) {</span>
+<span class="fc" id="L168">                return kkytskrRecords.kkysSisnJtkb();</span>
+            } else {
+<span class="fc" id="L170">                return supplyStopPaymentStatusSupplyOutage;</span>
+            }
+        } else {
+<span class="fc" id="L173">            return null;</span>
+        }
+    }
+
+    /**
+     * 概要:戻り値の即検針年月日、ガスメーター指示数、検針結果作成事由種別を設定する
+     * 主な仕様
+     * - KKYTSKRの取得結果が存在する場合
+     * -  引数の検針年月日＝KKYTSKRで取得した閉栓日の場合かつDKTKSRYの取得結果が存在する場合、引数の検針年月日、ガスメーター指示数、検針結果作成事由を設定
+     * -  引数の検針年月日＝KKYTSKRで取得した閉栓日の場合かつDKTKSRYの取得結果が存在しない場合、KKYTSKRで取得した閉栓年月日、KKYTSKRで取得したガスメーター指示数、【07000 133：供給停止】を設定
+     * -  引数の検針年月日＞KKYTSKRで取得した閉栓日の場合、引数の検針年月日、ガスメーター指示数、検針結果作成事由を設定
+     * -  引数の検針年月日＜KKYTSKRで取得した閉栓日の場合、KKYTSKRで取得した閉栓年月日、KKYTSKRで取得したガスメーター指示数、【07000 133：供給停止】を設定
+     * - KKYTSKRの取得結果が存在しない場合、引数の検針年月日、ガスメーター指示数、検針結果作成事由を設定
+     * @param kkytskrRecords 供給停止管理レコード
+     * @param dktksryRecords 導管通知確定使用量レコード
+     * @param knsYmd 検針年月日
+     * @param gmtShjSu ガスメーター指示数
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @return responseYmd 戻り値：即検針年月日
+     * @return responseShjSu 戻り値：ガスメーター指示数
+     * @return responseShbt 戻り値：検針結果作成事由種別
+     */
+    private ResponseResult responseResultSetting(
+            KkytskrRecord kkytskrRecords,
+            DktksryRecord dktksryRecords,
+            LocalDate knsYmd,
+            Long gmtShjSu,
+            String knkkSsjyShbt) {
+
+<span class="fc" id="L202">        LocalDate responseYmd = null;</span>
+<span class="fc" id="L203">        Long responseShjSu = null;</span>
+<span class="fc" id="L204">        String responseShbt = null;</span>
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (kkytskrRecords != null) {</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (knsYmd.equals(kkytskrRecords.hesnYmd())) {</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                if (dktksryRecords != null) {</span>
+<span class="fc" id="L209">                    responseYmd = knsYmd;</span>
+<span class="fc" id="L210">                    responseShjSu = gmtShjSu;</span>
+<span class="fc" id="L211">                    responseShbt = knkkSsjyShbt;</span>
+<span class="fc" id="L212">                    return new ResponseResult(responseYmd, responseShjSu, responseShbt);</span>
+                } else {
+<span class="fc" id="L214">                    responseYmd = kkytskrRecords.hesnYmd();</span>
+<span class="fc" id="L215">                    responseShjSu = kkytskrRecords.gmtShjSu();</span>
+<span class="fc" id="L216">                    responseShbt = reasonTypeForCreatingMeterReadingResultsSupplyOutage;</span>
+<span class="fc" id="L217">                    return new ResponseResult(responseYmd, responseShjSu, responseShbt);</span>
+                }
+            } else {
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                if (knsYmd.compareTo(kkytskrRecords.hesnYmd()) &gt; 0) {</span>
+<span class="fc" id="L221">                    responseYmd = knsYmd;</span>
+<span class="fc" id="L222">                    responseShjSu = gmtShjSu;</span>
+<span class="fc" id="L223">                    responseShbt = knkkSsjyShbt;</span>
+<span class="fc" id="L224">                    return new ResponseResult(responseYmd, responseShjSu, responseShbt);</span>
+                } else {
+<span class="fc" id="L226">                    responseYmd = kkytskrRecords.hesnYmd();</span>
+<span class="fc" id="L227">                    responseShjSu = kkytskrRecords.gmtShjSu();</span>
+<span class="fc" id="L228">                    responseShbt = reasonTypeForCreatingMeterReadingResultsSupplyOutage;</span>
+<span class="fc" id="L229">                    return new ResponseResult(responseYmd, responseShjSu, responseShbt);</span>
+                }
+            }
+        } else {
+<span class="fc" id="L233">            responseYmd = knsYmd;</span>
+<span class="fc" id="L234">            responseShjSu = gmtShjSu;</span>
+<span class="fc" id="L235">            responseShbt = knkkSsjyShbt;</span>
+<span class="fc" id="L236">            return new ResponseResult(responseYmd, responseShjSu, responseShbt);</span>
+        }
+    }
+
+    /**
+     * 概要：recordsearchメソッドの検索結果を保持する戻り値クラス
+     *
+     * @param kkytskrRecords KkytskrRecordの検索結果（存在しない場合は null）
+     * @param dktksryRecords DktksryRecordの検索結果（存在しない場合は null）
+     */
+<span class="fc" id="L246">    public record RecordSearchResult(</span>
+            KkytskrRecord kkytskrRecords,
+            DktksryRecord dktksryRecords
+    ) { }
+
+    /**
+     * 概要：kkysSisnJtkbSettingメソッドの設定値を保持する戻り値クラス
+     *
+     * @param responseYmd 戻り値：即検針年月日
+     * @param responseShjSu 戻り値：ガスメーター指示数
+     * @param responseShbt 戻り値：検針結果作成事由種別
+     */
+<span class="fc" id="L258">    public record ResponseResult(</span>
+            LocalDate responseYmd,
+            Long responseShjSu,
+            String responseShbt
+    ) { }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

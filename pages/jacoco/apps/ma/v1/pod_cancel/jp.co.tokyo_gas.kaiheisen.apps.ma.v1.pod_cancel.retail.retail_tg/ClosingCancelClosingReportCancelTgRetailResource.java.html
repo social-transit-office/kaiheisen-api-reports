@@ -1,0 +1,654 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelClosingReportCancelTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-cancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_tg</a> &gt; <span class="el_source">ClosingCancelClosingReportCancelTgRetailResource.java</span></div><h1>ClosingCancelClosingReportCancelTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingCancelClosingReportCancelTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingCancelClosingReportCancelTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingCancelClosingReportCancelTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.nwkseig.NwkseigDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.GasMeterLocationInfoUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractRevivalOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractRevivalTgRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractRevivalTgRetailOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisitionConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.BillingCollectionPlatformIntegrationAtClosingCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancelTransferWorkHistoryCreation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ReceptionInfoChangeNotificationApiIntegration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SuguGmtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ApplicationTypeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ApplicationTypeAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingData;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingDataOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentRetailInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentRetailInfoOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.DedicatedMeterLocationAcquisitionAndClosingCancelJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.HseflInf;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-099 閉栓取消処理-閉栓報告取消-小売-TG小売 API のリソース実装。
+ */
+@Path(ClosingCancelClosingReportCancelTgRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;閉栓取消処理-閉栓報告取消-小売-TG小売&quot;, description = &quot;MA-099&quot;)
+@MainService(identifier = &quot;MA-099&quot;, name = &quot;閉栓取消処理-閉栓報告取消-小売-TG小売 API&quot;)
+public final class ClosingCancelClosingReportCancelTgRetailResource
+        extends BaseResource&lt;ClosingCancelClosingReportCancelTgRetailRequest&gt; {
+
+    static final String SERVICE_USER_ID = &quot;KHSM099&quot;;
+
+    static final String SHR_KBN_CANCEL = &quot;2&quot;;
+
+    static final String FOLLOW_NOT_YET_STARTED = &quot;1&quot;;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final ClosingCancelFeasibilityJudgmentFollowStatus followStatusJudgment;
+
+    private final ClosingCancelFeasibilityJudgmentEquipmentStatus equipmentStatusJudgment;
+
+    private final DedicatedMeterLocationAcquisitionAndClosingCancelJudgment dedicatedMeterLocationJudgment;
+
+    private final ClosingCancelFeasibilityJudgmentRetailInfo retailInfoJudgment;
+
+    private final ClosingCancelFeasibilityJudgmentMeterReadingData meterReadingDataJudgment;
+
+    private final GasMeterLocationInfoUpdateForRevival gasMeterLocationInfoUpdateForRevival;
+
+    private final ServiceContractRevivalTgRetail serviceContractRevivalTgRetail;
+
+    private final PaymentContractRevival paymentContractRevival;
+
+    private final CancelTransferWorkHistoryCreation cancelTransferWorkHistoryCreation;
+
+    private final BillingCollectionPlatformIntegrationAtClosingCancel billingCollectionPlatformIntegrationAtClosingCancel;
+
+    private final ApplicationTypeAcquisition applicationTypeAcquisition;
+
+    private final ReceptionInfoChangeNotificationApiIntegration receptionInfoChangeNotificationApiIntegration;
+
+    private final ServiceContractNumberAcquisition serviceContractNumberAcquisition;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private final NwkseigDataAccess nwkseigDataAccess;
+
+    private final String closingProcessingDivision;
+
+    private final String transferWorkHistoryWorkCodeConduit;
+
+    private final String transferWorkHistoryWorkDetailsCodeConduit;
+
+    private final String transferWorkHistoryBusinessCodeRetail;
+
+    private final String transferWorkHistoryWorkDetailCodeRetail;
+
+    private final String cancelTransferWorkHistoryReportDivision;
+
+    private final String tokyoGasBusinessCode;
+
+    private final String processingStatusInProgress;
+
+    private final String cancellationWorkType;
+
+    private final String gasUsageContractKeyType;
+
+    private final String supplyOutageClosureReasonType;
+
+    /**
+     * 概要: MA-099 の依存オブジェクトを受け取って初期化する。
+     * 主な仕様:
+     * - ルーティングで使用する固定コードは定数ライブラリから解決する。
+     * - TG 小売の閉栓報告取消で使う SV/DA を最小構成で束ねる。
+     */
+    @Inject
+    public ClosingCancelClosingReportCancelTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService,
+            ClosingCancelFeasibilityJudgmentFollowStatus followStatusJudgment,
+            ClosingCancelFeasibilityJudgmentEquipmentStatus equipmentStatusJudgment,
+            DedicatedMeterLocationAcquisitionAndClosingCancelJudgment dedicatedMeterLocationJudgment,
+            ClosingCancelFeasibilityJudgmentRetailInfo retailInfoJudgment,
+            ClosingCancelFeasibilityJudgmentMeterReadingData meterReadingDataJudgment,
+            GasMeterLocationInfoUpdateForRevival gasMeterLocationInfoUpdateForRevival,
+            ServiceContractRevivalTgRetail serviceContractRevivalTgRetail,
+            PaymentContractRevival paymentContractRevival,
+            CancelTransferWorkHistoryCreation cancelTransferWorkHistoryCreation,
+            BillingCollectionPlatformIntegrationAtClosingCancel billingCollectionPlatformIntegrationAtClosingCancel,
+            ApplicationTypeAcquisition applicationTypeAcquisition,
+            ReceptionInfoChangeNotificationApiIntegration receptionInfoChangeNotificationApiIntegration,
+            ServiceContractNumberAcquisition serviceContractNumberAcquisition,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            HseflDataAccess hseflDataAccess,
+            NwkseigDataAccess nwkseigDataAccess) {
+<span class="fc" id="L173">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L174">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L175">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L176">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L177">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L178">        this.kaiheisenConstantService = nonNullKaiheisenConstantService;</span>
+<span class="fc" id="L179">        this.followStatusJudgment = Objects.requireNonNull(followStatusJudgment, &quot;followStatusJudgment&quot;);</span>
+<span class="fc" id="L180">        this.equipmentStatusJudgment = Objects.requireNonNull(equipmentStatusJudgment, &quot;equipmentStatusJudgment&quot;);</span>
+<span class="fc" id="L181">        this.dedicatedMeterLocationJudgment = Objects.requireNonNull(</span>
+                dedicatedMeterLocationJudgment,
+                &quot;dedicatedMeterLocationJudgment&quot;);
+<span class="fc" id="L184">        this.retailInfoJudgment = Objects.requireNonNull(retailInfoJudgment, &quot;retailInfoJudgment&quot;);</span>
+<span class="fc" id="L185">        this.meterReadingDataJudgment = Objects.requireNonNull(</span>
+                meterReadingDataJudgment,
+                &quot;meterReadingDataJudgment&quot;);
+<span class="fc" id="L188">        this.gasMeterLocationInfoUpdateForRevival = Objects.requireNonNull(</span>
+                gasMeterLocationInfoUpdateForRevival,
+                &quot;gasMeterLocationInfoUpdateForRevival&quot;);
+<span class="fc" id="L191">        this.serviceContractRevivalTgRetail = Objects.requireNonNull(</span>
+                serviceContractRevivalTgRetail,
+                &quot;serviceContractRevivalTgRetail&quot;);
+<span class="fc" id="L194">        this.paymentContractRevival = Objects.requireNonNull(paymentContractRevival, &quot;paymentContractRevival&quot;);</span>
+<span class="fc" id="L195">        this.cancelTransferWorkHistoryCreation = Objects.requireNonNull(</span>
+                cancelTransferWorkHistoryCreation,
+                &quot;cancelTransferWorkHistoryCreation&quot;);
+<span class="fc" id="L198">        this.billingCollectionPlatformIntegrationAtClosingCancel = Objects.requireNonNull(</span>
+                billingCollectionPlatformIntegrationAtClosingCancel,
+                &quot;billingCollectionPlatformIntegrationAtClosingCancel&quot;);
+<span class="fc" id="L201">        this.applicationTypeAcquisition = Objects.requireNonNull(</span>
+                applicationTypeAcquisition,
+                &quot;applicationTypeAcquisition&quot;);
+<span class="fc" id="L204">        this.receptionInfoChangeNotificationApiIntegration = Objects.requireNonNull(</span>
+                receptionInfoChangeNotificationApiIntegration,
+                &quot;receptionInfoChangeNotificationApiIntegration&quot;);
+<span class="fc" id="L207">        this.serviceContractNumberAcquisition = Objects.requireNonNull(</span>
+                serviceContractNumberAcquisition,
+                &quot;serviceContractNumberAcquisition&quot;);
+<span class="fc" id="L210">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L211">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L212">        this.nwkseigDataAccess = Objects.requireNonNull(nwkseigDataAccess, &quot;nwkseigDataAccess&quot;);</span>
+<span class="fc" id="L213">        this.closingProcessingDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.CancelTransferWorkHistoryCreationProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.CancelTransferWorkHistoryCreationProcessingDivision.CLOSING_PROCESS);
+<span class="fc" id="L217">        this.transferWorkHistoryWorkCodeConduit = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.CLOSING_REGISTRATION);
+<span class="fc" id="L221">        this.transferWorkHistoryWorkDetailsCodeConduit = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0703);
+<span class="fc" id="L225">        this.transferWorkHistoryBusinessCodeRetail = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION);
+<span class="fc" id="L229">        this.transferWorkHistoryWorkDetailCodeRetail = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6303);
+<span class="fc" id="L233">        this.cancelTransferWorkHistoryReportDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.OTHER_SYSTEMS);
+<span class="fc" id="L237">        this.tokyoGasBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L241">        this.processingStatusInProgress = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.TYPE,
+                ConstantLookupKeys.Kaiheisen.ProcedureStatus.IN_PROCESS);
+<span class="fc" id="L245">        this.cancellationWorkType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.TYPE,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.CANCELLATION_OF_WORK);
+<span class="fc" id="L249">        this.gasUsageContractKeyType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE,
+                ConstantLookupKeys.Kaiheisen.KeyType.TYPE_OF_GAS_USAGE_CONTRACT_NUMBER);
+<span class="fc" id="L253">        this.supplyOutageClosureReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L257">    }</span>
+
+    /**
+     * 概要: MA-099 の REST エンドポイントを公開する。
+     * 主な仕様:
+     * - `BaseResource.execute(...)` を介して RequestContext バインドとバリデーションを実施する。
+     * - 正常時は `correlationId` のみを返却する。
+     * 既知の制約:
+     * - 異常時の HTTP 変換は共通例外マッパーへ委譲する。
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(summary = &quot;閉栓取消処理-閉栓報告取消-小売-TG小売&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常終了&quot;,
+            content = @Content(schema = @Schema(implementation = ClosingCancelClosingReportCancelTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正&quot;,
+            content = @Content(schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;システムエラー&quot;,
+            content = @Content(schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingCancelClosingReportCancelTgRetailResponse endpoint(
+            @RequestBody(required = true,
+                    content = @Content(
+                            schema = @Schema(implementation = ClosingCancelClosingReportCancelTgRetailRequest.class)))
+            ClosingCancelClosingReportCancelTgRetailRequest request) {
+<span class="fc" id="L287">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    /**
+     * 概要: MA-099 の業務処理本体を実行する。
+     * 主な仕様:
+     * - TSV `step.tsv` の 3.a / 3.b 分岐に沿って HSEFL 削除または TG 小売復活処理を実行する。
+     * - 分岐後は、供給停止以外の場合にのみ NW 箇所名取得、申込種別取得、受付情報変更通知を行う。
+     */
+    ClosingCancelClosingReportCancelTgRetailResponse handle(
+            ClosingCancelClosingReportCancelTgRetailRequest request) {
+<span class="fc" id="L298">        LocalDate trkKnsYmd = Rfc3339LocalDateParser.parse(request.trkKnsYmd().trim());</span>
+<span class="fc" id="L299">        ClosingCancelClosingReportCancelTgRetailRequest.IsrrkrUpdInf isrrkrUpdInf =</span>
+<span class="fc" id="L300">                request.isrrkrUpdInf();</span>
+<span class="fc" id="L301">        ClosingCancelFeasibilityJudgmentFollowStatusOutput sv096 =</span>
+<span class="fc" id="L302">                followStatusJudgment.execute(</span>
+<span class="fc" id="L303">                        request.trkIsrrGymCd(),</span>
+<span class="fc" id="L304">                        request.gasMtstNo(),</span>
+                        trkKnsYmd,
+                        SHR_KBN_CANCEL);
+<span class="fc" id="L307">        HseflInf hseflInf = sv096.hseflInf();</span>
+
+        String receptionIndexNo;
+        String receptionNo;
+        Long serviceContractNo;
+        Long customerRegistrationNo;
+        String workerName;
+        String hesnJysb;
+
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (FOLLOW_NOT_YET_STARTED.equals(sv096.hseflFlwMcksKbn())) {</span>
+<span class="fc" id="L317">            HseflInf requiredHseflInf =</span>
+<span class="fc" id="L318">                    Objects.requireNonNull(hseflInf, &quot;SV-096 hseflInf is required for not-yet-started branch&quot;);</span>
+<span class="fc" id="L319">            deleteHseflOrThrow(requiredHseflInf);</span>
+<span class="fc" id="L320">            ServiceContractNumberAcquisitionOutput sv003 =</span>
+<span class="fc" id="L321">                    serviceContractNumberAcquisition.execute(</span>
+<span class="fc" id="L322">                            request.gasMtstNo(),</span>
+                            null,
+                            ServiceContractNumberAcquisitionConstants.ShrKbn.ACTIVE,
+                            null,
+                            trkKnsYmd);
+<span class="fc" id="L327">            receptionIndexNo = requiredHseflInf.utidxNo();</span>
+<span class="fc" id="L328">            receptionNo = null;</span>
+<span class="fc" id="L329">            serviceContractNo = sv003.svkyNo();</span>
+<span class="fc" id="L330">            customerRegistrationNo = requiredHseflInf.syoKyoTrno();</span>
+<span class="fc" id="L331">            workerName = requiredHseflInf.sgytSinnKj();</span>
+<span class="fc" id="L332">            hesnJysb = requiredHseflInf.hesnJysb();</span>
+<span class="fc" id="L333">        } else {</span>
+<span class="fc" id="L334">            ClosingCancelFeasibilityJudgmentEquipmentStatusOutput sv101 =</span>
+<span class="fc" id="L335">                    equipmentStatusJudgment.execute(request.gasMtstNo(), trkKnsYmd);</span>
+<span class="fc" id="L336">            dedicatedMeterLocationJudgment.execute(</span>
+                    trkKnsYmd,
+                    new DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf(
+<span class="fc" id="L339">                            sv101.ckrtGmscJtkb(),</span>
+<span class="fc" id="L340">                            sv101.mtgMtstNo()));</span>
+<span class="fc" id="L341">            ClosingCancelFeasibilityJudgmentRetailInfoOutput sv103 =</span>
+<span class="fc" id="L342">                    retailInfoJudgment.execute(</span>
+                            trkKnsYmd,
+                            new jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GmtsetdInf(
+<span class="fc" id="L345">                                    request.gasMtstNo(),</span>
+<span class="fc" id="L346">                                    sv101.ckrtGmscJtkb(),</span>
+<span class="fc" id="L347">                                    sv101.mtgMtstNo()),</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">                            isrrkrUpdInf == null ? null : isrrkrUpdInf.duknIsrsCd());</span>
+<span class="fc" id="L349">            ClosingCancelFeasibilityJudgmentMeterReadingDataOutput sv099 =</span>
+<span class="fc" id="L350">                    meterReadingDataJudgment.execute(</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                            isrrkrUpdInf == null ? null : isrrkrUpdInf.duknIsrsCd(),</span>
+<span class="fc" id="L352">                            request.gasMtstNo(),</span>
+                            trkKnsYmd);
+<span class="fc" id="L354">            gasMeterLocationInfoUpdateForRevival.execute(request.gasMtstNo(), sv101.kasYmd(), sv101.hesnYmd());</span>
+<span class="fc" id="L355">            ServiceContractRevivalTgRetailOutput sv106 = executeRevivalBranch(trkKnsYmd, sv101, sv103);</span>
+<span class="fc" id="L356">            PaymentContractRevivalOutput sv112 =</span>
+<span class="fc" id="L357">                    paymentContractRevival.execute(primarySvckya(sv103).svkyNo(), primarySvckya(sv103).syaKbn());</span>
+<span class="fc" id="L358">            deleteKtmgmkkOrThrow(sv099);</span>
+<span class="fc" id="L359">            executeTransferWorkHistoryCreation(request, trkKnsYmd, sv103, sv106, isrrkrUpdInf);</span>
+<span class="fc" id="L360">            executeBillingCollectionPlatformIntegration(trkKnsYmd, sv103, sv106, sv112);</span>
+<span class="fc" id="L361">            receptionIndexNo = request.ukeIndexNo();</span>
+<span class="fc" id="L362">            receptionNo = null;</span>
+<span class="fc" id="L363">            serviceContractNo = primarySvckya(sv103).svkyNo();</span>
+<span class="fc" id="L364">            customerRegistrationNo = request.tkssvkyInf().syoKyoTrno();</span>
+<span class="fc" id="L365">            workerName = request.sgttUsrKj();</span>
+<span class="fc" id="L366">            hesnJysb = sv101.hesnJysb();</span>
+        }
+
+<span class="pc bpc" id="L369" title="1 of 2 branches missed.">        if (!supplyOutageClosureReasonType.equals(hesnJysb)) {</span>
+<span class="fc" id="L370">            String nwknKj = findNwkName(request.sgytNwkCd(), trkKnsYmd);</span>
+<span class="fc" id="L371">            ApplicationTypeAcquisitionOutput sv087 =</span>
+<span class="fc" id="L372">                    applicationTypeAcquisition.execute(null, hesnJysb, request.hukkSysShbt());</span>
+<span class="fc" id="L373">            receptionInfoChangeNotificationApiIntegration.execute(</span>
+                    receptionIndexNo,
+                    receptionNo,
+                    serviceContractNo,
+                    processingStatusInProgress,
+<span class="fc" id="L378">                    request.gasMtstNo(),</span>
+                    customerRegistrationNo,
+                    cancellationWorkType,
+                    nwknKj,
+                    workerName,
+<span class="fc" id="L383">                    sv087.mkSbt(),</span>
+<span class="fc" id="L384">                    LocalDate.of(1900, 1, 1),</span>
+<span class="fc" id="L385">                    LocalDate.of(1900, 1, 1),</span>
+                    Boolean.FALSE,
+                    gasUsageContractKeyType);
+        }
+<span class="fc" id="L389">        return toResponse();</span>
+    }
+
+    /**
+     * 概要: TG 小売のサービス契約復活を実行する。
+     * 主な仕様:
+     * - `SV-103` の先頭サービス契約を復活対象として組み立てる。
+     * - メーター設置場所関連情報は `SV-103` の全件を総合情報として渡す。
+     * 既知の制約:
+     * - `SV-103.svckyaInfList` は 1 件以上返る前提である。
+     */
+    private ServiceContractRevivalTgRetailOutput executeRevivalBranch(
+            LocalDate trkKnsYmd,
+            ClosingCancelFeasibilityJudgmentEquipmentStatusOutput sv101,
+            ClosingCancelFeasibilityJudgmentRetailInfoOutput sv103) {
+<span class="fc" id="L404">        jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvckyaInf primarySvckya = primarySvckya(sv103);</span>
+<span class="fc" id="L405">        return serviceContractRevivalTgRetail.execute(</span>
+                new SvckyaInf(
+<span class="fc" id="L407">                        primarySvckya.svkyNo(),</span>
+<span class="fc" id="L408">                        primarySvckya.skno(),</span>
+<span class="fc" id="L409">                        primarySvckya.kyttSkno(),</span>
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L415">                        primarySvckya.rkkiSttYmd(),</span>
+<span class="fc" id="L416">                        primarySvckya.rkkiEndYmd(),</span>
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L426">                        primarySvckya.sqtiKiyNo(),</span>
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L433">                        primarySvckya.sziKziKbn(),</span>
+<span class="fc" id="L434">                        primarySvckya.syaKbn(),</span>
+                        null),
+                trkKnsYmd,
+<span class="fc" id="L437">                sv103.svmstkrInfList().stream()</span>
+<span class="fc" id="L438">                        .map(item -&gt; new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvmstkrInf(</span>
+<span class="fc" id="L439">                                item.mtstNo(),</span>
+<span class="fc" id="L440">                                item.svkyNo(),</span>
+<span class="fc" id="L441">                                item.skno(),</span>
+                                null,
+<span class="fc" id="L443">                                item.rkkiEndYmd(),</span>
+                                null))
+<span class="fc" id="L445">                        .toList(),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf(
+<span class="fc" id="L447">                        sv101.gasMtstNo(),</span>
+<span class="fc" id="L448">                        sv101.szcGkkCd(),</span>
+<span class="fc" id="L449">                        sv101.szcMchCd(),</span>
+<span class="fc" id="L450">                        sv101.szcCmazCd()));</span>
+    }
+
+    /**
+     * 概要: SV-061 を実行する。
+     * 主な仕様:
+     * - TSV `SV-061.tsv` の固定コードと `SV-103` / `SV-106` の戻り値を組み合わせる。
+     * - `isrrkrUpdInf` が未指定の場合は null をそのまま引き渡す。
+     * 既知の制約:
+     * - 託送供給依頼事業者コードは東京ガス固定である。
+     */
+    private void executeTransferWorkHistoryCreation(
+            ClosingCancelClosingReportCancelTgRetailRequest request,
+            LocalDate trkKnsYmd,
+            ClosingCancelFeasibilityJudgmentRetailInfoOutput sv103,
+            ServiceContractRevivalTgRetailOutput sv106,
+            ClosingCancelClosingReportCancelTgRetailRequest.IsrrkrUpdInf isrrkrUpdInf) {
+<span class="fc" id="L467">        cancelTransferWorkHistoryCreation.execute(</span>
+                closingProcessingDivision,
+<span class="fc" id="L469">                request.gasMtstNo(),</span>
+                transferWorkHistoryWorkCodeConduit,
+                transferWorkHistoryWorkDetailsCodeConduit,
+                transferWorkHistoryBusinessCodeRetail,
+                transferWorkHistoryWorkDetailCodeRetail,
+                cancelTransferWorkHistoryReportDivision,
+                trkKnsYmd,
+<span class="fc" id="L476">                request.hukkUsrId(),</span>
+<span class="fc" id="L477">                request.hukkUnmKj(),</span>
+<span class="fc" id="L478">                request.rirekiMemo(),</span>
+                tokyoGasBusinessCode,
+                Boolean.FALSE,
+                Boolean.FALSE,
+<span class="fc" id="L482">                Boolean.TRUE.equals(sv106.svkyFkktFlg()),</span>
+<span class="fc" id="L483">                sv103.svmstkrInfList().stream().map(item -&gt; new SuguGmtInf(item.mtstNo())).toList(),</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">                isrrkrUpdInf == null</span>
+<span class="fc" id="L485">                        ? null</span>
+<span class="fc" id="L486">                        : new IsrrkrUpdInf(</span>
+<span class="fc" id="L487">                                isrrkrUpdInf.duknIsrgCd(),</span>
+<span class="fc" id="L488">                                isrrkrUpdInf.duknIsrsCd(),</span>
+<span class="fc" id="L489">                                isrrkrUpdInf.isrrGymCd(),</span>
+<span class="fc" id="L490">                                isrrkrUpdInf.isrrGmssCd()));</span>
+<span class="fc" id="L491">    }</span>
+
+    /**
+     * 概要: SV-100 を実行する。
+     * 主な仕様:
+     * - 支払契約情報とサービス契約情報は `SV-112` / `SV-103` の戻り値から詰め替える。
+     * - 総合フラグは `SV-103.svmstkrInfList` の件数で判定する。
+     * 既知の制約:
+     * - `SV-112.sihakyInf()` が null の場合は支払契約情報も null を渡す。
+     */
+    private void executeBillingCollectionPlatformIntegration(
+            LocalDate trkKnsYmd,
+            ClosingCancelFeasibilityJudgmentRetailInfoOutput sv103,
+            ServiceContractRevivalTgRetailOutput sv106,
+            PaymentContractRevivalOutput sv112) {
+<span class="fc" id="L506">        jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvckyaInf primarySvckya = primarySvckya(sv103);</span>
+<span class="fc" id="L507">        billingCollectionPlatformIntegrationAtClosingCancel.execute(</span>
+<span class="fc" id="L508">                sv106.svkyFkktFlg(),</span>
+<span class="fc" id="L509">                sv106.sihakyFkktFlg(),</span>
+<span class="pc bpc" id="L510" title="1 of 2 branches missed.">                sv112.sihakyInf() == null</span>
+<span class="nc" id="L511">                        ? null</span>
+<span class="fc" id="L512">                        : new BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf(</span>
+<span class="fc" id="L513">                                sv112.sihakyInf().sihKiyNo(),</span>
+<span class="fc" id="L514">                                sv112.sihakyInf().sikSvcShbt(),</span>
+<span class="fc" id="L515">                                sv112.sihakyInf().sikKrno()),</span>
+                new BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf(
+<span class="fc" id="L517">                        primarySvckya.svkyNo(),</span>
+<span class="fc" id="L518">                        primarySvckya.skno(),</span>
+<span class="fc" id="L519">                        primarySvckya.rkkiSttYmd(),</span>
+<span class="fc" id="L520">                        primarySvckya.rkkiEndYmd(),</span>
+<span class="fc" id="L521">                        primarySvckya.sqtiKiyNo(),</span>
+<span class="fc" id="L522">                        primarySvckya.kkysSisnJtkb()),</span>
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">                sv103.svmstkrInfList().size() &gt; 1,</span>
+                trkKnsYmd,
+                transferWorkHistoryBusinessCodeRetail);
+<span class="fc" id="L526">    }</span>
+
+    /**
+     * 概要: HSEFL を削除し、0 件時はデータ不整合例外へ変換する。
+     * 主な仕様:
+     * - `SV-096` の HSEFL 情報をそのまま削除キーへ使う。
+     * - 削除件数 0 件時は DA 名と入力 JSON を付与して送出する。
+     * 既知の制約:
+     * - 排他制御順序番号は `Long` から `int` へ変換する。
+     */
+    private void deleteHseflOrThrow(HseflInf hseflInf) {
+<span class="fc" id="L537">        int deleted = hseflDataAccess.deleteByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(</span>
+<span class="fc" id="L538">                hseflInf.gasMtstNo(),</span>
+<span class="fc" id="L539">                hseflInf.hssgYmd(),</span>
+<span class="fc" id="L540">                hseflInf.hesnHukkYmd(),</span>
+<span class="fc" id="L541">                Math.toIntExact(hseflInf.regTsno()),</span>
+<span class="fc" id="L542">                hseflInf.recUpdJnjNo());</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">        if (deleted == 0) {</span>
+<span class="fc" id="L544">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L545">                    hseflDataAccess.tableName(),</span>
+                    HseflDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L547">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L549">                            .put(&quot;gasMtstNo&quot;, hseflInf.gasMtstNo())</span>
+<span class="fc" id="L550">                            .put(&quot;hssgYmd&quot;, hseflInf.hssgYmd())</span>
+<span class="fc" id="L551">                            .put(&quot;hesnHukkYmd&quot;, hseflInf.hesnHukkYmd())</span>
+<span class="fc" id="L552">                            .put(&quot;regTsno&quot;, hseflInf.regTsno())</span>
+<span class="fc" id="L553">                            .put(&quot;recUpdJnjNo&quot;, hseflInf.recUpdJnjNo()));</span>
+        }
+<span class="fc" id="L555">    }</span>
+
+    /**
+     * 概要: KTMGMKK を削除し、0 件時はデータ不整合例外へ変換する。
+     * 主な仕様:
+     * - `SV-099` の戻り値を削除キーへ利用する。
+     * - 監査ユーザーは null のまま既存 DA 呼出し規約に合わせる。
+     * 既知の制約:
+     * - 取消対象検針年月日は `LocalDate` のまま DA へ渡す。
+     */
+    private void deleteKtmgmkkOrThrow(ClosingCancelFeasibilityJudgmentMeterReadingDataOutput output) {
+<span class="fc" id="L566">        int deleted = ktmgmkkDataAccess.deleteByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L567">                output.gasMtstNo(),</span>
+<span class="fc" id="L568">                output.knsYmd(),</span>
+<span class="fc" id="L569">                output.knsKkaTsno(),</span>
+                null);
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        if (deleted == 0) {</span>
+<span class="fc" id="L572">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L573">                    ktmgmkkDataAccess.tableName(),</span>
+<span class="fc" id="L574">                    KtmgmkkDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L576">                            .put(&quot;gasMtstNo&quot;, output.gasMtstNo())</span>
+<span class="fc" id="L577">                            .put(&quot;knsYmd&quot;, output.knsYmd())</span>
+<span class="fc" id="L578">                            .put(&quot;knsKkaTsno&quot;, output.knsKkaTsno()));</span>
+        }
+<span class="fc" id="L580">    }</span>
+
+    /**
+     * 概要: NW 箇所名を検索する。
+     * 主な仕様:
+     * - `DA-135-R001` の検索キーは request の NW 箇所コードと取消対象検針年月日を使う。
+     * - 該当なしの場合は null を返し、SV-092 へそのまま連携する。
+     * 既知の制約:
+     * - 例外変換は行わず Optional の欠落を null に落とす。
+     */
+    private String findNwkName(String nwkCd, LocalDate trkKnsYmd) {
+<span class="fc" id="L591">        return nwkseigDataAccess.findByNwkCdAndTkysYmdAndTyenYmd(nwkCd, trkKnsYmd)</span>
+<span class="fc" id="L592">                .map(record -&gt; record.nwknKj())</span>
+<span class="fc" id="L593">                .orElse(null);</span>
+    }
+
+    /**
+     * 概要: 正常系レスポンス DTO へ詰め替える。
+     * 主な仕様:
+     * - `RequestContext` の相関IDを返す。
+     * - 正常時のエラー系フィールドは null とする。
+     * 既知の制約:
+     * - `RequestContext` に相関ID未設定の場合は実装不整合として例外化する。
+     */
+    private ClosingCancelClosingReportCancelTgRetailResponse toResponse() {
+<span class="fc" id="L605">        return new ClosingCancelClosingReportCancelTgRetailResponse(</span>
+<span class="fc" id="L606">                requestContext.getCorrelationId()</span>
+<span class="pc" id="L607">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;correlationId is not set&quot;)),</span>
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 概要: `SV-103` の先頭サービス契約情報を返す。
+     * 主な仕様:
+     * - TG 小売の後続処理で使う代表契約情報として先頭要素を採用する。
+     * - `SV-100` / `SV-106` / `SV-112` の入力変換で共有利用する。
+     * 既知の制約:
+     * - 空リストの場合の防御は設けず、呼出元前提に依存する。
+     */
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvckyaInf primarySvckya(
+            ClosingCancelFeasibilityJudgmentRetailInfoOutput sv103) {
+<span class="fc" id="L623">        return sv103.svckyaInfList().get(0);</span>
+    }
+
+    /**
+     * 概要: CIRIUS 監査コンテキストを生成する。
+     * 主な仕様:
+     * - サービスユーザーと起点機能 ID を監査項目へ設定する。
+     * - 起点機能 ID は `RequestContext.hukkSysShbt` と定数マスタから逆引きする。
+     * 既知の制約:
+     * - `RequestContext.hukkSysShbt` 未設定時は例外となる。
+     */
+    private AuditContext ciriusAuditContext() {
+<span class="nc" id="L635">        return AuditContext.of(SERVICE_USER_ID, decodeOriginFunctionId());</span>
+    }
+
+    /**
+     * 概要: 起点機能 ID を解決する。
+     * 主な仕様:
+     * - `hukkSysShbt` をキーに開閉栓定数から名称を取得する。
+     * - 監査系 DA 呼出しで共通利用する。
+     * 既知の制約:
+     * - `hukkSysShbt` が未設定の場合は IllegalStateException を送出する。
+     */
+    private String decodeOriginFunctionId() {
+<span class="nc" id="L647">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="nc" id="L648">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="nc" id="L649">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

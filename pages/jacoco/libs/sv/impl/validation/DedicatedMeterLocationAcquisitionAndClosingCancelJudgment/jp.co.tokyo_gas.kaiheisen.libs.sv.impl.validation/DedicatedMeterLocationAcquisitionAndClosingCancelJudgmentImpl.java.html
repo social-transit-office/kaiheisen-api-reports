@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-dedicatedmeterlocationacquisitionandclosingcanceljudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentImpl.java</span></div><h1>DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.DedicatedMeterLocationAcquisitionAndClosingCancelJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf;
+
+/**
+ * SV-102 閉栓取消時元メーター情報取得および開閉栓状態チェックの実装クラス。
+ */
+public final class DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentImpl
+        implements DedicatedMeterLocationAcquisitionAndClosingCancelJudgment {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String openingValveStatus;
+
+    /**
+     * 判定に必要な依存性と CIRIUS 定数を解決して初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DataAccess
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentImpl(
+            final GmtsetdDataAccess gmtsetdDataAccess,
+<span class="fc" id="L37">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L38">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L39">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L40">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L41">        this.dedicatedGasMeterStatus =</span>
+<span class="fc" id="L42">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L46">        this.openingValveStatus =</span>
+<span class="fc" id="L47">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * 元メーターの開閉栓状態を取得し、閉栓取消対象かを判定する。
+     *
+     * @param trkKnsYmd 取消対象検針年月日
+     * @param gmtsetdInf ガスメーター設置場所＜導管＞情報
+     */
+    @Override
+    public void execute(
+            final LocalDate trkKnsYmd,
+            final DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf gmtsetdInf) {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (!dedicatedGasMeterStatus.equals(gmtsetdInf.ckrtGmscJtkb())) {</span>
+<span class="fc" id="L64">            return;</span>
+        }
+
+<span class="fc" id="L67">        GmtsetdRecord originalMeter =</span>
+                gmtsetdDataAccess
+<span class="fc" id="L69">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(gmtsetdInf.mtgMtstNo(), trkKnsYmd)</span>
+<span class="fc" id="L70">                        .orElseThrow(</span>
+                                () -&gt;
+<span class="fc" id="L72">                                        DataInconsistencySupport.create(</span>
+<span class="fc" id="L73">                                                gmtsetdDataAccess.tableName(),</span>
+                                                GmtsetdDataAccess.CallSpecs
+                                                        .FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD
+<span class="fc" id="L76">                                                        .identifier(),</span>
+                                                new FlatJsonBuilder()
+<span class="fc" id="L78">                                                        .put(&quot;gasMtstNo&quot;, gmtsetdInf.mtgMtstNo())</span>
+<span class="fc" id="L79">                                                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)));</span>
+
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (!openingValveStatus.equals(originalMeter.gmtKhsJtkb())) {</span>
+<span class="fc" id="L82">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000053);</span>
+        }
+<span class="fc" id="L84">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelClosingErrorFollowCancelOtherRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-cancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_other</a> &gt; <span class="el_source">ClosingCancelClosingErrorFollowCancelOtherRetailResource.java</span></div><h1>ClosingCancelClosingErrorFollowCancelOtherRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_other;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_other.ClosingCancelClosingErrorFollowCancelOtherRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_other.ClosingCancelClosingErrorFollowCancelOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_other.ClosingCancelClosingErrorFollowCancelOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.GasMeterLocationInfoUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractRevivalOtherRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.transportservicecontractrevivalotherretail.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.transportservicecontractrevivalotherretail.model.TkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.transportservicecontractrevivalotherretail.model.TskgmstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancelTransferWorkHistoryCreation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CustomerServiceHistoryApiIntegration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingData;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingDataOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentTransportContractStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentTransportContractStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.DedicatedMeterLocationAcquisitionAndClosingCancelJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.HseflInf;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-102 閉栓取消処理-閉栓エラーフォロー取消-小売-他小売 API のリソース実装。
+ */
+@Path(ClosingCancelClosingErrorFollowCancelOtherRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-102&quot;, name = &quot;閉栓取消処理-閉栓エラーフォロー取消-小売-他小売 API&quot;)
+@Tag(name = &quot;閉栓取消処理-閉栓エラーフォロー取消-小売-他小売&quot;, description = &quot;MA-102&quot;)
+public class ClosingCancelClosingErrorFollowCancelOtherRetailResource
+        extends BaseResource&lt;ClosingCancelClosingErrorFollowCancelOtherRetailRequest&gt; {
+
+    static final String SERVICE_USER_ID = &quot;KHSM102&quot;;
+
+    static final String SHR_KBN_CANCEL = &quot;1&quot;;
+
+    private final ClosingCancelFeasibilityJudgmentFollowStatus closingCancelFeasibilityJudgmentFollowStatus;
+
+    private final ClosingCancelFeasibilityJudgmentEquipmentStatus closingCancelFeasibilityJudgmentEquipmentStatus;
+
+    private final DedicatedMeterLocationAcquisitionAndClosingCancelJudgment dedicatedMeterLocationAcquisitionAndClosingCancelJudgment;
+
+    private final ClosingCancelFeasibilityJudgmentMeterReadingData closingCancelFeasibilityJudgmentMeterReadingData;
+
+    private final ClosingCancelFeasibilityJudgmentTransportContractStatus closingCancelFeasibilityJudgmentTransportContractStatus;
+
+    private final GasMeterLocationInfoUpdateForRevival gasMeterLocationInfoUpdateForRevival;
+
+    private final TransportServiceContractRevivalOtherRetail transportServiceContractRevivalOtherRetail;
+
+    private final CancelTransferWorkHistoryCreation cancelTransferWorkHistoryCreation;
+
+    private final CustomerServiceHistoryApiIntegration customerServiceHistoryApiIntegration;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String provisionalCancellationStatus;
+
+    private final String notYetStartedFollowStatus;
+
+    private final String cancelTransferWorkHistoryProcessingDivision;
+
+    private final String closingErrorFollowUpConduitWorkCode;
+
+    private final String closingErrorFollowUpConduitWorkDetailCode;
+
+    private final String closingErrorFollowUpRetailWorkCode;
+
+    private final String closingErrorFollowUpRetailWorkDetailCode;
+
+    private final String onlineErrorFollowRoute;
+
+    private final String closingWorkCancellationDetailCode;
+
+    private final String customerServiceHistoryApiIntegrationProcessingDivision;
+
+    /**
+     * MA-102 Resource を生成する。
+     */
+    @Inject
+    public ClosingCancelClosingErrorFollowCancelOtherRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            ClosingCancelFeasibilityJudgmentFollowStatus closingCancelFeasibilityJudgmentFollowStatus,
+            ClosingCancelFeasibilityJudgmentEquipmentStatus closingCancelFeasibilityJudgmentEquipmentStatus,
+            DedicatedMeterLocationAcquisitionAndClosingCancelJudgment dedicatedMeterLocationAcquisitionAndClosingCancelJudgment,
+            ClosingCancelFeasibilityJudgmentMeterReadingData closingCancelFeasibilityJudgmentMeterReadingData,
+            ClosingCancelFeasibilityJudgmentTransportContractStatus closingCancelFeasibilityJudgmentTransportContractStatus,
+            GasMeterLocationInfoUpdateForRevival gasMeterLocationInfoUpdateForRevival,
+            TransportServiceContractRevivalOtherRetail transportServiceContractRevivalOtherRetail,
+            CancelTransferWorkHistoryCreation cancelTransferWorkHistoryCreation,
+            CustomerServiceHistoryApiIntegration customerServiceHistoryApiIntegration,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            TaksmtrDataAccess taksmtrDataAccess,
+            HseflDataAccess hseflDataAccess,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L151">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L152">        this.closingCancelFeasibilityJudgmentFollowStatus = closingCancelFeasibilityJudgmentFollowStatus;</span>
+<span class="fc" id="L153">        this.closingCancelFeasibilityJudgmentEquipmentStatus = closingCancelFeasibilityJudgmentEquipmentStatus;</span>
+<span class="fc" id="L154">        this.dedicatedMeterLocationAcquisitionAndClosingCancelJudgment =</span>
+                dedicatedMeterLocationAcquisitionAndClosingCancelJudgment;
+<span class="fc" id="L156">        this.closingCancelFeasibilityJudgmentMeterReadingData = closingCancelFeasibilityJudgmentMeterReadingData;</span>
+<span class="fc" id="L157">        this.closingCancelFeasibilityJudgmentTransportContractStatus =</span>
+                closingCancelFeasibilityJudgmentTransportContractStatus;
+<span class="fc" id="L159">        this.gasMeterLocationInfoUpdateForRevival = gasMeterLocationInfoUpdateForRevival;</span>
+<span class="fc" id="L160">        this.transportServiceContractRevivalOtherRetail = transportServiceContractRevivalOtherRetail;</span>
+<span class="fc" id="L161">        this.cancelTransferWorkHistoryCreation = cancelTransferWorkHistoryCreation;</span>
+<span class="fc" id="L162">        this.customerServiceHistoryApiIntegration = customerServiceHistoryApiIntegration;</span>
+<span class="fc" id="L163">        this.ktmgmkkDataAccess = ktmgmkkDataAccess;</span>
+<span class="fc" id="L164">        this.taksmtrDataAccess = taksmtrDataAccess;</span>
+<span class="fc" id="L165">        this.hseflDataAccess = hseflDataAccess;</span>
+<span class="fc" id="L166">        this.kaiheisenConstantService = kaiheisenConstantService;</span>
+<span class="fc" id="L167">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L168">                java.util.Objects.requireNonNull(</span>
+                        kaiheisenConstantService,
+                        &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L171">        this.provisionalCancellationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.PROVISIONAL_CANCELLATION);
+<span class="fc" id="L175">        this.notYetStartedFollowStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L179">        this.cancelTransferWorkHistoryProcessingDivision =</span>
+<span class="fc" id="L180">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen
+                                .CancelTransferWorkHistoryCreationProcessingDivision.TYPE,
+                        ConstantLookupKeys.Kaiheisen
+                                .CancelTransferWorkHistoryCreationProcessingDivision.CLOSING_PROCESS);
+<span class="fc" id="L186">        this.closingErrorFollowUpConduitWorkCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.CLOSURE_ERROR_FOLLOW_UP_CCJG08);
+<span class="fc" id="L190">        this.closingErrorFollowUpConduitWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.CANCEL_CCJG0803);
+<span class="fc" id="L194">        this.closingErrorFollowUpRetailWorkCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSURE_ERROR_FOLLOW_UP_CCBG68);
+<span class="fc" id="L198">        this.closingErrorFollowUpRetailWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CANCELLATION_CLOSED_CCBG6804);
+<span class="fc" id="L202">        this.onlineErrorFollowRoute = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.ONLINE_REPORTING_ERROR_FOLLOW_UP);
+<span class="fc" id="L206">        this.closingWorkCancellationDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.TYPE,
+                ConstantLookupKeys.Cirius.CustomerServiceHistoryWorkDetailsCode.CANCELLATION_OF_WORK);
+<span class="fc" id="L210">        this.customerServiceHistoryApiIntegrationProcessingDivision =</span>
+<span class="fc" id="L211">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen
+                                .CustomerServiceHistoryApiIntegrationProcessingDivision.TYPE,
+                        ConstantLookupKeys.Kaiheisen
+                                .CustomerServiceHistoryApiIntegrationProcessingDivision.CLOSING_PROCESS);
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * MA-102 を実行する。
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(summary = &quot;閉栓取消処理-閉栓エラーフォロー取消-小売-他小売&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常終了&quot;,
+            content = @Content(schema = @Schema(implementation = ClosingCancelClosingErrorFollowCancelOtherRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正&quot;,
+            content = @Content(schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;システムエラー&quot;,
+            content = @Content(schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingCancelClosingErrorFollowCancelOtherRetailResponse endpoint(
+            @RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = ClosingCancelClosingErrorFollowCancelOtherRetailRequest.class)))
+            ClosingCancelClosingErrorFollowCancelOtherRetailRequest request) {
+<span class="fc" id="L241">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    /**
+     * MA-102 の実処理を実行する。
+     */
+    public ClosingCancelClosingErrorFollowCancelOtherRetailResponse handle(
+            ClosingCancelClosingErrorFollowCancelOtherRetailRequest request) {
+<span class="fc" id="L249">        LocalDate trkKnsYmd = Rfc3339LocalDateParser.parse(request.trkKnsYmd().trim());</span>
+
+<span class="fc" id="L251">        ClosingCancelFeasibilityJudgmentFollowStatusOutput followStatusOutput =</span>
+<span class="fc" id="L252">                closingCancelFeasibilityJudgmentFollowStatus.execute(</span>
+<span class="fc" id="L253">                        request.trkIsrrGymCd(),</span>
+<span class="fc" id="L254">                        request.gasMtstNo(),</span>
+                        trkKnsYmd,
+                        SHR_KBN_CANCEL);
+
+<span class="fc" id="L258">        ClosingCancelFeasibilityJudgmentEquipmentStatusOutput equipmentStatusOutput =</span>
+<span class="fc" id="L259">                closingCancelFeasibilityJudgmentEquipmentStatus.execute(</span>
+<span class="fc" id="L260">                        request.gasMtstNo(),</span>
+                        trkKnsYmd);
+
+<span class="fc" id="L263">        dedicatedMeterLocationAcquisitionAndClosingCancelJudgment.execute(</span>
+                trkKnsYmd,
+                new DedicatedMeterLocationAcquisitionAndClosingCancelJudgmentGmtsetdInf(
+<span class="fc" id="L266">                        equipmentStatusOutput.ckrtGmscJtkb(),</span>
+<span class="fc" id="L267">                        equipmentStatusOutput.mtgMtstNo()));</span>
+
+<span class="fc" id="L269">        ClosingCancelFeasibilityJudgmentMeterReadingDataOutput meterReadingDataOutput =</span>
+<span class="fc" id="L270">                closingCancelFeasibilityJudgmentMeterReadingData.execute(</span>
+<span class="fc" id="L271">                        request.isrrkrUpdInf().duknIsrsCd(),</span>
+<span class="fc" id="L272">                        request.gasMtstNo(),</span>
+                        trkKnsYmd);
+
+<span class="fc" id="L275">        ClosingCancelFeasibilityJudgmentTransportContractStatusOutput transportContractStatusOutput =</span>
+<span class="fc" id="L276">                closingCancelFeasibilityJudgmentTransportContractStatus.execute(request.gasMtstNo());</span>
+
+<span class="fc" id="L278">        gasMeterLocationInfoUpdateForRevival.execute(</span>
+<span class="fc" id="L279">                request.gasMtstNo(),</span>
+<span class="fc" id="L280">                equipmentStatusOutput.kasYmd(),</span>
+<span class="fc" id="L281">                equipmentStatusOutput.hesnYmd());</span>
+
+<span class="fc" id="L283">        transportServiceContractRevivalOtherRetail.execute(</span>
+                new GmtsetdInf(
+<span class="fc" id="L285">                        equipmentStatusOutput.gasMtstNo(),</span>
+<span class="fc" id="L286">                        equipmentStatusOutput.szcGkkCd(),</span>
+<span class="fc" id="L287">                        equipmentStatusOutput.szcMchCd(),</span>
+<span class="fc" id="L288">                        equipmentStatusOutput.szcCmazCd(),</span>
+<span class="fc" id="L289">                        equipmentStatusOutput.ckrtGmscJtkb()),</span>
+                new TkssvkyInf(
+<span class="fc" id="L291">                        request.tkssvkyInf().tksuSvkyNo(),</span>
+<span class="fc" id="L292">                        request.tkssvkyInf().skno()),</span>
+                new TskgmstInf(
+<span class="fc" id="L294">                        request.gasMtstNo(),</span>
+<span class="fc" id="L295">                        request.tskgmstInf().tksuSvkyNo(),</span>
+<span class="fc" id="L296">                        request.tskgmstInf().skno()),</span>
+                trkKnsYmd);
+
+<span class="fc" id="L299">        deleteKtmgmkkOrThrow(meterReadingDataOutput);</span>
+<span class="fc" id="L300">        updateTaksmtrOrThrow(transportContractStatusOutput);</span>
+<span class="fc" id="L301">        updateHseflOrThrow(followStatusOutput);</span>
+
+<span class="fc" id="L303">        cancelTransferWorkHistoryCreation.execute(</span>
+                cancelTransferWorkHistoryProcessingDivision,
+<span class="fc" id="L305">                request.gasMtstNo(),</span>
+                closingErrorFollowUpConduitWorkCode,
+                closingErrorFollowUpConduitWorkDetailCode,
+                closingErrorFollowUpRetailWorkCode,
+                closingErrorFollowUpRetailWorkDetailCode,
+                onlineErrorFollowRoute,
+                trkKnsYmd,
+<span class="fc" id="L312">                request.hukkUsrId(),</span>
+<span class="fc" id="L313">                request.hukkUnmKj(),</span>
+<span class="fc" id="L314">                request.rirekiMemo(),</span>
+                null,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                null,
+                new IsrrkrUpdInf(
+<span class="fc" id="L321">                        request.isrrkrUpdInf().duknIsrgCd(),</span>
+<span class="fc" id="L322">                        request.isrrkrUpdInf().duknIsrsCd(),</span>
+<span class="fc" id="L323">                        request.isrrkrUpdInf().isrrGymCd(),</span>
+<span class="fc" id="L324">                        request.isrrkrUpdInf().isrrGmssCd()));</span>
+
+<span class="fc" id="L326">        HseflInf hseflInf = followStatusOutput.hseflInf();</span>
+<span class="fc" id="L327">        customerServiceHistoryApiIntegration.execute(</span>
+<span class="fc" id="L328">                hseflInf.syoKyoTrno(),</span>
+<span class="fc" id="L329">                hseflInf.sgytSinNo(),</span>
+<span class="fc" id="L330">                hseflInf.sgytSinnKj(),</span>
+<span class="fc" id="L331">                hseflInf.hssgNwkCd(),</span>
+<span class="fc" id="L332">                request.gasMtstNo(),</span>
+                closingWorkCancellationDetailCode,
+                customerServiceHistoryApiIntegrationProcessingDivision);
+
+<span class="fc" id="L336">        return new ClosingCancelClosingErrorFollowCancelOtherRetailResponse(</span>
+<span class="fc" id="L337">                requestContext.getCorrelationId().orElseThrow(</span>
+<span class="nc" id="L338">                        () -&gt; new IllegalStateException(&quot;correlationId is not set&quot;)),</span>
+                null,
+                null,
+                null);
+    }
+
+    private void deleteKtmgmkkOrThrow(ClosingCancelFeasibilityJudgmentMeterReadingDataOutput output) {
+<span class="fc" id="L345">        int deleted = ktmgmkkDataAccess.deleteByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L346">                output.gasMtstNo(),</span>
+<span class="fc" id="L347">                output.knsYmd(),</span>
+<span class="fc" id="L348">                output.knsKkaTsno(),</span>
+                null);
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        if (deleted == 0) {</span>
+<span class="fc" id="L351">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L352">                    ktmgmkkDataAccess.tableName(),</span>
+<span class="fc" id="L353">                    KtmgmkkDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L355">                            .put(&quot;gasMtstNo&quot;, output.gasMtstNo())</span>
+<span class="fc" id="L356">                            .put(&quot;knsYmd&quot;, output.knsYmd())</span>
+<span class="fc" id="L357">                            .put(&quot;knsKkaTsno&quot;, output.knsKkaTsno()));</span>
+        }
+<span class="fc" id="L359">    }</span>
+
+    private void updateTaksmtrOrThrow(ClosingCancelFeasibilityJudgmentTransportContractStatusOutput output) {
+<span class="fc" id="L362">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L363">        int updated = taksmtrDataAccess.updateByTakskyNoAndHkkmItiNoAndGmtSetNo(</span>
+                new TaksmtrWriteRecord(
+                        provisionalCancellationStatus,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L386">                Set.of(TaksmtrColumn.TAKS_KY_JT_CD),</span>
+                new TaksmtrUpdateKey(
+<span class="fc" id="L388">                        output.taksmtrInf().tkykNo(),</span>
+<span class="fc" id="L389">                        output.taksmtrInf().hkicNo(),</span>
+<span class="fc" id="L390">                        output.taksmtrInf().gmtSetNo(),</span>
+                        null),
+<span class="fc" id="L392">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (updated == 0) {</span>
+<span class="nc" id="L394">            throw DataInconsistencySupport.create(</span>
+<span class="nc" id="L395">                    taksmtrDataAccess.tableName(),</span>
+<span class="nc" id="L396">                    TaksmtrDataAccess.CallSpecs.UPDATE_BY_TAKSKY_NO_AND_HKKM_ITI_NO_AND_GMT_SET_NO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="nc" id="L398">                            .put(&quot;takskyNo&quot;, output.taksmtrInf().tkykNo())</span>
+<span class="nc" id="L399">                            .put(&quot;hkkmItiNo&quot;, output.taksmtrInf().hkicNo())</span>
+<span class="nc" id="L400">                            .put(&quot;gmtSetNo&quot;, output.taksmtrInf().gmtSetNo())</span>
+<span class="nc" id="L401">                            .put(&quot;taksKyJtCd&quot;, provisionalCancellationStatus)</span>
+<span class="nc" id="L402">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="nc" id="L403">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * HSEFL を更新し、更新件数が 0 件なら例外化する。
+     */
+    private void updateHseflOrThrow(ClosingCancelFeasibilityJudgmentFollowStatusOutput output) {
+<span class="fc" id="L411">        HseflInf hseflInf = output.hseflInf();</span>
+<span class="fc" id="L412">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L413">        int updated = hseflDataAccess.updateByFlttCktkCdAndGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(</span>
+                new HseflWriteRecord(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        notYetStartedFollowStatus,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L449">                Set.of(HseflColumn.FLW_ST_CD, HseflColumn.FLTK_YMD),</span>
+                new HseflU002UpdateKey(
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">                        hseflInf == null ? null : hseflInf.flttCktkCd(),</span>
+<span class="pc bpc" id="L452" title="1 of 2 branches missed.">                        hseflInf == null ? null : hseflInf.gasMtstNo(),</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">                        hseflInf == null ? null : hseflInf.hssgYmd(),</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">                        hseflInf == null ? null : hseflInf.hesnHukkYmd(),</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">                        hseflInf == null ? null : Math.toIntExact(hseflInf.regTsno()),</span>
+                        null),
+<span class="fc" id="L457">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">        if (updated == 0) {</span>
+<span class="nc" id="L459">            throw DataInconsistencySupport.create(</span>
+<span class="nc" id="L460">                    hseflDataAccess.tableName(),</span>
+                    HseflDataAccess.CallSpecs
+                            .UPDATE_BY_FLTT_CKTK_CD_AND_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="nc" id="L463">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="nc" id="L465">                            .put(&quot;flttCktkCd&quot;, hseflInf.flttCktkCd())</span>
+<span class="nc" id="L466">                            .put(&quot;gasMtstNo&quot;, hseflInf.gasMtstNo())</span>
+<span class="nc" id="L467">                            .put(&quot;hssgYmd&quot;, hseflInf.hssgYmd())</span>
+<span class="nc" id="L468">                            .put(&quot;hesnHukkYmd&quot;, hseflInf.hesnHukkYmd())</span>
+<span class="nc" id="L469">                            .put(&quot;regTsno&quot;, hseflInf.regTsno())</span>
+<span class="nc" id="L470">                            .put(&quot;flwStCd&quot;, notYetStartedFollowStatus)</span>
+<span class="nc" id="L471">                            .put(&quot;fltkYmd&quot;, null)</span>
+<span class="nc" id="L472">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="nc" id="L473">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L475">    }</span>
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L478">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L479">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+        try {
+<span class="fc" id="L481">            String decoded = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                    ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                    hukkSysShbt);
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">            if (decoded == null) {</span>
+<span class="nc" id="L485">                throw new ConstantDefinitionNotFoundException(</span>
+                        &quot;KaiheisenConstantService&quot;,
+                        &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE + &quot;, value=&quot; + hukkSysShbt);
+            }
+<span class="fc" id="L489">            return decoded;</span>
+<span class="nc" id="L490">        } catch (ConstantDefinitionNotFoundException ex) {</span>
+<span class="nc" id="L491">            throw new KaiheisenException(&quot;報告システム種別の定数定義が見つかりません&quot;, ex);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

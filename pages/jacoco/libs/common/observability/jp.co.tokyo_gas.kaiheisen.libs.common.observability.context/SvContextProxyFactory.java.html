@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SvContextProxyFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-common-observability</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.observability.context</a> &gt; <span class="el_source">SvContextProxyFactory.java</span></div><h1>SvContextProxyFactory.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.observability.context;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.Proxy;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogRequestBodyMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.core.Service;
+
+/**
+ * SV 実行中の識別子を RequestContext へ関連付ける共通プロキシファクトリです.
+ */
+@ApplicationScoped
+public final class SvContextProxyFactory {
+
+    /** 開始時のイベント名. */
+    private static final String SERVICE_STARTED_EVENT = &quot;service.started&quot;;
+
+    /** 開始時の要約. */
+    private static final String SERVICE_STARTED_SUMMARY =
+            &quot;Service execution started.&quot;;
+
+    /** Successful terminal event name. */
+    private static final String SERVICE_COMPLETED_EVENT = &quot;service.completed&quot;;
+
+    /** Successful terminal event summary. */
+    private static final String SERVICE_COMPLETED_SUMMARY =
+            &quot;Service execution completed.&quot;;
+
+    /** Failed terminal event name. */
+    private static final String SERVICE_FAILED_EVENT = &quot;service.failed&quot;;
+
+    /** Failed terminal event summary. */
+    private static final String SERVICE_FAILED_SUMMARY =
+            &quot;Service execution failed.&quot;;
+
+    /** 機能ID属性名. */
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 構造化ロガー. */
+    private final StructuredLogger logger;
+
+    /**
+     * コンストラクタ.
+     *
+     * @param currentRequestContext リクエストコンテキスト
+     */
+    @Inject
+    public SvContextProxyFactory(final RequestContext currentRequestContext) {
+<span class="nc" id="L66">        this(</span>
+                currentRequestContext,
+                new JbossStructuredLogger(SvContextProxyFactory.class));
+<span class="nc" id="L69">    }</span>
+
+    /**
+     * テスト用にロガーを差し替えて生成します.
+     *
+     * @param currentRequestContext リクエストコンテキスト
+     * @param structuredLogger 構造化ロガー
+     */
+    SvContextProxyFactory(
+            final RequestContext currentRequestContext,
+<span class="fc" id="L79">            final StructuredLogger structuredLogger) {</span>
+<span class="fc" id="L80">        this.requestContext = Objects.requireNonNull(</span>
+                currentRequestContext,
+                &quot;requestContext&quot;);
+<span class="fc" id="L83">        this.logger = Objects.requireNonNull(structuredLogger, &quot;logger&quot;);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * SV インターフェースに RequestContext 連携用のプロキシを付与します.
+     *
+     * @param &lt;T&gt; SV 型
+     * @param serviceType SV インターフェース型
+     * @param delegate 実体
+     * @return 必要に応じてラップされた SV
+     */
+    public &lt;T&gt; T wrap(final Class&lt;T&gt; serviceType, final T delegate) {
+<span class="fc" id="L95">        Objects.requireNonNull(serviceType, &quot;serviceType&quot;);</span>
+<span class="fc" id="L96">        Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+
+<span class="fc" id="L98">        Service service = serviceType.getAnnotation(Service.class);</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        if (service == null || !serviceType.isInterface()) {</span>
+<span class="nc" id="L100">            return delegate;</span>
+        }
+
+<span class="fc" id="L103">        InvocationHandler handler = new ServiceInvocationHandler&lt;&gt;(</span>
+                delegate,
+                requestContext,
+                logger,
+                service);
+<span class="fc" id="L108">        return serviceType.cast(Proxy.newProxyInstance(</span>
+<span class="fc" id="L109">                serviceType.getClassLoader(),</span>
+                new Class&lt;?&gt;[] {serviceType},
+                handler));
+    }
+
+    private static final class ServiceInvocationHandler&lt;T&gt;
+            implements InvocationHandler {
+
+        /** 実処理委譲先. */
+        private final T delegate;
+
+        /** リクエストコンテキスト. */
+        private final RequestContext requestContext;
+
+        /** 構造化ロガー. */
+        private final StructuredLogger logger;
+
+        /** サービス定義メタ情報. */
+        private final Service service;
+
+        private ServiceInvocationHandler(
+                final T currentDelegate,
+                final RequestContext currentRequestContext,
+                final StructuredLogger structuredLogger,
+<span class="fc" id="L133">                final Service currentService) {</span>
+<span class="fc" id="L134">            this.delegate = currentDelegate;</span>
+<span class="fc" id="L135">            this.requestContext = currentRequestContext;</span>
+<span class="fc" id="L136">            this.logger = structuredLogger;</span>
+<span class="fc" id="L137">            this.service = currentService;</span>
+<span class="fc" id="L138">        }</span>
+
+        @Override
+        public Object invoke(
+                final Object proxy,
+                final Method method,
+                final Object[] args) throws Throwable {
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if (method.getDeclaringClass() == Object.class) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                if (!method.canAccess(delegate)) {</span>
+<span class="nc" id="L147">                    method.setAccessible(true);</span>
+                }
+<span class="nc" id="L149">                return method.invoke(delegate, args);</span>
+            }
+<span class="fc" id="L151">            Objects.requireNonNull(proxy, &quot;proxy&quot;);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (!method.canAccess(delegate)) {</span>
+<span class="nc" id="L153">                method.setAccessible(true);</span>
+            }
+            boolean terminalObservabilityEnabled =
+<span class="fc" id="L156">                    PerformanceObservabilitySettings.isTerminalEnabled();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            Long invocationSequence = terminalObservabilityEnabled</span>
+<span class="fc" id="L158">                    ? nextServiceInvocationSequence()</span>
+<span class="fc" id="L159">                    : null;</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">            boolean terminalMeasurementEnabled =</span>
+                    terminalObservabilityEnabled &amp;&amp; invocationSequence != null;
+<span class="fc" id="L162">            long startedAtNanos = System.nanoTime();</span>
+<span class="fc" id="L163">            requestContext.pushService(service.identifier(), service.name());</span>
+            try {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                if (terminalObservabilityEnabled) {</span>
+<span class="fc" id="L166">                    safeLogServiceStarted(method, args, invocationSequence);</span>
+                } else {
+<span class="fc" id="L168">                    logServiceStarted(method, args, invocationSequence);</span>
+                }
+<span class="fc" id="L170">                Object result = method.invoke(delegate, args);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L172">                    logServiceTerminal(</span>
+                            SERVICE_COMPLETED_EVENT,
+                            SERVICE_COMPLETED_SUMMARY,
+                            invocationSequence,
+                            startedAtNanos);
+                }
+<span class="fc" id="L178">                return result;</span>
+<span class="fc" id="L179">            } catch (InvocationTargetException ex) {</span>
+<span class="fc" id="L180">                Throwable cause = ex.getCause();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L182">                    logServiceTerminal(</span>
+                            SERVICE_FAILED_EVENT,
+                            SERVICE_FAILED_SUMMARY,
+                            invocationSequence,
+                            startedAtNanos);
+                }
+<span class="fc" id="L188">                throw cause;</span>
+<span class="nc" id="L189">            } catch (IllegalAccessException | RuntimeException | Error throwable) {</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                if (terminalMeasurementEnabled) {</span>
+<span class="nc" id="L191">                    logServiceTerminal(</span>
+                            SERVICE_FAILED_EVENT,
+                            SERVICE_FAILED_SUMMARY,
+                            invocationSequence,
+                            startedAtNanos);
+                }
+<span class="nc" id="L197">                throw throwable;</span>
+            } finally {
+<span class="fc" id="L199">                requestContext.popService();</span>
+            }
+        }
+
+        private void logServiceStarted(
+                final Method method,
+                final Object[] args,
+                final Long invocationSequence) {
+<span class="fc" id="L207">            Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L208">            attributes.put(FUNCTION_ID_ATTRIBUTE, service.identifier());</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (invocationSequence != null) {</span>
+<span class="fc" id="L210">                attributes.put(</span>
+<span class="fc" id="L211">                        LogField.SERVICE_INVOCATION_SEQUENCE.key(),</span>
+                        invocationSequence);
+            }
+<span class="fc" id="L214">            String callPath = requestContext.currentCallPath();</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">            if (callPath != null) {</span>
+<span class="fc" id="L216">                attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+            }
+<span class="fc" id="L218">            Map&lt;String, Object&gt; requestBody = toRequestBody(method, args);</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            if (!requestBody.isEmpty()) {</span>
+<span class="fc" id="L220">                attributes.put(</span>
+<span class="fc" id="L221">                        LogField.REQUEST_BODY.key(),</span>
+                        requestBody);
+            }
+<span class="fc" id="L224">            LogEvent event = new LogEvent(</span>
+                    SERVICE_STARTED_EVENT,
+                    SERVICE_STARTED_SUMMARY,
+                    LogLayer.SV,
+                    null,
+                    null,
+                    attributes);
+<span class="fc" id="L231">            logger.info(event);</span>
+<span class="fc" id="L232">        }</span>
+
+        private void safeLogServiceStarted(
+                final Method method,
+                final Object[] args,
+                final Long invocationSequence) {
+            try {
+<span class="fc" id="L239">                logServiceStarted(method, args, invocationSequence);</span>
+<span class="fc" id="L240">            } catch (RuntimeException ignored) {</span>
+                // Observability must not alter the Service result or failure.
+<span class="fc" id="L242">            }</span>
+<span class="fc" id="L243">        }</span>
+
+        private void logServiceTerminal(
+                final String eventName,
+                final String summary,
+                final Long invocationSequence,
+                final long startedAtNanos) {
+            try {
+<span class="fc" id="L251">                Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L252">                attributes.put(FUNCTION_ID_ATTRIBUTE, service.identifier());</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">                if (invocationSequence != null) {</span>
+<span class="fc" id="L254">                    attributes.put(</span>
+<span class="fc" id="L255">                            LogField.SERVICE_INVOCATION_SEQUENCE.key(),</span>
+                            invocationSequence);
+                }
+<span class="fc" id="L258">                String callPath = requestContext.currentCallPath();</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                if (callPath != null) {</span>
+<span class="fc" id="L260">                    attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+                }
+<span class="fc" id="L262">                attributes.put(</span>
+<span class="fc" id="L263">                        LogField.LATENCY_MS.key(),</span>
+<span class="fc" id="L264">                        Math.max(0L, System.nanoTime() - startedAtNanos) / 1_000_000L);</span>
+<span class="fc" id="L265">                safeInfo(new LogEvent(</span>
+                        eventName,
+                        summary,
+                        LogLayer.SV,
+                        null,
+                        null,
+                        attributes));
+<span class="nc" id="L272">            } catch (RuntimeException ignored) {</span>
+                // Observability must not alter the Service result or failure.
+<span class="fc" id="L274">            }</span>
+<span class="fc" id="L275">        }</span>
+
+        private void safeInfo(final LogEvent event) {
+            try {
+<span class="fc" id="L279">                logger.info(event);</span>
+<span class="fc" id="L280">            } catch (RuntimeException ignored) {</span>
+                // Observability must not alter the Service result or failure.
+<span class="fc" id="L282">            }</span>
+<span class="fc" id="L283">        }</span>
+
+        private Long nextServiceInvocationSequence() {
+            try {
+<span class="fc" id="L287">                return requestContext.nextServiceInvocationSequence();</span>
+<span class="nc" id="L288">            } catch (RuntimeException ignored) {</span>
+<span class="nc" id="L289">                return null;</span>
+            }
+        }
+
+        private Map&lt;String, Object&gt; toRequestBody(
+            final Method method,
+            final Object[] args) {
+<span class="pc bpc" id="L296" title="1 of 4 branches missed.">            if (args == null || args.length == 0) {</span>
+<span class="fc" id="L297">                return Map.of();</span>
+            }
+<span class="pc bpc" id="L299" title="1 of 4 branches missed.">            if (args.length == 1 &amp;&amp; args[0] != null) {</span>
+<span class="fc" id="L300">                Map&lt;String, Object&gt; requestBody =</span>
+<span class="fc" id="L301">                    LogRequestBodyMapper.toMap(args[0]);</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">                if (!requestBody.isEmpty()) {</span>
+<span class="fc" id="L303">                    return requestBody;</span>
+                }
+            }
+<span class="fc" id="L306">            Map&lt;String, Object&gt; requestBody = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L307">            Parameter[] parameters = method.getParameters();</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">            for (int index = 0; index &lt; args.length; index++) {</span>
+<span class="fc" id="L309">                String parameterName = resolveParameterName(parameters, index);</span>
+<span class="fc" id="L310">                requestBody.put(parameterName, toRequestValue(args[index]));</span>
+            }
+<span class="fc" id="L312">            return requestBody;</span>
+        }
+
+        private String resolveParameterName(
+                final Parameter[] parameters,
+                final int index) {
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            if (parameters.length &gt; index) {</span>
+<span class="fc" id="L319">                String parameterName = parameters[index].getName();</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                if (parameterName != null</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">                        &amp;&amp; !parameterName.isBlank()) {</span>
+<span class="fc" id="L322">                    return parameterName;</span>
+                }
+            }
+<span class="nc" id="L325">            return &quot;arg&quot; + index;</span>
+        }
+
+        private Object toRequestValue(final Object arg) {
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">            if (arg == null) {</span>
+<span class="nc" id="L330">                return null;</span>
+            }
+<span class="fc" id="L332">            Map&lt;String, Object&gt; requestBody = LogRequestBodyMapper.toMap(arg);</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">            if (!requestBody.isEmpty()) {</span>
+<span class="nc" id="L334">                return requestBody;</span>
+            }
+<span class="fc" id="L336">            return arg;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

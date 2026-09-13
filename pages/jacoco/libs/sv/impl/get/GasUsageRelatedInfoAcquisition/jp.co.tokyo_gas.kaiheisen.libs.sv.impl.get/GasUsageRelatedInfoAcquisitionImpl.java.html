@@ -1,0 +1,1076 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasUsageRelatedInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-gasusagerelatedinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">GasUsageRelatedInfoAcquisitionImpl.java</span></div><h1>GasUsageRelatedInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.TgPipelineGasUsageBetweenReadingsAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.TgPipelineGasUsageBetweenReadingsAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KkyCushInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KonKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KyuMtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ZnkiKnkkInf;
+
+/** ガス使用量指針間情報取得（直近検針日キー）サービス実装。 */
+public class GasUsageRelatedInfoAcquisitionImpl
+        implements GasUsageRelatedInfoAcquisition {
+
+    private static final int DEFAULT_RESULT_SERIAL_NUMBER = 0;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final TgPipelineGasUsageBetweenReadingsAcquisition tgPipelineGasUsageBetweenReadingsAcquisition;
+
+    private final String meterInstallationReasonCode;
+
+    private final String openingReasonCode;
+
+    private final String supplyResumedReasonCode;
+
+    private final String disasterRestorationReasonCode;
+
+    private final String securityReleaseReasonCode;
+
+    private final String relocationClosureReasonCode;
+
+    private final String supplyOutageReasonCode;
+
+    private final String disasterClosureReasonCode;
+
+    private final String securityClosureReasonCode;
+
+    private final String unusedClosureReasonCode;
+
+    private final String regularReasonCode;
+
+    private final String regularSwCancellationReasonCode;
+
+    private final String temporaryReasonCode;
+
+    private final String temporarySwCancellationReasonCode;
+
+    private final String firedAndLostCapReasonCode;
+
+    private final String removalWhenReplacingReasonCode;
+
+    private final String installationWhenReplacingReasonCode;
+
+    private final String beforeMeterInspectionReasonCode;
+
+    private final String afterMeterInspectionReasonCode;
+
+    private final String invalidTransportationServiceContractRelatedStatusCode;
+
+    /**
+     * 必須依存と業務判定で使う CIRIUS 定数を初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所 DA
+     * @param gasmtrdDataAccess ガスメーター DA
+     * @param tskgmstDataAccess 託送サービス契約関連 DA
+     * @param tgPipelineGasUsageBetweenReadingsAcquisition SV-127
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public GasUsageRelatedInfoAcquisitionImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GasmtrdDataAccess gasmtrdDataAccess,
+            TskgmstDataAccess tskgmstDataAccess,
+            TgPipelineGasUsageBetweenReadingsAcquisition tgPipelineGasUsageBetweenReadingsAcquisition,
+<span class="fc" id="L104">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L105">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L106">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L107">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L108">        this.tgPipelineGasUsageBetweenReadingsAcquisition =</span>
+<span class="fc" id="L109">                Objects.requireNonNull(</span>
+                        tgPipelineGasUsageBetweenReadingsAcquisition,
+                        &quot;tgPipelineGasUsageBetweenReadingsAcquisition&quot;);
+<span class="fc" id="L112">        Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L113">        this.meterInstallationReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .METER_INSTALLATION);
+<span class="fc" id="L117">        this.openingReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.OPENING);
+<span class="fc" id="L120">        this.supplyResumedReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_RESUMED);
+<span class="fc" id="L123">        this.disasterRestorationReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .RESTORATION_OF_SHUTOFF_IN_CASE_OF_DISASTER);
+<span class="fc" id="L127">        this.securityReleaseReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .SECURITY_RELEASE);
+<span class="fc" id="L131">        this.relocationClosureReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .RELOCATION_CLOSURE);
+<span class="fc" id="L135">        this.supplyOutageReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_OUTAGE);
+<span class="fc" id="L138">        this.disasterClosureReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L142">        this.securityClosureReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .SECURITY_CLOSURE);
+<span class="fc" id="L146">        this.unusedClosureReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.UNUSED_CLOSURE);
+<span class="fc" id="L149">        this.regularReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR);
+<span class="fc" id="L152">        this.regularSwCancellationReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .REGULAR_SW_CANCELLATION);
+<span class="fc" id="L156">        this.temporaryReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY);
+<span class="fc" id="L159">        this.temporarySwCancellationReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .TEMPORARY_SW_CANCELLATION);
+<span class="fc" id="L163">        this.firedAndLostCapReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.FIRED_AND_LOST_CAP);
+<span class="fc" id="L166">        this.removalWhenReplacingReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .REMOVAL_WHEN_REPLACING);
+<span class="fc" id="L170">        this.installationWhenReplacingReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .INSTALLATION_WHEN_REPLACING);
+<span class="fc" id="L174">        this.beforeMeterInspectionReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .BEFORE_METER_INSPECTION);
+<span class="fc" id="L178">        this.afterMeterInspectionReasonCode = resolveMeterReadingReason(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .AFTER_METER_INSPECTION);
+<span class="fc" id="L182">        this.invalidTransportationServiceContractRelatedStatusCode =</span>
+<span class="fc" id="L183">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.INVALID);
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * 現在検針情報と履歴からガス使用量関連情報を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @param gmtShjSu ガスメーター指示数
+     * @param sgyjKytiSyry 作業時協定使用量
+     * @param sjskKbn 指示数回帰区分
+     * @param tsimKnsYmd 訂正前検針年月日
+     * @param tsimKnsKkaTsno 訂正前検針結果通し番号
+     * @param knkkJhList 検針結果情報リスト
+     * @param tsimSyry 訂正前使用量
+     * @return ガス使用量指針間情報取得結果
+     */
+    @Override
+    public GasUsageRelatedInfoAcquisitionOutput execute(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            String knkkSsjyShbt,
+            Long gmtShjSu,
+            BigDecimal sgyjKytiSyry,
+            String sjskKbn,
+            LocalDate tsimKnsYmd,
+            Integer tsimKnsKkaTsno,
+            List&lt;KnsKkaInf&gt; knsKkaInfList,
+            BigDecimal tsimSyry) {
+<span class="fc" id="L216">        List&lt;KnsKkaInf&gt; meterReadingResults = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L217">        meterReadingResults.add(createCurrentMeterReading(knsYmd, knkkSsjyShbt, gmtShjSu, sgyjKytiSyry, sjskKbn));</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (knsKkaInfList != null) {</span>
+<span class="fc" id="L219">            meterReadingResults.addAll(knsKkaInfList);</span>
+        }
+
+<span class="fc" id="L222">        List&lt;KkyCushInf&gt; supplyStopInfos = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L223">        ZnkiKnkkInf previousMeterReading = null;</span>
+<span class="fc" id="L224">        SkinKnkkInf recentMeterReading = null;</span>
+<span class="fc" id="L225">        boolean meterReplaced = false;</span>
+<span class="fc" id="L226">        boolean disasterClosureOrRecoveryExists = false;</span>
+<span class="fc" id="L227">        Long removedMeterReading = null;</span>
+<span class="fc" id="L228">        Long installedMeterReading = null;</span>
+<span class="fc" id="L229">        KnsKkaInf installedMeterReadingResult = null;</span>
+<span class="fc" id="L230">        SkinKnkkInf oldMeterPreviousReading = null;</span>
+<span class="fc" id="L231">        LocalDate meterReplacementDate = null;</span>
+<span class="fc" id="L232">        String resolvedRegressionSegment = sjskKbn;</span>
+<span class="fc" id="L233">        KonKnkkInf currentMeterReadingInfo = new KonKnkkInf(null, null, 0);</span>
+<span class="fc" id="L234">        LocalDate chargeStartDate = null;</span>
+<span class="fc" id="L235">        BigDecimal totalConvertedGasUsage = BigDecimal.ZERO;</span>
+<span class="fc" id="L236">        BigDecimal totalPreConvertedGasUsage = BigDecimal.ZERO;</span>
+<span class="fc" id="L237">        BigDecimal totalCorrectedConvertedGasUsage = null;</span>
+<span class="fc" id="L238">        int totalUsageDays = 0;</span>
+<span class="fc" id="L239">        boolean intervalCalculated = false;</span>
+<span class="pc bpc" id="L240" title="2 of 6 branches missed.">        boolean correctionInfoProvided =</span>
+            tsimKnsYmd != null &amp;&amp; tsimKnsKkaTsno != null &amp;&amp; tsimSyry != null;
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        for (int index = 0; index &lt; meterReadingResults.size(); index++) {</span>
+<span class="fc" id="L244">            KnsKkaInf meterReading = meterReadingResults.get(index);</span>
+<span class="fc bfc" id="L245" title="All 4 branches covered.">            if (index &gt; 0 &amp;&amp; recentMeterReading == null) {</span>
+<span class="fc" id="L246">                recentMeterReading = toRecentMeterReading(meterReading);</span>
+            }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (isSupplyStopReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="fc" id="L249">                supplyStopInfos.add(new KkyCushInf(meterReading.knsYmd(), meterReading.knkkSsjyShbt()));</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">                if (isSecuritySupplyStopReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="fc" id="L251">                    continue;</span>
+                }
+            }
+<span class="fc bfc" id="L254" title="All 2 branches covered.">            if (isDisasterRelatedSupplyStopReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="fc" id="L255">                disasterClosureOrRecoveryExists = true;</span>
+<span class="fc" id="L256">                continue;</span>
+            }
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            if (isInstallationSideReplacementReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                if (installedMeterReading == null) {</span>
+<span class="fc" id="L260">                    installedMeterReading = meterReading.gmtShjSu();</span>
+<span class="fc" id="L261">                    installedMeterReadingResult = meterReading;</span>
+                }
+<span class="fc" id="L263">                meterReplaced = true;</span>
+<span class="fc" id="L264">                meterReplacementDate = meterReading.knsYmd();</span>
+<span class="fc" id="L265">                continue;</span>
+            }
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            if (isRemovalSideReplacementReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                if (removedMeterReading == null) {</span>
+<span class="fc" id="L269">                    removedMeterReading = meterReading.gmtShjSu();</span>
+<span class="fc" id="L270">                    oldMeterPreviousReading = findPreviousIntervalReading(meterReadingResults, index + 1);</span>
+                }
+<span class="fc" id="L272">                meterReplacementDate = meterReading.knsYmd();</span>
+<span class="fc" id="L273">                continue;</span>
+            }
+<span class="pc bpc" id="L275" title="2 of 6 branches missed.">            if (index &gt; 0 &amp;&amp; previousMeterReading == null &amp;&amp; isPreviousMeterReadingReason(meterReading.knkkSsjyShbt())) {</span>
+<span class="fc" id="L276">                previousMeterReading = toPreviousMeterReading(meterReading);</span>
+<span class="fc" id="L277">                chargeStartDate = resolveChargeStartDate(meterReadingResults, index, previousMeterReading);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                if (shouldIncludePreviousReadingDay(meterReadingResults, index, previousMeterReading)) {</span>
+<span class="fc" id="L279">                    totalUsageDays += 1;</span>
+<span class="pc bpc" id="L280" title="1 of 4 branches missed.">                    if (intervalCalculated &amp;&amp; isSameReading(previousMeterReading, recentMeterReading)) {</span>
+<span class="fc" id="L281">                        currentMeterReadingInfo = new KonKnkkInf(</span>
+<span class="fc" id="L282">                                currentMeterReadingInfo.jkarSuKnzgGasSyry(),</span>
+<span class="fc" id="L283">                                currentMeterReadingInfo.jkarSuKnzmGasSyry(),</span>
+<span class="fc" id="L284">                                currentMeterReadingInfo.shyDdsu() + 1);</span>
+                    }
+                }
+                break;
+            }
+
+            ReplacementIntervalContext replacementIntervalContext =
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">                    index == 0 ? resolveReplacementIntervalContext(meterReadingResults) : null;</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            if (shouldUseReplacementFollowUpInterval(meterReading, replacementIntervalContext)) {</span>
+<span class="fc" id="L293">                intervalCalculated = true;</span>
+<span class="fc" id="L294">                KnsKkaInf installationReading = replacementIntervalContext.installationReading();</span>
+<span class="fc" id="L295">                KnsKkaInf removalReading = replacementIntervalContext.removalReading();</span>
+<span class="fc" id="L296">                SkinKnkkInf replacementPreviousReading = replacementIntervalContext.previousReading();</span>
+<span class="fc" id="L297">                IntervalContext currentIntervalContext = resolveCurrentReplacementIntervalContext(</span>
+                        gasMtstNo,
+                        meterReading,
+                        installationReading);
+<span class="fc" id="L301">                IntervalContext removalIntervalContext =</span>
+<span class="fc" id="L302">                    resolveRemovalReplacementIntervalContext(</span>
+                        gasMtstNo,
+                        removalReading,
+                        replacementPreviousReading);
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">                if (currentIntervalContext == null</span>
+                        || removalIntervalContext == null) {
+<span class="nc" id="L308">                    continue;</span>
+                }
+<span class="fc" id="L310">                UsageComputation currentUsageComputation =</span>
+<span class="fc" id="L311">                    resolveUsageComputation(</span>
+                        meterReading,
+<span class="fc" id="L313">                        toRecentMeterReading(installationReading),</span>
+<span class="fc" id="L314">                        currentIntervalContext.currentMeter(),</span>
+<span class="fc" id="L315">                        currentIntervalContext.meterLocation());</span>
+<span class="fc" id="L316">                UsageComputation replacementUsageComputation =</span>
+<span class="fc" id="L317">                    resolveUsageComputation(</span>
+                        removalReading,
+                        replacementPreviousReading,
+<span class="fc" id="L320">                        removalIntervalContext.currentMeter(),</span>
+<span class="fc" id="L321">                        removalIntervalContext.meterLocation());</span>
+<span class="fc" id="L322">                int currentUsageDays = daysBetween(</span>
+<span class="fc" id="L323">                        installationReading.knsYmd(),</span>
+<span class="fc" id="L324">                        meterReading.knsYmd());</span>
+<span class="fc" id="L325">                int replacementUsageDays =</span>
+<span class="fc" id="L326">                        daysBetween(</span>
+<span class="fc" id="L327">                                replacementPreviousReading.knsYmd(),</span>
+<span class="fc" id="L328">                                removalReading.knsYmd());</span>
+
+<span class="fc" id="L330">                totalPreConvertedGasUsage = totalPreConvertedGasUsage</span>
+<span class="fc" id="L331">                        .add(currentUsageComputation.preConvertedUsage())</span>
+<span class="fc" id="L332">                        .add(replacementUsageComputation.preConvertedUsage());</span>
+<span class="fc" id="L333">                totalConvertedGasUsage = totalConvertedGasUsage</span>
+<span class="fc" id="L334">                        .add(currentUsageComputation.convertedUsage())</span>
+<span class="fc" id="L335">                        .add(replacementUsageComputation.convertedUsage());</span>
+<span class="fc" id="L336">                totalUsageDays += currentUsageDays + replacementUsageDays;</span>
+<span class="fc" id="L337">                recentMeterReading = replacementPreviousReading;</span>
+                chargeStartDate =
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">                    chargeStartDate == null</span>
+<span class="fc" id="L340">                        ? replacementPreviousReading.knsYmd()</span>
+<span class="pc" id="L341">                        : chargeStartDate;</span>
+<span class="fc" id="L342">                resolvedRegressionSegment =</span>
+<span class="fc" id="L343">                    currentUsageComputation.regressionSegment();</span>
+<span class="fc" id="L344">                currentMeterReadingInfo = new KonKnkkInf(</span>
+                        totalConvertedGasUsage,
+                        totalPreConvertedGasUsage,
+<span class="fc" id="L347">                        totalUsageDays);</span>
+<span class="fc" id="L348">                continue;</span>
+            }
+
+<span class="fc" id="L351">            IntervalContext intervalContext = resolveIntervalContext(</span>
+                    gasMtstNo,
+                    meterReadingResults,
+                    index);
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            if (intervalContext == null) {</span>
+<span class="fc" id="L356">                continue;</span>
+            }
+<span class="fc" id="L358">            intervalCalculated = true;</span>
+
+<span class="fc" id="L360">            TgPipelineGasUsageBetweenReadingsAcquisitionOutput usageResult =</span>
+<span class="fc" id="L361">                    tgPipelineGasUsageBetweenReadingsAcquisition.execute(</span>
+<span class="fc" id="L362">                            meterReading.sjskKbn(),</span>
+<span class="fc" id="L363">                            meterReading.gmtShjSu(),</span>
+<span class="fc" id="L364">                            intervalContext.previousReading().gmtShjSu(),</span>
+<span class="fc" id="L365">                            intervalContext.currentMeter().sjskHticSu(),</span>
+<span class="fc" id="L366">                            intervalContext.currentMeter().sjsuMincSu(),</span>
+<span class="fc" id="L367">                            defaultBigDecimal(meterReading.sgyjKytiSyry()),</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">                            intervalContext.meterLocation() == null</span>
+<span class="fc" id="L369">                                    || intervalContext</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">                                    .meterLocation().jkarSu() == null</span>
+<span class="fc" id="L371">                                    ? 0</span>
+<span class="fc" id="L372">                                    : intervalContext.meterLocation().jkarSu());</span>
+<span class="fc" id="L373">            int usageDays =</span>
+<span class="fc" id="L374">                    daysBetween(</span>
+<span class="fc" id="L375">                            intervalContext.previousReading().knsYmd(),</span>
+<span class="fc" id="L376">                            meterReading.knsYmd());</span>
+<span class="fc" id="L377">            boolean confirmedMeterReading =</span>
+<span class="fc" id="L378">                    Boolean.FALSE.equals(meterReading.knkkKtmeFlg());</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">            BigDecimal preConvertedUsage = confirmedMeterReading</span>
+<span class="nc" id="L380">                    ? defaultBigDecimal(meterReading.gasSyry())</span>
+<span class="fc" id="L381">                    : defaultBigDecimal(usageResult.gasSyry());</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">            BigDecimal convertedUsage = confirmedMeterReading</span>
+<span class="nc" id="L383">                    ? defaultBigDecimal(meterReading.gasSyry())</span>
+<span class="fc" id="L384">                    : defaultBigDecimal(usageResult.knsngGasSyry());</span>
+<span class="fc" id="L385">            BigDecimal correctedConvertedUsage = resolveCorrectedConvertedUsage(</span>
+                    meterReading,
+                    tsimKnsYmd,
+                    tsimKnsKkaTsno,
+                    tsimSyry,
+                    convertedUsage);
+
+<span class="fc" id="L392">            totalPreConvertedGasUsage =</span>
+<span class="fc" id="L393">                    totalPreConvertedGasUsage.add(preConvertedUsage);</span>
+<span class="fc" id="L394">            totalConvertedGasUsage = totalConvertedGasUsage.add(convertedUsage);</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">            if (correctedConvertedUsage != null) {</span>
+                totalCorrectedConvertedGasUsage =
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">                        totalCorrectedConvertedGasUsage == null</span>
+<span class="fc" id="L398">                                ? correctedConvertedUsage</span>
+<span class="pc" id="L399">                                : totalCorrectedConvertedGasUsage.add(</span>
+                                        correctedConvertedUsage);
+            }
+<span class="fc" id="L402">            totalUsageDays += usageDays;</span>
+
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">            if (index == 0) {</span>
+<span class="fc" id="L405">                recentMeterReading = intervalContext.previousReading();</span>
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">                chargeStartDate = chargeStartDate == null</span>
+<span class="fc" id="L407">                        ? intervalContext.previousReading().knsYmd()</span>
+<span class="pc" id="L408">                        : chargeStartDate;</span>
+<span class="fc" id="L409">                resolvedRegressionSegment = usageResult.sjskKbn();</span>
+<span class="fc" id="L410">                currentMeterReadingInfo = new KonKnkkInf(</span>
+                        convertedUsage,
+                        preConvertedUsage,
+<span class="fc" id="L413">                        usageDays);</span>
+            }
+        }
+
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        if (previousMeterReading == null) {</span>
+<span class="fc" id="L418">            throw previousMeterReadingDataInconsistency(gasMtstNo, knsYmd);</span>
+        }
+
+<span class="fc" id="L421">        Long transportationServiceContractNumber =</span>
+<span class="fc" id="L422">                resolveTransportationServiceContractNumber(</span>
+                        gasMtstNo,
+                        knsYmd,
+                        meterReadingResults);
+
+<span class="fc" id="L427">        GasRknKsnInf gasChargeCalculationInfo =</span>
+                new GasRknKsnInf(
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L433">                        0,</span>
+<span class="fc" id="L434">                        0,</span>
+                        transportationServiceContractNumber,
+<span class="fc" id="L436">                        disasterClosureOrRecoveryExists);</span>
+<span class="fc" id="L437">        KyuMtrInf oldMeterInfo =</span>
+                new KyuMtrInf(
+                        null,
+                        null,
+<span class="fc" id="L441">                        0,</span>
+                        removedMeterReading,
+                        installedMeterReading);
+
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        if (intervalCalculated) {</span>
+<span class="fc" id="L446">            int supplyStopDays = calculateSupplyStopDays(supplyStopInfos, knsYmd);</span>
+<span class="fc" id="L447">            gasChargeCalculationInfo = new GasRknKsnInf(</span>
+                    chargeStartDate,
+                    totalConvertedGasUsage,
+                    totalPreConvertedGasUsage,
+<span class="fc bfc" id="L451" title="All 2 branches covered.">                    correctionInfoProvided ? totalCorrectedConvertedGasUsage : null,</span>
+<span class="fc" id="L452">                    totalUsageDays,</span>
+<span class="fc" id="L453">                    supplyStopDays,</span>
+                    transportationServiceContractNumber,
+<span class="fc" id="L455">                    disasterClosureOrRecoveryExists);</span>
+<span class="fc" id="L456">            Optional&lt;GmtsetdRecord&gt; meterLocationOpt =</span>
+<span class="fc" id="L457">                    gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, knsYmd);</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">            int oldMeterUsageDays = meterReplaced ? totalUsageDays : 0;</span>
+<span class="fc" id="L459">            oldMeterInfo = resolveOldMeterInfo(</span>
+                    gasMtstNo,
+                    meterReplacementDate,
+<span class="fc bfc" id="L462" title="All 2 branches covered.">                    meterLocationOpt.isPresent() ? meterLocationOpt.get() : null,</span>
+                    sjskKbn,
+                    oldMeterPreviousReading,
+                    new MeterReplacementReadings(
+                            removedMeterReading,
+                            installedMeterReading),
+<span class="fc" id="L468">                    resolveOldMeterUsageDays(</span>
+                            oldMeterPreviousReading,
+                            meterReplacementDate,
+                            oldMeterUsageDays));
+        }
+
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        if (shouldPreferInstalledReadingAsRecent(</span>
+                gmtShjSu,
+                installedMeterReadingResult,
+                installedMeterReading)) {
+<span class="fc" id="L478">            recentMeterReading = toRecentMeterReading(installedMeterReadingResult);</span>
+        }
+
+<span class="fc" id="L481">        return new GasUsageRelatedInfoAcquisitionOutput(</span>
+                previousMeterReading,
+                recentMeterReading,
+                gasChargeCalculationInfo,
+                currentMeterReadingInfo,
+                oldMeterInfo,
+                resolvedRegressionSegment,
+<span class="fc" id="L488">                List.copyOf(supplyStopInfos));</span>
+    }
+
+    private static KnsKkaInf createCurrentMeterReading(
+            final LocalDate knsYmd,
+            final String knkkSsjyShbt,
+            final Long gmtShjSu,
+            final BigDecimal sgyjKytiSyry,
+            final String sjskKbn) {
+<span class="fc" id="L497">        return new KnsKkaInf(</span>
+                Boolean.TRUE,
+                knsYmd,
+<span class="fc" id="L500">                DEFAULT_RESULT_SERIAL_NUMBER,</span>
+                knkkSsjyShbt,
+                gmtShjSu,
+                BigDecimal.ZERO,
+<span class="fc" id="L504">                defaultBigDecimal(sgyjKytiSyry),</span>
+<span class="fc" id="L505">                0,</span>
+                sjskKbn,
+                null,
+                null);
+    }
+
+    private IntervalContext resolveIntervalContext(
+            final Long gasMtstNo,
+            final List&lt;KnsKkaInf&gt; meterReadingResults,
+            final int currentIndex) {
+<span class="fc" id="L515">        KnsKkaInf currentReading =</span>
+<span class="fc" id="L516">                meterReadingResults.get(currentIndex);</span>
+<span class="fc" id="L517">        SkinKnkkInf previousReading =</span>
+<span class="fc" id="L518">                findPreviousIntervalReading(</span>
+                        meterReadingResults,
+                        currentIndex + 1);
+<span class="fc bfc" id="L521" title="All 2 branches covered.">        if (previousReading == null) {</span>
+<span class="fc" id="L522">            return null;</span>
+        }
+<span class="fc" id="L524">        Optional&lt;GmtsetdRecord&gt; meterLocationOpt =</span>
+<span class="fc" id="L525">                gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                        gasMtstNo,
+<span class="fc" id="L527">                        currentReading.knsYmd());</span>
+<span class="fc bfc" id="L528" title="All 2 branches covered.">        GmtsetdRecord meterLocation = meterLocationOpt.isPresent()</span>
+<span class="fc" id="L529">                ? meterLocationOpt.get()</span>
+<span class="fc" id="L530">                : null;</span>
+<span class="fc" id="L531">        GasmtrdRecord currentMeter =</span>
+<span class="fc" id="L532">                resolveCurrentMeter(gasMtstNo, currentReading.knsYmd());</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        if (currentMeter == null) {</span>
+<span class="fc" id="L534">            return null;</span>
+        }
+<span class="fc" id="L536">        return new IntervalContext(</span>
+                previousReading,
+                currentMeter,
+                meterLocation);
+    }
+
+    private SkinKnkkInf findPreviousIntervalReading(
+            final List&lt;KnsKkaInf&gt; meterReadingResults,
+            final int startIndex) {
+<span class="fc" id="L545">        for (int index = startIndex;</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">                index &lt; meterReadingResults.size();</span>
+<span class="fc" id="L547">                index++) {</span>
+<span class="fc" id="L548">            KnsKkaInf candidate = meterReadingResults.get(index);</span>
+<span class="fc bfc" id="L549" title="All 2 branches covered.">            if (!isSupplyStopReason(candidate.knkkSsjyShbt())</span>
+<span class="fc bfc" id="L550" title="All 2 branches covered.">                    &amp;&amp; !isInstallationSideReplacementReason(</span>
+<span class="fc" id="L551">                            candidate.knkkSsjyShbt())</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">                    &amp;&amp; !isRemovalSideReplacementReason(</span>
+<span class="fc" id="L553">                            candidate.knkkSsjyShbt())) {</span>
+<span class="fc" id="L554">                return toRecentMeterReading(candidate);</span>
+            }
+        }
+<span class="fc" id="L557">        return null;</span>
+    }
+
+    private ReplacementIntervalContext resolveReplacementIntervalContext(
+            final List&lt;KnsKkaInf&gt; meterReadingResults) {
+<span class="fc" id="L562">        final int minimumReplacementIntervalSize = 4;</span>
+<span class="fc" id="L563">        final int previousReadingStartIndex = 3;</span>
+<span class="fc bfc" id="L564" title="All 2 branches covered.">        if (meterReadingResults.size()</span>
+                &lt; minimumReplacementIntervalSize) {
+<span class="fc" id="L566">            return null;</span>
+        }
+
+<span class="fc" id="L569">        KnsKkaInf installationReading = meterReadingResults.get(1);</span>
+<span class="fc" id="L570">        KnsKkaInf removalReading = meterReadingResults.get(2);</span>
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        if (!isInstallationSideReplacementReason(</span>
+<span class="fc" id="L572">                installationReading.knkkSsjyShbt())</span>
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">                || !isRemovalSideReplacementReason(</span>
+<span class="fc" id="L574">                        removalReading.knkkSsjyShbt())</span>
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">                || !Objects.equals(</span>
+<span class="fc" id="L576">                        installationReading.knsYmd(),</span>
+<span class="fc" id="L577">                        removalReading.knsYmd())) {</span>
+<span class="fc" id="L578">            return null;</span>
+        }
+
+<span class="fc" id="L581">        SkinKnkkInf previousReading = findPreviousIntervalReading(</span>
+                meterReadingResults,
+                previousReadingStartIndex);
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">        if (previousReading == null) {</span>
+<span class="nc" id="L585">            return null;</span>
+        }
+<span class="fc" id="L587">        return new ReplacementIntervalContext(</span>
+                installationReading,
+                removalReading,
+                previousReading);
+    }
+
+    private boolean shouldUseReplacementFollowUpInterval(
+            final KnsKkaInf currentReading,
+            final ReplacementIntervalContext replacementIntervalContext) {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        return replacementIntervalContext != null</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L598">                        currentReading.knkkSsjyShbt(),</span>
+                        regularReasonCode)
+<span class="pc bpc" id="L600" title="1 of 2 branches missed.">                &amp;&amp; currentReading.gmtShjSu() != null</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">                &amp;&amp; currentReading.gmtShjSu() &gt; 0;</span>
+    }
+
+    private IntervalContext resolveCurrentReplacementIntervalContext(
+            final Long gasMtstNo,
+            final KnsKkaInf currentReading,
+            final KnsKkaInf installationReading) {
+<span class="fc" id="L608">        return resolveIntervalContext(</span>
+                gasMtstNo,
+<span class="fc" id="L610">                toRecentMeterReading(installationReading),</span>
+<span class="fc" id="L611">                currentReading.knsYmd());</span>
+    }
+
+    private IntervalContext resolveRemovalReplacementIntervalContext(
+            final Long gasMtstNo,
+            final KnsKkaInf removalReading,
+            final SkinKnkkInf previousReading) {
+<span class="fc" id="L618">        return resolveIntervalContext(</span>
+                gasMtstNo,
+                previousReading,
+<span class="fc" id="L621">                removalReading.knsYmd());</span>
+    }
+
+    private IntervalContext resolveIntervalContext(
+            final Long gasMtstNo,
+            final SkinKnkkInf previousReading,
+            final LocalDate currentReadingDate) {
+<span class="fc" id="L628">        Optional&lt;GmtsetdRecord&gt; meterLocationOpt =</span>
+<span class="fc" id="L629">                gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                        gasMtstNo,
+                        currentReadingDate);
+<span class="fc" id="L632">        GasmtrdRecord currentMeter =</span>
+<span class="fc" id="L633">                resolveCurrentMeter(gasMtstNo, currentReadingDate);</span>
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">        if (currentMeter == null) {</span>
+<span class="nc" id="L635">            return null;</span>
+        }
+<span class="fc" id="L637">        return new IntervalContext(</span>
+                previousReading,
+                currentMeter,
+<span class="fc bfc" id="L640" title="All 2 branches covered.">                meterLocationOpt.isPresent()</span>
+<span class="fc" id="L641">                        ? meterLocationOpt.get()</span>
+<span class="fc" id="L642">                        : null);</span>
+    }
+
+    private UsageComputation resolveUsageComputation(
+            final KnsKkaInf meterReading,
+            final SkinKnkkInf previousReading,
+            final GasmtrdRecord currentMeter,
+            final GmtsetdRecord meterLocation) {
+<span class="fc bfc" id="L650" title="All 2 branches covered.">        if (Boolean.FALSE.equals(meterReading.knkkKtmeFlg())) {</span>
+<span class="fc" id="L651">            BigDecimal fixedUsage =</span>
+<span class="fc" id="L652">                    defaultBigDecimal(meterReading.gasSyry());</span>
+<span class="fc" id="L653">            return new UsageComputation(</span>
+                    fixedUsage,
+                    fixedUsage,
+<span class="fc" id="L656">                    meterReading.sjskKbn());</span>
+        }
+<span class="fc" id="L658">        TgPipelineGasUsageBetweenReadingsAcquisitionOutput usageResult =</span>
+<span class="fc" id="L659">                tgPipelineGasUsageBetweenReadingsAcquisition.execute(</span>
+<span class="fc" id="L660">                        meterReading.sjskKbn(),</span>
+<span class="fc" id="L661">                        meterReading.gmtShjSu(),</span>
+<span class="fc" id="L662">                        previousReading.gmtShjSu(),</span>
+<span class="fc" id="L663">                        currentMeter.sjskHticSu(),</span>
+<span class="fc" id="L664">                        currentMeter.sjsuMincSu(),</span>
+<span class="fc" id="L665">                        defaultBigDecimal(meterReading.sgyjKytiSyry()),</span>
+<span class="fc" id="L666">                        meterLocation == null</span>
+<span class="pc bpc" id="L667" title="1 of 4 branches missed.">                                || meterLocation.jkarSu() == null</span>
+<span class="fc" id="L668">                                ? 0</span>
+<span class="fc" id="L669">                                : meterLocation.jkarSu());</span>
+<span class="fc" id="L670">        BigDecimal preConvertedUsage =</span>
+<span class="fc" id="L671">                defaultBigDecimal(usageResult.gasSyry());</span>
+<span class="fc" id="L672">        BigDecimal convertedUsage =</span>
+<span class="fc" id="L673">                defaultBigDecimal(usageResult.knsngGasSyry());</span>
+<span class="fc" id="L674">        return new UsageComputation(</span>
+                preConvertedUsage,
+                convertedUsage,
+<span class="fc" id="L677">                usageResult.sjskKbn());</span>
+    }
+
+    private boolean shouldPreferInstalledReadingAsRecent(
+            final Long currentReading,
+            final KnsKkaInf installedMeterReadingResult,
+            final Long installedMeterReading) {
+<span class="fc bfc" id="L684" title="All 2 branches covered.">        return installedMeterReadingResult != null</span>
+<span class="fc bfc" id="L685" title="All 2 branches covered.">                &amp;&amp; isZeroReading(installedMeterReading)</span>
+<span class="fc bfc" id="L686" title="All 2 branches covered.">                &amp;&amp; isZeroReading(currentReading);</span>
+    }
+
+    private LocalDate resolveChargeStartDate(
+            final List&lt;KnsKkaInf&gt; meterReadingResults,
+            final int previousReadingIndex,
+            final ZnkiKnkkInf resolvedPreviousMeterReading) {
+<span class="fc bfc" id="L693" title="All 2 branches covered.">        if (Objects.equals(</span>
+<span class="fc" id="L694">                resolvedPreviousMeterReading.knkkSsjyShbt(),</span>
+                supplyResumedReasonCode)
+<span class="pc bpc" id="L696" title="1 of 2 branches missed.">                &amp;&amp; hasSameDateSupplyOutage(</span>
+                        meterReadingResults,
+                        previousReadingIndex + 1,
+<span class="fc" id="L699">                        resolvedPreviousMeterReading.knsYmd())) {</span>
+<span class="fc" id="L700">            return resolvedPreviousMeterReading.knsYmd().plusDays(1);</span>
+        }
+<span class="fc" id="L702">        return resolvedPreviousMeterReading.knsYmd();</span>
+    }
+
+    private boolean shouldIncludePreviousReadingDay(
+            final List&lt;KnsKkaInf&gt; meterReadingResults,
+            final int previousReadingIndex,
+            final ZnkiKnkkInf previousMeterReading) {
+<span class="fc" id="L709">        String reasonCode = previousMeterReading.knkkSsjyShbt();</span>
+<span class="fc bfc" id="L710" title="All 2 branches covered.">        if (isAnyOf(</span>
+                reasonCode,
+                meterInstallationReasonCode,
+                openingReasonCode)) {
+<span class="fc" id="L714">            return true;</span>
+        }
+<span class="fc bfc" id="L716" title="All 2 branches covered.">        return Objects.equals(reasonCode, supplyResumedReasonCode)</span>
+<span class="pc bpc" id="L717" title="1 of 2 branches missed.">                &amp;&amp; !hasSameDateSupplyOutage(</span>
+                        meterReadingResults,
+                        previousReadingIndex + 1,
+<span class="fc" id="L720">                        previousMeterReading.knsYmd());</span>
+    }
+
+    private static boolean isSameReading(
+            final ZnkiKnkkInf previousMeterReading,
+            final SkinKnkkInf recentMeterReading) {
+<span class="pc bpc" id="L726" title="2 of 4 branches missed.">        if (previousMeterReading == null</span>
+                || recentMeterReading == null) {
+<span class="nc" id="L728">            return false;</span>
+        }
+<span class="pc bpc" id="L730" title="1 of 2 branches missed.">        return Objects.equals(</span>
+<span class="fc" id="L731">                previousMeterReading.knsYmd(),</span>
+<span class="fc" id="L732">                recentMeterReading.knsYmd())</span>
+<span class="pc bpc" id="L733" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L734">                        previousMeterReading.knsKkaTsno(),</span>
+<span class="fc" id="L735">                        recentMeterReading.knsKkaTsno());</span>
+    }
+
+    private boolean hasSameDateSupplyOutage(
+            final List&lt;KnsKkaInf&gt; meterReadingResults,
+            final int startIndex,
+            final LocalDate targetDate) {
+<span class="fc" id="L742">        for (int index = startIndex;</span>
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">                index &lt; meterReadingResults.size();</span>
+<span class="nc" id="L744">                index++) {</span>
+<span class="fc" id="L745">            KnsKkaInf candidate = meterReadingResults.get(index);</span>
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">            if (Objects.equals(candidate.knsYmd(), targetDate)</span>
+<span class="pc bpc" id="L747" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L748">                            candidate.knkkSsjyShbt(),</span>
+                            supplyOutageReasonCode)) {
+<span class="fc" id="L750">                return true;</span>
+            }
+        }
+<span class="nc" id="L753">        return false;</span>
+    }
+
+    private String resolveMeterReadingReason(
+            final CiriusConstantService ciriusConstantService,
+            final String code) {
+<span class="fc" id="L759">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .TYPE,
+                code);
+    }
+
+    private boolean isSupplyStopReason(final String reasonCode) {
+<span class="fc" id="L768">        return isAnyOf(</span>
+                reasonCode,
+                disasterClosureReasonCode,
+                disasterRestorationReasonCode,
+                securityClosureReasonCode,
+                securityReleaseReasonCode);
+    }
+
+    private boolean isDisasterRelatedSupplyStopReason(
+            final String reasonCode) {
+<span class="fc" id="L778">        return isAnyOf(</span>
+                reasonCode,
+                disasterClosureReasonCode,
+                disasterRestorationReasonCode);
+    }
+
+    private boolean isSecuritySupplyStopReason(final String reasonCode) {
+<span class="fc" id="L785">        return isAnyOf(</span>
+                reasonCode,
+                securityClosureReasonCode,
+                securityReleaseReasonCode);
+    }
+
+    private boolean isInstallationSideReplacementReason(
+            final String reasonCode) {
+<span class="fc" id="L793">        return isAnyOf(</span>
+                reasonCode,
+                installationWhenReplacingReasonCode,
+                afterMeterInspectionReasonCode);
+    }
+
+    private boolean isRemovalSideReplacementReason(
+            final String reasonCode) {
+<span class="fc" id="L801">        return isAnyOf(</span>
+                reasonCode,
+                removalWhenReplacingReasonCode,
+                beforeMeterInspectionReasonCode);
+    }
+
+    private boolean isPreviousMeterReadingReason(final String reasonCode) {
+<span class="fc" id="L808">        return isAnyOf(</span>
+                reasonCode,
+                meterInstallationReasonCode,
+                openingReasonCode,
+                supplyResumedReasonCode,
+                relocationClosureReasonCode,
+                supplyOutageReasonCode,
+                unusedClosureReasonCode,
+                regularReasonCode,
+                regularSwCancellationReasonCode,
+                temporaryReasonCode,
+                temporarySwCancellationReasonCode,
+                firedAndLostCapReasonCode);
+    }
+
+    private static boolean isAnyOf(
+            final String actual,
+            final String... expectedValues) {
+<span class="pc bpc" id="L826" title="1 of 2 branches missed.">        if (actual == null) {</span>
+<span class="nc" id="L827">            return false;</span>
+        }
+<span class="fc bfc" id="L829" title="All 2 branches covered.">        for (String expectedValue : expectedValues) {</span>
+<span class="fc bfc" id="L830" title="All 2 branches covered.">            if (Objects.equals(actual, expectedValue)) {</span>
+<span class="fc" id="L831">                return true;</span>
+            }
+        }
+<span class="fc" id="L834">        return false;</span>
+    }
+
+    private static SkinKnkkInf toRecentMeterReading(
+            final KnsKkaInf meterReading) {
+<span class="fc" id="L839">        return new SkinKnkkInf(</span>
+<span class="fc" id="L840">                meterReading.knsYmd(),</span>
+<span class="fc" id="L841">                meterReading.knsKkaTsno(),</span>
+<span class="fc" id="L842">                meterReading.gmtShjSu(),</span>
+<span class="fc" id="L843">                meterReading.knkkSsjyShbt(),</span>
+<span class="fc" id="L844">                meterReading.knkkKtmeFlg(),</span>
+<span class="fc" id="L845">                meterReading.sjskKbn(),</span>
+<span class="fc" id="L846">                meterReading.knsJsjkCd());</span>
+    }
+
+    private static ZnkiKnkkInf toPreviousMeterReading(
+            final KnsKkaInf meterReading) {
+<span class="fc" id="L851">        return new ZnkiKnkkInf(</span>
+<span class="fc" id="L852">                meterReading.knsYmd(),</span>
+<span class="fc" id="L853">                meterReading.knsKkaTsno(),</span>
+<span class="fc" id="L854">                meterReading.gmtShjSu(),</span>
+<span class="fc" id="L855">                meterReading.knkkSsjyShbt(),</span>
+<span class="fc" id="L856">                meterReading.knkkKtmeFlg(),</span>
+<span class="fc" id="L857">                meterReading.sjskKbn(),</span>
+<span class="fc" id="L858">                meterReading.knsJsjkCd(),</span>
+<span class="fc" id="L859">                meterReading.tksuSvkyNo());</span>
+    }
+
+    private GasmtrdRecord resolveCurrentMeter(
+            final Long gasMtstNo,
+            final LocalDate knsYmd) {
+<span class="fc" id="L865">        Optional&lt;GasmtrdRecord&gt; currentMeter =</span>
+<span class="fc" id="L866">                gasmtrdDataAccess.findByTtkGmsbNoAndGmtkYmd(gasMtstNo, knsYmd);</span>
+<span class="fc bfc" id="L867" title="All 2 branches covered.">        if (currentMeter.isPresent()) {</span>
+<span class="fc" id="L868">            return currentMeter.get();</span>
+        }
+<span class="fc" id="L870">        Optional&lt;GasmtrdRecord&gt; fallback =</span>
+<span class="fc" id="L871">                gasmtrdDataAccess.findByTtkGmsbNoAndGmtThkgYmd(</span>
+                        gasMtstNo,
+                        knsYmd);
+<span class="pc bpc" id="L874" title="1 of 2 branches missed.">        return fallback.isPresent()</span>
+<span class="nc" id="L875">                ? fallback.get()</span>
+<span class="fc" id="L876">                : null;</span>
+    }
+
+    private Long resolveTransportationServiceContractNumber(
+            final Long gasMtstNo,
+            final LocalDate knsYmd,
+            final List&lt;KnsKkaInf&gt; meterReadingResults) {
+<span class="fc" id="L883">        List&lt;String&gt; invalidStatuses = List.of(</span>
+                invalidTransportationServiceContractRelatedStatusCode);
+<span class="fc" id="L885">        Optional&lt;TskgmstRecord&gt; transportationServiceContract =</span>
+                tskgmstDataAccess
+<span class="fc" id="L887">                        .findByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(</span>
+                                gasMtstNo,
+                                knsYmd,
+                                invalidStatuses);
+<span class="fc bfc" id="L891" title="All 2 branches covered.">        if (transportationServiceContract.isPresent()) {</span>
+<span class="fc" id="L892">            return transportationServiceContract.get().tksuSvkyNo();</span>
+        }
+<span class="fc" id="L894">        Optional&lt;Long&gt; firstTksu = meterReadingResults.stream()</span>
+<span class="fc" id="L895">                .map(KnsKkaInf::tksuSvkyNo)</span>
+<span class="fc" id="L896">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L897">                .findFirst();</span>
+<span class="pc bpc" id="L898" title="1 of 2 branches missed.">        return firstTksu.isPresent() ? firstTksu.get() : null;</span>
+    }
+
+    private KyuMtrInf resolveOldMeterInfo(
+            final Long gasMtstNo,
+            final LocalDate meterReplacementDate,
+            final GmtsetdRecord meterLocation,
+            final String sjskKbn,
+            final SkinKnkkInf oldMeterPreviousReading,
+            final MeterReplacementReadings meterReplacementReadings,
+            final Integer usageDays) {
+<span class="fc" id="L909">        Long removedMeterReading =</span>
+<span class="fc" id="L910">                meterReplacementReadings.removedMeterReading();</span>
+<span class="fc" id="L911">        Long installedMeterReading =</span>
+<span class="fc" id="L912">                meterReplacementReadings.installedMeterReading();</span>
+<span class="pc bpc" id="L913" title="2 of 6 branches missed.">        if (removedMeterReading == null</span>
+                || installedMeterReading == null
+                || meterReplacementDate == null) {
+<span class="fc" id="L916">            return new KyuMtrInf(</span>
+                    null,
+                    null,
+                    usageDays,
+                    removedMeterReading,
+                    installedMeterReading);
+        }
+<span class="fc" id="L923">        Optional&lt;GasmtrdRecord&gt; oldMeterOpt =</span>
+<span class="fc" id="L924">                gasmtrdDataAccess.findByTtkGmsbNoAndGmtThkgYmd(</span>
+                        gasMtstNo,
+                        meterReplacementDate);
+<span class="fc bfc" id="L927" title="All 2 branches covered.">        if (!oldMeterOpt.isPresent()) {</span>
+<span class="fc" id="L928">            return new KyuMtrInf(</span>
+                    null,
+                    null,
+                    usageDays,
+                    removedMeterReading,
+                    installedMeterReading);
+        }
+<span class="fc" id="L935">        GasmtrdRecord oldMeter = oldMeterOpt.get();</span>
+<span class="fc" id="L936">        Long currentReading = installedMeterReading;</span>
+<span class="fc" id="L937">        Long previousReading = removedMeterReading;</span>
+<span class="pc bpc" id="L938" title="1 of 4 branches missed.">        if (isZeroReading(installedMeterReading)</span>
+                &amp;&amp; oldMeterPreviousReading != null) {
+<span class="fc" id="L940">            currentReading = removedMeterReading;</span>
+<span class="fc" id="L941">            previousReading = oldMeterPreviousReading.gmtShjSu();</span>
+        }
+<span class="fc" id="L943">        TgPipelineGasUsageBetweenReadingsAcquisitionOutput usageResult =</span>
+<span class="fc" id="L944">                tgPipelineGasUsageBetweenReadingsAcquisition.execute(</span>
+                        sjskKbn,
+                        currentReading,
+                        previousReading,
+<span class="fc" id="L948">                        oldMeter.sjskHticSu(),</span>
+<span class="fc" id="L949">                        oldMeter.sjsuMincSu(),</span>
+                        BigDecimal.ZERO,
+<span class="fc bfc" id="L951" title="All 4 branches covered.">                        meterLocation == null || meterLocation.jkarSu() == null</span>
+<span class="fc" id="L952">                                ? 0</span>
+<span class="fc" id="L953">                                : meterLocation.jkarSu());</span>
+<span class="fc" id="L954">        return new KyuMtrInf(</span>
+<span class="fc" id="L955">                usageResult.knsngGasSyry(),</span>
+<span class="fc" id="L956">                usageResult.gasSyry(),</span>
+                usageDays,
+                removedMeterReading,
+                installedMeterReading);
+    }
+
+    private int resolveOldMeterUsageDays(
+            final SkinKnkkInf oldMeterPreviousReading,
+            final LocalDate meterReplacementDate,
+            final int fallbackUsageDays) {
+<span class="pc bpc" id="L966" title="1 of 4 branches missed.">        if (oldMeterPreviousReading == null || meterReplacementDate == null) {</span>
+<span class="fc" id="L967">            return fallbackUsageDays;</span>
+        }
+<span class="fc" id="L969">        return daysBetween(</span>
+<span class="fc" id="L970">                oldMeterPreviousReading.knsYmd(),</span>
+                meterReplacementDate);
+    }
+
+    private static boolean isZeroReading(final Long reading) {
+<span class="pc bpc" id="L975" title="1 of 4 branches missed.">        return reading != null &amp;&amp; reading == 0L;</span>
+    }
+
+    private static BigDecimal resolveCorrectedConvertedUsage(
+            final KnsKkaInf meterReading,
+            final LocalDate tsimKnsYmd,
+            final Integer tsimKnsKkaTsno,
+            final BigDecimal tsimSyry,
+            final BigDecimal defaultUsage) {
+<span class="pc bpc" id="L984" title="2 of 6 branches missed.">        if (tsimKnsYmd == null || tsimKnsKkaTsno == null || tsimSyry == null) {</span>
+<span class="fc" id="L985">            return null;</span>
+        }
+<span class="fc bfc" id="L987" title="All 2 branches covered.">        if (tsimKnsYmd.equals(meterReading.knsYmd())</span>
+<span class="pc bpc" id="L988" title="1 of 2 branches missed.">                &amp;&amp; tsimKnsKkaTsno.equals(meterReading.knsKkaTsno())) {</span>
+<span class="nc" id="L989">            return tsimSyry;</span>
+        }
+<span class="fc" id="L991">        return defaultUsage;</span>
+    }
+
+    private static int calculateSupplyStopDays(
+            final List&lt;KkyCushInf&gt; supplyStopInfos,
+            final LocalDate currentReadingDate) {
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        if (supplyStopInfos.isEmpty()) {</span>
+<span class="fc" id="L998">            return 0;</span>
+        }
+<span class="fc" id="L1000">        List&lt;KkyCushInf&gt; sortedSupplyStopInfos = supplyStopInfos.stream()</span>
+<span class="fc" id="L1001">                .sorted(Comparator.comparing(KkyCushInf::knsYmd))</span>
+<span class="fc" id="L1002">                .toList();</span>
+<span class="fc" id="L1003">        LocalDate supplyStopStartDate = null;</span>
+<span class="fc" id="L1004">        int totalDays = 0;</span>
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">        for (KkyCushInf supplyStopInfo : sortedSupplyStopInfos) {</span>
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">            if (Objects.equals(</span>
+<span class="fc" id="L1007">                            supplyStopInfo.knkkSsjyShbt(),</span>
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .CLOSED_IN_CASE_OF_DISASTER)
+<span class="fc bfc" id="L1011" title="All 2 branches covered.">                    || Objects.equals(</span>
+<span class="fc" id="L1012">                            supplyStopInfo.knkkSsjyShbt(),</span>
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .SECURITY_CLOSURE)) {
+<span class="fc" id="L1016">                supplyStopStartDate = supplyStopInfo.knsYmd().plusDays(1);</span>
+<span class="fc" id="L1017">                continue;</span>
+            }
+<span class="pc bpc" id="L1019" title="1 of 2 branches missed.">            if (supplyStopStartDate != null) {</span>
+<span class="fc" id="L1020">                totalDays += daysBetween(</span>
+                        supplyStopStartDate,
+<span class="fc" id="L1022">                        supplyStopInfo.knsYmd());</span>
+<span class="fc" id="L1023">                supplyStopStartDate = null;</span>
+            }
+<span class="fc" id="L1025">        }</span>
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">        if (supplyStopStartDate != null) {</span>
+<span class="fc" id="L1027">            totalDays += daysBetween(supplyStopStartDate, currentReadingDate);</span>
+        }
+<span class="fc" id="L1029">        return totalDays;</span>
+    }
+
+    private static int daysBetween(final LocalDate from, final LocalDate to) {
+<span class="fc" id="L1033">        return Math.max(0, Math.toIntExact(ChronoUnit.DAYS.between(from, to)));</span>
+    }
+
+    private static BigDecimal defaultBigDecimal(final BigDecimal value) {
+<span class="pc bpc" id="L1037" title="1 of 2 branches missed.">        return value == null ? BigDecimal.ZERO : value;</span>
+    }
+
+    private DataInconsistencyException previousMeterReadingDataInconsistency(
+            final Long gasMtstNo,
+            final LocalDate knsYmd) {
+<span class="fc" id="L1043">        return DataInconsistencySupport.create(</span>
+                &quot;GMKSKKD&quot;,
+                GmkskkdDataAccess.CallSpecs
+                        .FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_FROM_WITH_KKMT_FLG
+<span class="fc" id="L1047">                        .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L1049">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L1050">                        .put(&quot;knsYmdFrom&quot;, knsYmd));</span>
+    }
+
+<span class="fc" id="L1053">    private record IntervalContext(</span>
+            SkinKnkkInf previousReading,
+            GasmtrdRecord currentMeter,
+            GmtsetdRecord meterLocation) {
+    }
+
+<span class="fc" id="L1059">    private record ReplacementIntervalContext(</span>
+            KnsKkaInf installationReading,
+            KnsKkaInf removalReading,
+            SkinKnkkInf previousReading) {
+    }
+
+<span class="fc" id="L1065">    private record MeterReplacementReadings(</span>
+            Long removedMeterReading,
+            Long installedMeterReading) {
+    }
+
+<span class="fc" id="L1070">    private record UsageComputation(</span>
+            BigDecimal preConvertedUsage,
+            BigDecimal convertedUsage,
+            String regressionSegment) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
