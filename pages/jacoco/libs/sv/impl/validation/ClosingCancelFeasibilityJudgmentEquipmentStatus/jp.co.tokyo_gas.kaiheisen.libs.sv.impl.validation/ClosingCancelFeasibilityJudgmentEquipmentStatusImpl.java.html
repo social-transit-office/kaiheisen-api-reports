@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentEquipmentStatusImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmentequipmentstatus</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentEquipmentStatusImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentEquipmentStatusImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentEquipmentStatusOutput;
+
+/** SV-101 閉栓取消実施可否判定: 供内管・ガスメーター設備状態区分サービス実装. */
+public final class ClosingCancelFeasibilityJudgmentEquipmentStatusImpl
+        implements ClosingCancelFeasibilityJudgmentEquipmentStatus {
+
+    /** ガスメーター設置場所＜導管＞ DA. */
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    /** メーター（保有）状態の供内管・ガスメーター設備状態区分. */
+    private final String meterPossessionStatus;
+
+    /**
+     * 必須依存を受け取って初期化する.
+     *
+     * @param gmtsetdDataAccessParam ガスメーター設置場所＜導管＞ DA
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ClosingCancelFeasibilityJudgmentEquipmentStatusImpl(
+            final GmtsetdDataAccess gmtsetdDataAccessParam,
+<span class="fc" id="L37">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L38">        this.gmtsetdDataAccess = Objects.requireNonNull(</span>
+                gmtsetdDataAccessParam,
+                &quot;gmtsetdDataAccess&quot;);
+<span class="fc" id="L41">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L42">                Objects.requireNonNull(</span>
+                        ciriusConstantService,
+                        &quot;ciriusConstantService&quot;);
+<span class="fc" id="L45">        this.meterPossessionStatus = requireConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius
+                        .ServicePipeGasMeterEquipmentStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus
+                        .METER_POSSESSION_STATUS);
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * 供内管・ガスメーター設備状態区分を判定し、判定対象レコードを返す.
+     *
+     * &lt;p&gt;主な仕様: DA-033-R006 で対象レコードを 1 件取得し、0 件の場合は
+     * {@link DataInconsistencyException} を送出する。取得した
+     * 供内管・ガスメーター設備状態区分が 05800 1:メーター（保有）状態と一致しない場合は
+     * {@link BusinessRuleException} として業務エラー 020000052 を送出する。
+     * 一致する場合は取得したレコードの必要項目を出力 DTO へ移送して返却する。
+     *
+     * &lt;p&gt;既知の制約: public 引数の null/形式妥当性は上位レイヤで検証済みを前提とし、
+     * 本メソッドでは追加バリデーションを行わない。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消検針日
+     * @return 判定対象レコードから生成した出力 DTO
+     */
+    @Override
+    public ClosingCancelFeasibilityJudgmentEquipmentStatusOutput execute(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L73">        GmtsetdRecord record = gmtsetdDataAccess</span>
+<span class="fc" id="L74">                .findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                        gasMtstNo,
+                        trkKnsYmd)
+<span class="fc" id="L77">                .orElseThrow(</span>
+<span class="fc" id="L78">                        () -&gt; dataInconsistencyForGmtsetd(</span>
+                                gasMtstNo,
+                                trkKnsYmd));
+
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (!meterPossessionStatus.equals(record.kngmStbJtkb())) {</span>
+<span class="fc" id="L83">            throw new BusinessRuleException(</span>
+                    ErrorCodeConstants.ERROR_CODE_020000052);
+        }
+
+<span class="fc" id="L87">        return toOutput(record);</span>
+    }
+
+    private ClosingCancelFeasibilityJudgmentEquipmentStatusOutput toOutput(
+            final GmtsetdRecord record) {
+<span class="fc" id="L92">        return new ClosingCancelFeasibilityJudgmentEquipmentStatusOutput(</span>
+<span class="fc" id="L93">                record.gasMtstNo(),</span>
+<span class="fc" id="L94">                record.szcGkkCd(),</span>
+<span class="fc" id="L95">                record.szcMchCd(),</span>
+<span class="fc" id="L96">                record.szcCmazCd(),</span>
+<span class="fc" id="L97">                record.kasYmd(),</span>
+<span class="fc" id="L98">                record.hesnYmd(),</span>
+<span class="fc" id="L99">                record.hesnJysb(),</span>
+<span class="fc" id="L100">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L101">                record.mtgMtstNo());</span>
+    }
+
+    private DataInconsistencyException dataInconsistencyForGmtsetd(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L107">        DataAccessCallSpec callSpec =</span>
+                GmtsetdDataAccess.CallSpecs
+                        .FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD;
+<span class="fc" id="L110">        FlatJsonBuilder parameterBuilder = new FlatJsonBuilder()</span>
+<span class="fc" id="L111">                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L112">                .put(&quot;knskKjnYmd&quot;, knskKjnYmd);</span>
+<span class="fc" id="L113">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L114">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L115">                callSpec.identifier(),</span>
+                parameterBuilder);
+    }
+
+    private static String requireConstant(
+            final CiriusConstantService ciriusConstantService,
+            final String type,
+            final String code) {
+<span class="fc" id="L123">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                type,
+                code);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

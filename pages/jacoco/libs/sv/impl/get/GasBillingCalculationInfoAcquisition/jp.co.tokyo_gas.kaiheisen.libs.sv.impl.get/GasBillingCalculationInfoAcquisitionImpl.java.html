@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasBillingCalculationInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-gasbillingcalculationinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">GasBillingCalculationInfoAcquisitionImpl.java</span></div><h1>GasBillingCalculationInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasBillingCalculationInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasBillingCalculationInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KkyCushInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ZnkiKnkkInf;
+
+/** ガス使用量指針間情報取得（前回検針日キー）サービス実装。 */
+public class GasBillingCalculationInfoAcquisitionImpl
+        implements GasBillingCalculationInfoAcquisition {
+
+    private final String openingReasonCode;
+
+    private final String disasterRestorationReasonCode;
+
+    private final String securityReleaseReasonCode;
+
+    private final String disasterClosureReasonCode;
+
+    private final String securityClosureReasonCode;
+
+    /**
+     * 概要:
+     * - 業務判定で利用する必須 CIRIUS 定数を初期化する。
+     *
+     * 主な仕様:
+     * - 検針結果作成事由種別の必須定数を fail-fast で解決する。
+     *
+     * 既知の制約:
+     * - 必須定数未定義時は RequiredConstantResolver の例外が送出される。
+     *
+    * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+<span class="fc" id="L42">    public GasBillingCalculationInfoAcquisitionImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L43">        this.openingReasonCode =</span>
+<span class="fc" id="L44">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.OPENING);
+<span class="fc" id="L48">        this.disasterRestorationReasonCode =</span>
+<span class="fc" id="L49">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .RESTORATION_OF_SHUTOFF_IN_CASE_OF_DISASTER);
+<span class="fc" id="L54">        this.securityReleaseReasonCode =</span>
+<span class="fc" id="L55">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .SECURITY_RELEASE);
+<span class="fc" id="L60">        this.disasterClosureReasonCode =</span>
+<span class="fc" id="L61">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L66">        this.securityClosureReasonCode =</span>
+<span class="fc" id="L67">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .SECURITY_CLOSURE);
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * 概要: 前回検針関連情報と供給中止/検針結果情報からガス料金計算用情報を返却する。
+     * 主な仕様:
+     * - 供給中止情報リストを優先して供給中止日数を算出する。
+     * - 供給中止日数が 0 のままの場合のみ検針結果情報リストで再算出する。
+     *
+     * @param knsYmd 検針年月日
+     * @param znkiKnkkInf 前回検針関連情報
+     * @param kkyCushInfList 供給中止情報リスト
+     * @param knsKkaInfList 検針結果情報リスト
+     * @param gasRknKsnInf ガス料金計算用情報
+     * @return ガス料金計算用情報取得結果
+     */
+    @Override
+    public GasBillingCalculationInfoAcquisitionOutput execute(
+            LocalDate knsYmd,
+            ZnkiKnkkInf znkiKnkkInf,
+            List&lt;KkyCushInf&gt; kkyCushInfList,
+            List&lt;KnsKkaInf&gt; knsKkaInfList,
+            GasRknKsnInf gasRknKsnInf) {
+<span class="fc" id="L94">        int supplyStopDays =</span>
+<span class="fc" id="L95">            calculateSupplyStopDays(</span>
+                knsYmd,
+                znkiKnkkInf,
+                kkyCushInfList,
+                knsKkaInfList,
+                gasRknKsnInf);
+
+<span class="fc" id="L102">        return new GasBillingCalculationInfoAcquisitionOutput(</span>
+                new GasRknKsnInf(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L109">                        supplyStopDays,</span>
+<span class="fc" id="L110">                        znkiKnkkInf.tksuSvkyNo(),</span>
+                        null));
+    }
+
+    /**
+     * 概要:
+     * - 供給中止情報リストと検針結果情報リストから供給中止日数を算出する。
+     *
+     * 主な仕様:
+     * - 供給中止情報リストの閉栓/閉栓解除系パターンを優先して算出する。
+     * - 算出結果が 0 の場合のみ検針結果情報リストで再算出する。
+     *
+     * 既知の制約:
+     * - 供給中止日数ワークは各レコード処理開始時に 0 へ初期化する
+     *
+     * @param knsYmd 検針年月日
+     * @param znkiKnkkInf 前回検針関連情報
+     * @param kkyCushInfList 供給中止情報リスト
+     * @param knsKkaInfList 検針結果情報リスト
+     * @param gasRknKsnInf ガス料金計算用情報
+     * @return 算出した供給中止日数
+     */
+    private int calculateSupplyStopDays(
+            LocalDate knsYmd,
+            ZnkiKnkkInf znkiKnkkInf,
+            List&lt;KkyCushInf&gt; kkyCushInfList,
+            List&lt;KnsKkaInf&gt; knsKkaInfList,
+            GasRknKsnInf gasRknKsnInf) {
+<span class="fc" id="L138">        int supplyStopDays = 0;</span>
+<span class="fc" id="L139">        int supplyStopRecordCount = kkyCushInfList.size();</span>
+
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (int index = 0; index &lt; supplyStopRecordCount; index++) {</span>
+<span class="fc" id="L142">            int supplyStopDaysWork = 0;</span>
+<span class="fc" id="L143">            KkyCushInf currentRecord = kkyCushInfList.get(index);</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (shouldCalculateSupplyStopDate(kkyCushInfList, index)) {</span>
+<span class="fc" id="L146">                LocalDate supplyStopDate = resolveSupplyStopDate(currentRecord, znkiKnkkInf);</span>
+<span class="fc" id="L147">                supplyStopDaysWork = calculateDaysBetween(supplyStopDate, knsYmd);</span>
+            }
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (isLastRecord(index, supplyStopRecordCount)</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                    &amp;&amp; isReleaseReason(currentRecord.knkkSsjyShbt())) {</span>
+<span class="fc" id="L151">                supplyStopDaysWork =</span>
+<span class="fc" id="L152">                        calculateDaysBetween(gasRknKsnInf.kokiRkksYmd(), currentRecord.knsYmd());</span>
+            }
+<span class="fc" id="L154">            supplyStopDays += supplyStopDaysWork;</span>
+        }
+
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (supplyStopDays != 0) {</span>
+<span class="fc" id="L158">            return supplyStopDays;</span>
+        }
+<span class="fc" id="L160">        return recalculateSupplyStopDaysFromMeterReadingResults(</span>
+                knsYmd, knsKkaInfList, gasRknKsnInf);
+    }
+
+    /**
+     * 概要: 供給中止情報から供給中止日算出対象かを判定する。 主な仕様: - 1レコード目は閉栓系事由であれば対象とする。 -
+     * 2レコード目以降は、現在が閉栓系かつ直前が閉栓解除系の場合のみ対象とする。 既知の制約: - リスト順は設計書どおりの時系列で渡される前提とする。
+     *
+     * @param kkyCushInfList 供給中止情報リスト
+     * @param index 現在処理中の添字
+     * @return 算出対象判定結果
+     */
+    private boolean shouldCalculateSupplyStopDate(List&lt;KkyCushInf&gt; kkyCushInfList, int index) {
+<span class="fc" id="L173">        KkyCushInf currentRecord = kkyCushInfList.get(index);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (!isClosureReason(currentRecord.knkkSsjyShbt())) {</span>
+<span class="fc" id="L175">            return false;</span>
+        }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (index == 0) {</span>
+<span class="fc" id="L178">            return true;</span>
+        }
+<span class="fc" id="L180">        return isReleaseReason(kkyCushInfList.get(index - 1).knkkSsjyShbt());</span>
+    }
+
+    /**
+     * 概要: 前回検針関連情報と供給中止情報から供給中止日を算出する。 主な仕様: - 前回検針関連情報が開栓かつ検針年月日不一致の場合は 2 日後を返す。 - 上記以外は 1 日後を返す。
+     * 既知の制約: - 日付加算は LocalDate.plusDays を使用する。
+     *
+     * @param currentRecord 現在の供給中止情報
+     * @param znkiKnkkInf 前回検針関連情報
+     * @return 算出した供給中止日
+     */
+    private LocalDate resolveSupplyStopDate(KkyCushInf currentRecord, ZnkiKnkkInf znkiKnkkInf) {
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        if (openingReasonCode.equals(normalize(znkiKnkkInf.knkkSsjyShbt()))</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                &amp;&amp; !znkiKnkkInf.knsYmd().isEqual(currentRecord.knsYmd())) {</span>
+<span class="fc" id="L194">            return currentRecord.knsYmd().plusDays(2);</span>
+        }
+<span class="fc" id="L196">        return currentRecord.knsYmd().plusDays(1);</span>
+    }
+
+    /**
+     * 概要: 検針結果情報リストを用いて供給中止日数を再算出する。 主な仕様: - 閉栓系事由を検知した時点で今回料金起算年月日から検針年月日までの日数を返す。 -
+     * 閉栓解除系事由を検知した時点で繰り返しを中断し 0 を返す。 既知の制約: - 供給中止情報リストで算出できた場合は本メソッドは呼ばれない。
+     *
+     * @param knsYmd 検針年月日
+     * @param knsKkaInfList 検針結果情報リスト
+     * @param gasRknKsnInf ガス料金計算用情報
+     * @return 再算出した供給中止日数
+     */
+    private int recalculateSupplyStopDaysFromMeterReadingResults(
+            LocalDate knsYmd,
+            List&lt;KnsKkaInf&gt; knsKkaInfList,
+            GasRknKsnInf gasRknKsnInf) {
+<span class="fc" id="L212">        int meterReadingResultCount = knsKkaInfList.size();</span>
+
+<span class="pc bfc" id="L214" title="All 2 branches covered.">        for (int index = 0; index &lt; meterReadingResultCount; index++) {</span>
+<span class="fc" id="L215">            KnsKkaInf currentRecord = knsKkaInfList.get(index);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">            if (isClosureReason(currentRecord.knkkSsjyShbt())) {</span>
+<span class="fc" id="L217">                return calculateDaysBetween(gasRknKsnInf.kokiRkksYmd(), knsYmd);</span>
+            }
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">            if (isReleaseReason(currentRecord.knkkSsjyShbt())) {</span>
+<span class="fc" id="L220">                break;</span>
+            }
+        }
+<span class="fc" id="L223">        return 0;</span>
+    }
+
+    /**
+     * 概要: 閉栓系事由かを判定する。 主な仕様: - 災害時閉栓または保安閉栓のみ true を返す。 既知の制約: - 比較前に trim と空値 null 化を行う。
+     *
+     * @param reasonCode 検針結果作成事由種別
+     * @return 閉栓系判定結果
+     */
+    private boolean isClosureReason(String reasonCode) {
+<span class="fc" id="L233">        String normalizedReasonCode = normalize(reasonCode);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        return disasterClosureReasonCode.equals(normalizedReasonCode)</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                || securityClosureReasonCode.equals(normalizedReasonCode);</span>
+    }
+
+    /**
+     * 概要: 閉栓解除系事由かを判定する。 主な仕様: - 災害時閉栓復旧または保安閉栓解除のみ true を返す。 既知の制約: - 比較前に trim と空値 null 化を行う。
+     *
+     * @param reasonCode 検針結果作成事由種別
+     * @return 閉栓解除系判定結果
+     */
+    private boolean isReleaseReason(String reasonCode) {
+<span class="fc" id="L245">        String normalizedReasonCode = normalize(reasonCode);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        return disasterRestorationReasonCode.equals(normalizedReasonCode)</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                || securityReleaseReasonCode.equals(normalizedReasonCode);</span>
+    }
+
+    /**
+     * 概要: 文字列を trim し、空値を null に正規化する。 主な仕様: - null は null のまま返す。 - trim 後に空文字の場合は null を返す。 既知の制約:
+     * - 空白除去の挙動は Java 標準の trim に依存する。
+     *
+     * @param value 正規化対象
+     * @return 正規化結果
+     */
+    private static String normalize(String value) {
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L259">            return null;</span>
+        }
+<span class="fc" id="L261">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+
+    /**
+     * 概要: 2つの日付の差分日数を算出する。 主な仕様: - 開始日から終了日までの日数差を返す。 既知の制約: - 負数の差分もそのまま返却する。
+     *
+     * @param from 開始日
+     * @param to 終了日
+     * @return 日数差
+     */
+    private static int calculateDaysBetween(LocalDate from, LocalDate to) {
+<span class="fc" id="L273">        return Math.toIntExact(ChronoUnit.DAYS.between(from, to));</span>
+    }
+
+    /**
+     * 概要: 現在レコードが最終走査レコードかを判定する。 主な仕様: - 走査件数ベースで末尾要素を判定する。 既知の制約: - count が 0 の場合は呼び出されない前提とする。
+     *
+     * @param index 現在添字
+     * @param count 走査件数
+     * @return 最終レコード判定結果
+     */
+    private static boolean isLastRecord(int index, int count) {
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        return index == count - 1;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

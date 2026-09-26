@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingTargetGasMeterCompanyUseCategoryJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingtargetgasmetercompanyusecategoryjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingTargetGasMeterCompanyUseCategoryJudgmentImpl.java</span></div><h1>ClosingTargetGasMeterCompanyUseCategoryJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterCompanyUseCategoryJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput;
+
+/**
+ * 概要: SV-271（閉栓対象ガスメーターの社用区分判定）の実装。
+ * 主な仕様:
+ * - RequestContext の systemDatetime を検索基準日に変換し、DA-038-R006 相当の契約一覧検索を行う。
+ * - 契約 0 件時は業務エラー 020000027、社用区分が社用時は業務エラー 020000028 を送出する。
+ * - 正常時は取得した契約種別を出力 DTO へ格納して返す。
+ * 既知の制約:
+ * - 契約が存在する場合は取得一覧の先頭レコードを判定対象として扱う。
+ */
+public final class ClosingTargetGasMeterCompanyUseCategoryJudgmentImpl
+        implements ClosingTargetGasMeterCompanyUseCategoryJudgment {
+
+    /** サービス契約情報を取得するデータアクセス。 */
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    /** systemDatetime を取得するためのリクエストコンテキスト。 */
+    private final RequestContext requestContext;
+
+    /** 社用区分が社用であることを表す CIRIUS 定数値。 */
+    private final String companyUseDivision;
+
+    /** サービス契約状態区分が無効であることを表す CIRIUS 定数値。 */
+    private final String invalidServiceContractStatus;
+
+    /**
+     * 概要: 依存と判定用定数を受け取って初期化する。
+     * 主な仕様:
+     * - サービス契約 DA と RequestContext を必須依存として保持する。
+     * - 社用区分判定に使う CIRIUS 定数を初期化時に解決する。
+     * 既知の制約:
+     * - 依存または必須定数が不足する場合はコンストラクタで fail-fast する。
+     *
+     * @param svckyaDataAccess サービス契約情報取得 DA
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ClosingTargetGasMeterCompanyUseCategoryJudgmentImpl(
+            SvckyaDataAccess svckyaDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L57">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L58">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L59">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L60">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L61">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L62">        this.companyUseDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.FOR_COMPANY_USE);
+<span class="fc" id="L66">        this.invalidServiceContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+            resolvedCiriusConstantService,
+            ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+            ConstantLookupKeys.Cirius.ServiceContractStatus.INVALID);
+<span class="fc" id="L70">    }</span>
+
+    @Override
+    public ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput execute(Long svkyNo) {
+<span class="fc" id="L74">        List&lt;SvckyaRecord&gt; contracts = svckyaDataAccess</span>
+<span class="fc" id="L75">            .findAllBySvkyNoAtKnskKjnYmdAndSvkyJtkbNot(</span>
+                svkyNo,
+<span class="fc" id="L77">                getSystemDatetime().toLocalDate(),</span>
+                invalidServiceContractStatus);
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (contracts.isEmpty()) {</span>
+<span class="fc" id="L81">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000027);</span>
+        }
+
+<span class="fc" id="L84">        SvckyaRecord contract = contracts.getFirst();</span>
+
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (companyUseDivision.equals(contract.syaKbn())) {</span>
+<span class="fc" id="L87">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000028);</span>
+        }
+
+<span class="fc" id="L90">        return new ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput(contract.kiyShbt());</span>
+    }
+
+    /**
+     * 概要: RequestContext からシステム日時を取得する。
+     * 主な仕様:
+     * - 設計上の systemDatetime 入力は RequestContext から補う。
+     * - 実装規約に合わせて未設定時は IllegalStateException で fail-fast する。
+     * 既知の制約:
+     * - RequestContext に systemDatetime が設定されていない場合は実行を継続しない。
+     *
+     * @return リクエストコンテキスト上のシステム日時
+     */
+    private LocalDateTime getSystemDatetime() {
+<span class="fc" id="L104">        return requestContext</span>
+<span class="fc" id="L105">                .getSystemDatetime()</span>
+<span class="fc" id="L106">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

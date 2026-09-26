@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultExceptionLogMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.logging</a> &gt; <span class="el_source">DefaultExceptionLogMapper.java</span></div><h1>DefaultExceptionLogMapper.java</h1><pre class="source lang-java linenums">/**
+ * @file DefaultExceptionLogMapper.java
+ * 概要: 例外カタログに基づくログマッピングの既定実装を定義する。
+ * 主な仕様:
+ * - 例外種別に応じてログレベルと HTTP ステータスを決定する。
+ * 既知の制限事項:
+ * - 詳細なマッピングは将来の例外カタログ確定後に調整する。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.core.logging;
+
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DatabaseException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DeadLockException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DuplicateKeyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.external.ExternalSystemException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+
+/**
+ * 例外→ログ出力情報の既定マッピング。
+ */
+public final class DefaultExceptionLogMapper implements ExceptionLogMapper {
+
+    private static final int HTTP_BAD_REQUEST = 400;
+
+    private static final int HTTP_INTERNAL_ERROR = 500;
+
+    private final LogLayer layer;
+
+    private final ExceptionLogSettings settings;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param layer レイヤ。型: LogLayer
+     */
+    public DefaultExceptionLogMapper(LogLayer layer) {
+<span class="nc" id="L46">        this(layer, ExceptionLogSettingsProvider.load());</span>
+<span class="nc" id="L47">    }</span>
+
+    /**
+     * コンストラクタ。
+     *
+     * @param layer レイヤ。型: LogLayer
+     * @param settings 例外ログ設定。型: ExceptionLogSettings
+     */
+<span class="fc" id="L55">    public DefaultExceptionLogMapper(LogLayer layer, ExceptionLogSettings settings) {</span>
+<span class="fc" id="L56">        this.layer = Objects.requireNonNull(layer, &quot;layer&quot;);</span>
+<span class="fc" id="L57">        this.settings = Objects.requireNonNull(settings, &quot;settings&quot;);</span>
+<span class="fc" id="L58">    }</span>
+
+    @Override
+    public LogDecision map(Throwable throwable) {
+<span class="nc" id="L62">        return map(throwable, ExceptionLogContext.empty());</span>
+    }
+
+    @Override
+    public LogDecision map(Throwable throwable, ExceptionLogContext context) {
+<span class="fc" id="L67">        LogLevel level = resolveLevel(throwable);</span>
+<span class="fc" id="L68">        Integer httpStatus = resolveHttpStatus(throwable);</span>
+<span class="fc" id="L69">        String errorCode = resolveErrorCode(throwable);</span>
+<span class="fc" id="L70">        String summary = resolveSummary(throwable);</span>
+
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        Map&lt;String, Object&gt; attributes = buildAttributes(throwable, context == null ? ExceptionLogContext.empty() : context);</span>
+
+<span class="fc" id="L74">        LogEvent event = new LogEvent(</span>
+                &quot;exception&quot;,
+                summary,
+                layer,
+                httpStatus,
+                errorCode,
+                attributes);
+<span class="fc" id="L81">        return new LogDecision(level, event);</span>
+    }
+
+    private Map&lt;String, Object&gt; buildAttributes(Throwable throwable, ExceptionLogContext context) {
+<span class="fc" id="L85">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (throwable == null) {</span>
+<span class="nc" id="L87">            return attributes;</span>
+        }
+<span class="fc" id="L89">        attributes.put(LogField.EXCEPTION_CLASS.key(), throwable.getClass().getName());</span>
+<span class="fc" id="L90">        putIfPresent(attributes, LogField.CORRELATION_ID, context.correlationId());</span>
+<span class="fc" id="L91">        putIfPresent(attributes, LogField.HTTP_METHOD, context.httpMethod());</span>
+<span class="fc" id="L92">        putIfPresent(attributes, LogField.PATH, context.requestPath());</span>
+<span class="fc" id="L93">        putIfPresent(attributes, LogField.RESOURCE_CLASS, context.resourceClass());</span>
+<span class="fc" id="L94">        putIfPresent(attributes, LogField.SERVICE_ID, context.serviceId());</span>
+<span class="fc" id="L95">        putIfPresent(attributes, LogField.SERVICE_NAME, context.serviceName());</span>
+
+<span class="fc" id="L97">        Throwable rootCause = resolveRootCause(throwable);</span>
+<span class="fc" id="L98">        attributes.put(LogField.ROOT_CAUSE_CLASS.key(), rootCause.getClass().getName());</span>
+<span class="fc" id="L99">        putIfPresent(attributes, LogField.ROOT_CAUSE_MESSAGE, normalize(rootCause.getMessage()));</span>
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (throwable instanceof DatabaseException databaseException) {</span>
+<span class="fc" id="L102">            putIfPresent(attributes, LogField.DA_IDENTIFIER, databaseException.getDaIdentifier());</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            attributes.put(LogField.SQL_PRESENT.key(), databaseException.getSql() != null);</span>
+        }
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (settings.detailLevel().isDetailed()) {</span>
+<span class="fc" id="L107">            StackTraceElement origin = resolveOrigin(rootCause);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (origin != null) {</span>
+<span class="fc" id="L109">                attributes.put(LogField.ORIGIN_CLASS.key(), origin.getClassName());</span>
+<span class="fc" id="L110">                attributes.put(LogField.ORIGIN_METHOD.key(), origin.getMethodName());</span>
+<span class="fc" id="L111">                putIfPresent(attributes, LogField.ORIGIN_FILE, origin.getFileName());</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                if (origin.getLineNumber() &gt;= 0) {</span>
+<span class="fc" id="L113">                    attributes.put(LogField.ORIGIN_LINE.key(), origin.getLineNumber());</span>
+                }
+            }
+<span class="fc" id="L116">            attributes.put(LogField.EXCEPTION_CHAIN.key(), buildExceptionChain(throwable));</span>
+<span class="fc" id="L117">            attributes.put(LogField.STACK_TRACE.key(), buildStackTraceText(throwable));</span>
+        }
+<span class="fc" id="L119">        return attributes;</span>
+    }
+
+    private static LogLevel resolveLevel(Throwable throwable) {
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (throwable instanceof ValidationException) {</span>
+<span class="nc" id="L124">            return LogLevel.WARN;</span>
+        }
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (throwable instanceof BusinessRuleException) {</span>
+<span class="nc" id="L127">            return LogLevel.WARN;</span>
+        }
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (throwable instanceof DataNotFoundException) {</span>
+<span class="nc" id="L130">            return LogLevel.WARN;</span>
+        }
+<span class="fc" id="L132">        return LogLevel.ERROR;</span>
+    }
+
+    private static Integer resolveHttpStatus(Throwable throwable) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (throwable instanceof ValidationException) {</span>
+<span class="nc" id="L137">            return HTTP_BAD_REQUEST;</span>
+        }
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (throwable instanceof BusinessRuleException) {</span>
+<span class="nc" id="L140">            return HTTP_BAD_REQUEST;</span>
+        }
+<span class="pc bpc" id="L142" title="4 of 10 branches missed.">        if (throwable instanceof ExternalSystemException</span>
+                || throwable instanceof DatabaseException
+                || throwable instanceof DataInconsistencyException
+                || throwable instanceof DeadLockException
+                || throwable instanceof DuplicateKeyException) {
+<span class="fc" id="L147">            return HTTP_INTERNAL_ERROR;</span>
+        }
+<span class="fc" id="L149">        return HTTP_INTERNAL_ERROR;</span>
+    }
+
+    private static String resolveErrorCode(Throwable throwable) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (throwable instanceof KaiheisenException kaiheisenException) {</span>
+<span class="fc" id="L154">            return kaiheisenException.getErrorCode();</span>
+        }
+<span class="fc" id="L156">        return null;</span>
+    }
+
+    private static String resolveSummary(Throwable throwable) {
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (throwable == null) {</span>
+<span class="nc" id="L161">            return &quot;exception&quot;;</span>
+        }
+<span class="fc" id="L163">        String message = throwable.getMessage();</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">        if (message == null || message.isBlank()) {</span>
+<span class="nc" id="L165">            return throwable.getClass().getSimpleName();</span>
+        }
+<span class="fc" id="L167">        return message;</span>
+    }
+
+    private static Throwable resolveRootCause(Throwable throwable) {
+<span class="fc" id="L171">        Throwable current = throwable;</span>
+<span class="pc bpc" id="L172" title="2 of 6 branches missed.">        while (current != null &amp;&amp; current.getCause() != null &amp;&amp; current.getCause() != current) {</span>
+<span class="fc" id="L173">            current = current.getCause();</span>
+        }
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        return current == null ? throwable : current;</span>
+    }
+
+    private static StackTraceElement resolveOrigin(Throwable throwable) {
+<span class="pc bpc" id="L179" title="3 of 6 branches missed.">        if (throwable == null || throwable.getStackTrace() == null || throwable.getStackTrace().length == 0) {</span>
+<span class="nc" id="L180">            return null;</span>
+        }
+<span class="fc" id="L182">        return throwable.getStackTrace()[0];</span>
+    }
+
+    private static String buildExceptionChain(Throwable throwable) {
+<span class="fc" id="L186">        StringBuilder builder = new StringBuilder();</span>
+<span class="fc" id="L187">        Throwable current = throwable;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        while (current != null) {</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (builder.length() != 0) {</span>
+<span class="nc" id="L190">                builder.append(&quot; &lt;- &quot;);</span>
+            }
+<span class="fc" id="L192">            builder.append(current.getClass().getSimpleName());</span>
+<span class="fc" id="L193">            String message = normalize(current.getMessage());</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (message != null) {</span>
+<span class="fc" id="L195">                builder.append('(').append(message).append(')');</span>
+            }
+<span class="fc" id="L197">            current = current.getCause();</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc" id="L199">        return builder.toString();</span>
+    }
+
+    private static String buildStackTraceText(Throwable throwable) {
+<span class="fc" id="L203">        return Arrays.stream(throwable.getStackTrace())</span>
+<span class="fc" id="L204">                .limit(12)</span>
+<span class="fc" id="L205">                .map(StackTraceElement::toString)</span>
+<span class="fc" id="L206">                .reduce((left, right) -&gt; left + &quot;\n&quot; + right)</span>
+<span class="fc" id="L207">                .orElse(&quot;&quot;);</span>
+    }
+
+    private static void putIfPresent(Map&lt;String, Object&gt; attributes, LogField field, String value) {
+<span class="fc" id="L211">        String normalized = normalize(value);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (normalized != null) {</span>
+<span class="fc" id="L213">            attributes.put(field.key(), normalized);</span>
+        }
+<span class="fc" id="L215">    }</span>
+
+    private static String normalize(String value) {
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L219">            return null;</span>
+        }
+<span class="fc" id="L221">        String trimmed = value.trim();</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        return trimmed.isEmpty() ? null : trimmed;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

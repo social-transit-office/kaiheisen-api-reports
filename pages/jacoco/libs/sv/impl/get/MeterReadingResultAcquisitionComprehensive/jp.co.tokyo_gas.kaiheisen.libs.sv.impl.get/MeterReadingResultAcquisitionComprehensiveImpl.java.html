@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingResultAcquisitionComprehensiveImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-meterreadingresultacquisitioncomprehensive</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">MeterReadingResultAcquisitionComprehensiveImpl.java</span></div><h1>MeterReadingResultAcquisitionComprehensiveImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsnkrn.KnsnkrnDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsnkrn.KnsnkrnRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionComprehensive;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionComprehensiveOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosingOutput;
+
+/**
+ * 概要: SV-153（検針結果＆検針関連情報取得_総合）の実装クラス。
+ * 主な仕様:
+ * - メーター保有状態のときのみ SV-162 を呼び出して最近検針結果情報を取得する。
+ * - DA-063-R001 の結果を使い、同一グループ内使用量協定中フラグを判定する。
+ */
+public final class MeterReadingResultAcquisitionComprehensiveImpl
+        implements MeterReadingResultAcquisitionComprehensive {
+
+    private final MeterReadingResultAcquisitionForClosing meterReadingResultAcquisitionForClosing;
+
+    private final KnsnkrnDataAccess knsnkrnDataAccess;
+
+    private final String meterPossessionStatus;
+
+    /**
+     * 概要: 依存サービスと必須定数を解決してインスタンスを初期化する。
+     *
+     * @param meterReadingResultAcquisitionForClosing SV-162
+     * @param knsnkrnDataAccess DA-063
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public MeterReadingResultAcquisitionComprehensiveImpl(
+            MeterReadingResultAcquisitionForClosing meterReadingResultAcquisitionForClosing,
+            KnsnkrnDataAccess knsnkrnDataAccess,
+<span class="fc" id="L45">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L46">        this.meterReadingResultAcquisitionForClosing = Objects.requireNonNull(</span>
+                meterReadingResultAcquisitionForClosing,
+                &quot;meterReadingResultAcquisitionForClosing&quot;);
+<span class="fc" id="L49">        this.knsnkrnDataAccess = Objects.requireNonNull(knsnkrnDataAccess, &quot;knsnkrnDataAccess&quot;);</span>
+<span class="fc" id="L50">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L51">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L52">        this.meterPossessionStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.METER_POSSESSION_STATUS);
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * 概要: SV-153 を実行し、総合契約メーター向けの検針結果関連情報を返却する。
+     *
+     * @param systemDateKngmStbJtkb システム日時点供内管・ガスメーター設備状態区分
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 総合契約メーター向けの検針結果関連情報
+     */
+    @Override
+    public MeterReadingResultAcquisitionComprehensiveOutput execute(
+            String systemDateKngmStbJtkb,
+            Long gasMtstNo) {
+<span class="fc" id="L69">        SkinKnkkInf recentMeterReading = null;</span>
+<span class="fc" id="L70">        LocalDate closingReportDeadline = null;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (meterPossessionStatus.equals(systemDateKngmStbJtkb)) {</span>
+<span class="fc" id="L72">            MeterReadingResultAcquisitionForClosingState childState =</span>
+<span class="fc" id="L73">                    executeMeterReadingResultAcquisitionForClosing(gasMtstNo);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (!childState.startDateIdentificationError()) {</span>
+<span class="fc" id="L75">                MeterReadingResultAcquisitionForClosingOutput childOutput = childState.output();</span>
+<span class="fc" id="L76">                recentMeterReading = mapSkinKnkkInf(childOutput.skinKnkkInf());</span>
+<span class="fc" id="L77">                closingReportDeadline = childOutput.hsenHkkKnuKigenYmd();</span>
+            }
+        }
+
+<span class="fc" id="L81">        KnsnkrnRecord knsnkrnRecord = knsnkrnDataAccess.findByGasMtstNo(gasMtstNo).orElse(null);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        boolean usageAgreementInProgressFlag =</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                knsnkrnRecord != null &amp;&amp; Boolean.TRUE.equals(knsnkrnRecord.gmsrKtumFlg());</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        Long usageAgreementMeterLocationNumber = usageAgreementInProgressFlag ? gasMtstNo : null;</span>
+
+<span class="fc" id="L86">        return new MeterReadingResultAcquisitionComprehensiveOutput(</span>
+                recentMeterReading,
+                closingReportDeadline,
+<span class="fc" id="L89">                usageAgreementInProgressFlag,</span>
+                usageAgreementMeterLocationNumber);
+    }
+
+    private MeterReadingResultAcquisitionForClosingState executeMeterReadingResultAcquisitionForClosing(
+            Long gasMtstNo) {
+        try {
+<span class="fc" id="L96">            return MeterReadingResultAcquisitionForClosingState.success(</span>
+<span class="fc" id="L97">                    requireChildOutput(meterReadingResultAcquisitionForClosing.execute(gasMtstNo)));</span>
+<span class="nc" id="L98">        } catch (KaiheisenException exception) {</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (ErrorCodeConstants.ERROR_CODE_020000074.equals(exception.getErrorCode())) {</span>
+<span class="nc" id="L100">                return MeterReadingResultAcquisitionForClosingState.startDateIdentificationErrorState();</span>
+            }
+<span class="nc" id="L102">            throw exception;</span>
+        }
+    }
+
+    private MeterReadingResultAcquisitionForClosingOutput requireChildOutput(
+            MeterReadingResultAcquisitionForClosingOutput childOutput) {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (childOutput == null) {</span>
+<span class="fc" id="L109">            throw new IllegalStateException(&quot;SV-162 returned null output&quot;);</span>
+        }
+<span class="fc" id="L111">        return childOutput;</span>
+    }
+
+    private SkinKnkkInf mapSkinKnkkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.SkinKnkkInf childValue) {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (childValue == null) {</span>
+<span class="fc" id="L117">            return null;</span>
+        }
+<span class="fc" id="L119">        return new SkinKnkkInf(</span>
+<span class="fc" id="L120">                childValue.knsYmd(),</span>
+<span class="fc" id="L121">                childValue.knsKkaTsno(),</span>
+<span class="fc" id="L122">                childValue.gmtShjSu(),</span>
+<span class="fc" id="L123">                childValue.knkkSsjyShbt(),</span>
+<span class="fc" id="L124">                childValue.knkkKtmeFlg(),</span>
+<span class="fc" id="L125">                childValue.sjskKbn(),</span>
+<span class="fc" id="L126">                childValue.knsJsjkCd());</span>
+    }
+
+<span class="fc" id="L129">    private record MeterReadingResultAcquisitionForClosingState(</span>
+            MeterReadingResultAcquisitionForClosingOutput output,
+            boolean startDateIdentificationError) {
+
+        private static MeterReadingResultAcquisitionForClosingState success(
+                MeterReadingResultAcquisitionForClosingOutput output) {
+<span class="fc" id="L135">            return new MeterReadingResultAcquisitionForClosingState(output, false);</span>
+        }
+
+        private static MeterReadingResultAcquisitionForClosingState startDateIdentificationErrorState() {
+<span class="nc" id="L139">            return new MeterReadingResultAcquisitionForClosingState(null, true);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

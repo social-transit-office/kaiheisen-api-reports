@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SqshyjsDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-sqshyjs</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.sqshyjs</a> &gt; <span class="el_source">SqshyjsDataAccessImpl.java</span></div><h1>SqshyjsDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.sqshyjs;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsKnskKjnUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsTkysYmdJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsTkysYmdUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/**
+ * 請求書表示制御（SQSHYJS）データアクセスの JPA 実装。
+ */
+public class SqshyjsDataAccessImpl extends DataAccessBase implements SqshyjsDataAccess {
+
+    private static final String TABLE_NAME = &quot;SQSHYJS&quot;;
+
+    private static final String WHERE_CLAUSE_BY_PK = &quot;SKSH_HYJS_KRNO = ? AND TKYS_YMD = ?&quot;;
+
+    private static final String WHERE_CLAUSE_BY_RANGE =
+            &quot;SKSH_HYJS_KRNO = ? AND TKYS_YMD &lt;= ? AND TYEN_YMD &gt;= ?&quot;;
+
+<span class="fc" id="L47">    static final ReflectiveRecordEntityMapper&lt;SqshyjsRecord, SqshyjsEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L48">            ReflectiveRecordEntityMapper.create(SqshyjsRecord.class, SqshyjsEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;SqshyjsWriteRecord, SqshyjsEntity&gt;
+<span class="fc" id="L51">            WRITE_MAPPER =</span>
+<span class="fc" id="L52">                    ReflectiveRecordEntityMapper.create(SqshyjsWriteRecord.class, SqshyjsEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;SqshyjsEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;SqshyjsWriteRecord, SqshyjsEntity, SqshyjsColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;SqshyjsWriteRecord, SqshyjsEntity, SqshyjsColumn&gt;
+            updateSupport;
+
+    /**
+     * 標準依存で初期化する。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public SqshyjsDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="fc" id="L77">        this(entityManager, criteriaBuilderFactory, new DefaultSystemDateTimeProvider());</span>
+<span class="fc" id="L78">    }</span>
+
+    SqshyjsDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L84">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L85">    }</span>
+
+    SqshyjsDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L91">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L92">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L93">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L94">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L95">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L96">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(SqshyjsEntity.class);</span>
+<span class="fc" id="L97">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L98">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L99">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SqshyjsWriteDefinition.INSTANCE,
+                        SqshyjsEntity.class,
+<span class="fc" id="L105">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L106">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SqshyjsWriteDefinition.INSTANCE,
+                        SqshyjsEntity.class,
+<span class="fc" id="L112">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L113">    }</span>
+
+    @Override
+    public int insert(SqshyjsWriteRecord record, AuditContext context) {
+<span class="fc" id="L117">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L118">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L119">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L122">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L123">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public int deleteBySkshHyjsKrnoAndTkysYmd(
+            Long skshHyjsKrno, LocalDate tkysYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L129">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L130">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L131">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L132">                .delete(</span>
+<span class="fc" id="L133">                        PreparedWhere.of(</span>
+                                &quot;SKSH_HYJS_KRNO = ? AND TKYS_YMD &gt;= ?&quot;,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L136">                                    int nextIndex = JpaBind.set(query, startIndex, safeSkshHyjsKrno);</span>
+<span class="fc" id="L137">                                    return JpaBind.set(query, nextIndex, safeTkysYmd);</span>
+                                },
+                                safeSkshHyjsKrno,
+                                safeTkysYmd),
+                        recUpdJnjNo,
+                        SqshyjsDataAccess.Identifiers.DELETE_BY_SKSH_HYJS_KRNO_AND_TKYS_YMD);
+    }
+
+    @Override
+    public Optional&lt;SqshyjsRecord&gt; findBySkshHyjsKrnoAndTyenYmd(Long skshHyjsKrno, LocalDate tyenYmd) {
+<span class="fc" id="L147">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L148">        BigDecimal safeTyenYmd = safeYmd(tyenYmd, &quot;tyenYmd&quot;);</span>
+<span class="fc" id="L149">        var builder = criteriaBuilderFactory.create(entityManager, SqshyjsEntity.class);</span>
+<span class="fc" id="L150">        JpaWhere.eq(builder, &quot;skshHyjsKrno&quot;, safeSkshHyjsKrno);</span>
+<span class="fc" id="L151">        JpaWhere.eq(builder, &quot;tyenYmd&quot;, safeTyenYmd);</span>
+<span class="fc" id="L152">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L153">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L154">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SqshyjsRecord&gt; findBySkshHyjsKrnoAndKnskKjnYmd(
+            Long skshHyjsKrno,
+            LocalDate knskKjnYmd) {
+<span class="fc" id="L161">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L162">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L163">        var builder = criteriaBuilderFactory.create(entityManager, SqshyjsEntity.class);</span>
+<span class="fc" id="L164">        JpaWhere.eq(builder, &quot;skshHyjsKrno&quot;, safeSkshHyjsKrno);</span>
+<span class="fc" id="L165">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L166">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L167">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L168">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L169">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SqshyjsRecord&gt; findByPK(Long skshHyjsKrno, LocalDate tkysYmd) {
+<span class="fc" id="L174">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L175">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L176">        SqshyjsEntity entity =</span>
+<span class="fc" id="L177">                entityManager.find(</span>
+                        SqshyjsEntity.class,
+                        new SqshyjsId(safeSkshHyjsKrno, safeTkysYmd));
+<span class="fc" id="L180">        return Optional.ofNullable(entity).map(READ_MAPPER::toRecord);</span>
+    }
+
+    @Override
+    public int updateBySkshHyjsKrnoAndKnskKjnYmd(
+            SqshyjsWriteRecord record,
+            Set&lt;SqshyjsColumn&gt; targetColumns,
+            SqshyjsKnskKjnUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L189">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L190">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L191">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L192">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L193">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L194">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L198">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L199">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L203">                preparedWhereByRange(updateKey.skshHyjsKrno(), updateKey.knskKjnYmd()),</span>
+<span class="fc" id="L204">                updateKey.recUpdJnjNo(),</span>
+                SqshyjsDataAccess.Identifiers.UPDATE_BY_SKSH_HYJS_KRNO_AND_KNSK_KJN_YMD);
+    }
+
+    @Override
+    public int updateBySkshHyjsKrnoAndTkysYmdAndRecUpdJnjNo(
+            SqshyjsWriteRecord record,
+            Set&lt;SqshyjsColumn&gt; targetColumns,
+            SqshyjsTkysYmdJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L214">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L215">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L216">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L217">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L218">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L219">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L223">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L224">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L228">                preparedWhereByPk(updateKey.skshHyjsKrno(), updateKey.tkysYmd()),</span>
+<span class="fc" id="L229">                updateKey.recUpdJnjNo(),</span>
+                SqshyjsDataAccess.Identifiers.UPDATE_BY_SKSH_HYJS_KRNO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO);
+    }
+
+    @Override
+    public int updateBySkshHyjsKrnoAndTkysYmd(
+            SqshyjsWriteRecord record,
+            Set&lt;SqshyjsColumn&gt; targetColumns,
+            SqshyjsTkysYmdUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L239">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L240">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L241">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L242">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L243">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L244">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L248">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L249">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L253">                preparedWhereByPk(updateKey.skshHyjsKrno(), updateKey.tkysYmd()),</span>
+<span class="fc" id="L254">                updateKey.recUpdJnjNo(),</span>
+                SqshyjsDataAccess.Identifiers.UPDATE_BY_SKSH_HYJS_KRNO_AND_TKYS_YMD);
+    }
+
+    private PreparedWhere preparedWhereByPk(Long skshHyjsKrno, LocalDate tkysYmd) {
+<span class="fc" id="L259">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L260">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L261">        return PreparedWhere.of(</span>
+                WHERE_CLAUSE_BY_PK,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L264">                    int nextIndex = JpaBind.set(query, startIndex, safeSkshHyjsKrno);</span>
+<span class="fc" id="L265">                    return JpaBind.set(query, nextIndex, safeTkysYmd);</span>
+                },
+                safeSkshHyjsKrno,
+                safeTkysYmd);
+    }
+
+    private PreparedWhere preparedWhereByRange(Long skshHyjsKrno, LocalDate knskKjnYmd) {
+<span class="fc" id="L272">        BigDecimal safeSkshHyjsKrno = safeLong(skshHyjsKrno, &quot;skshHyjsKrno&quot;);</span>
+<span class="fc" id="L273">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L274">        return PreparedWhere.of(</span>
+                WHERE_CLAUSE_BY_RANGE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L277">                    int nextIndex = JpaBind.set(query, startIndex, safeSkshHyjsKrno);</span>
+<span class="fc" id="L278">                    nextIndex = JpaBind.set(query, nextIndex, safeKnskKjnYmd);</span>
+<span class="fc" id="L279">                    return JpaBind.set(query, nextIndex, safeKnskKjnYmd);</span>
+                },
+                safeSkshHyjsKrno,
+                safeKnskKjnYmd,
+                safeKnskKjnYmd);
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L287">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L288">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L292">        return WhereParamGuard.complement(JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

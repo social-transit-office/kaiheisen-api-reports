@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UsageCodeConfirmationAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-usagecodeconfirmationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">UsageCodeConfirmationAtOpeningImpl.java</span></div><h1>UsageCodeConfirmationAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UsageCodeConfirmationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UsageCodeConfirmationAtOpeningOutput;
+
+/**
+ * 概要: SV-215（開栓時用途コード確定）の実装。
+ * 主な仕様:
+ * - 報告ガス用途コードが未設定の場合は導管用途コードを基準に確定する。
+ * - 他小売の場合はサービス契約用途コードを null とする。
+ * - 報告ガス用途コードが設定済みの場合は報告コードを基準に確定する。
+ * 既知の制約:
+ * - public 引数の業務妥当性検証は上位層責務とする。
+ * - Boolean は Boolean.TRUE.equals(...) で判定する。
+ */
+public final class UsageCodeConfirmationAtOpeningImpl
+        implements UsageCodeConfirmationAtOpening {
+
+    private final String otherRetailCategory;
+
+    /**
+     * 概要: SV-215 の判定に必要な開閉栓定数を解決して初期化する。
+     * 主な仕様:
+     * - KH005 の「他小売」をコンストラクタ初期化時点で fail-fast に解決する。
+     * 既知の制約:
+     * - 必須定数未登録時はコンストラクタ初期化時点で失敗する。
+     *
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public UsageCodeConfirmationAtOpeningImpl(
+<span class="fc" id="L35">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L36">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L37">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L38">        this.otherRetailCategory = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L42">    }</span>
+
+    /**
+     * 概要: 開栓時の確定用途コードを返却する。
+     * 主な仕様:
+     * - 報告ガス用途コード未設定時は導管用途コードを基準に返却する。
+     * - 他小売以外では代替判定結果フラグを評価し、報告コード設定済みかつ代替=false のときだけ総合判定結果フラグを評価する。
+     * - 他小売の場合はサービス契約用途コードを null とする。
+     * 既知の制約:
+     * - hukkSysShbt、correlationId、systemDatetime は公開引数に含めない。
+     *
+     * @param tgTkurKbn ＴＧ他小売区分
+     * @param digwrHntFlg 代替判定結果フラグ
+     * @param suguHtkFlg 総合判定結果フラグ
+     * @param hkkGasYtCd 報告ガス用途コード
+     * @param svckyaGasYtCd サービス契約ガス用途コード
+     * @param gmtsetdGasYtCd ガスメーター設置場所＜導管＞ガス用途コード
+     * @return 確定用途コード
+     */
+    @Override
+    public UsageCodeConfirmationAtOpeningOutput execute(
+            String tgTkurKbn,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            String hkkGasYtCd,
+            String svckyaGasYtCd,
+            String gmtsetdGasYtCd) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (isUnsetUsageCode(hkkGasYtCd)) {</span>
+<span class="fc" id="L70">            return determineWhenReportedUsageCodeIsUnset(</span>
+                    tgTkurKbn,
+                    digwrHntFlg,
+                    svckyaGasYtCd,
+                    gmtsetdGasYtCd);
+        }
+<span class="fc" id="L76">        return determineWhenReportedUsageCodeIsSet(</span>
+                tgTkurKbn,
+                digwrHntFlg,
+                suguHtkFlg,
+                hkkGasYtCd,
+                svckyaGasYtCd);
+    }
+
+    /**
+     * 概要: 報告ガス用途コード未設定時の確定ロジックを実行する。
+     * 主な仕様:
+     * - 他小売の場合は導管用途コードと null を返す。
+     * - 他小売以外で代替=true の場合は導管用途コードを両項目へ返す。
+     * - その他は導管用途コードとサービス契約用途コードを返す。
+     *
+     * @param tgTkurKbn ＴＧ他小売区分
+     * @param digwrHntFlg 代替判定結果フラグ
+     * @param svckyaGasYtCd サービス契約ガス用途コード
+     * @param gmtsetdGasYtCd ガスメーター設置場所＜導管＞ガス用途コード
+     * @return 確定用途コード
+     */
+    private UsageCodeConfirmationAtOpeningOutput determineWhenReportedUsageCodeIsUnset(
+            String tgTkurKbn,
+            Boolean digwrHntFlg,
+            String svckyaGasYtCd,
+            String gmtsetdGasYtCd) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (isOtherRetail(tgTkurKbn)) {</span>
+<span class="fc" id="L103">            return new UsageCodeConfirmationAtOpeningOutput(gmtsetdGasYtCd, null);</span>
+        }
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (Boolean.TRUE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L106">            return new UsageCodeConfirmationAtOpeningOutput(gmtsetdGasYtCd, gmtsetdGasYtCd);</span>
+        }
+<span class="fc" id="L108">        return new UsageCodeConfirmationAtOpeningOutput(gmtsetdGasYtCd, svckyaGasYtCd);</span>
+    }
+
+    /**
+     * 概要: 報告ガス用途コード設定済み時の確定ロジックを実行する。
+     * 主な仕様:
+     * - 他小売の場合は報告用途コードと null を返す。
+     * - 他小売以外で代替=true の場合は報告用途コードを両項目へ返す。
+     * - 他小売以外で代替=false かつ総合=true の場合は報告用途コードとサービス契約用途コードを返す。
+     * - その他は報告用途コードを両項目へ返す。
+     *
+     * @param tgTkurKbn ＴＧ他小売区分
+     * @param digwrHntFlg 代替判定結果フラグ
+     * @param suguHtkFlg 総合判定結果フラグ
+     * @param hkkGasYtCd 報告ガス用途コード
+     * @param svckyaGasYtCd サービス契約ガス用途コード
+     * @return 確定用途コード
+     */
+    private UsageCodeConfirmationAtOpeningOutput determineWhenReportedUsageCodeIsSet(
+            String tgTkurKbn,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            String hkkGasYtCd,
+            String svckyaGasYtCd) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (isOtherRetail(tgTkurKbn)) {</span>
+<span class="fc" id="L133">            return new UsageCodeConfirmationAtOpeningOutput(hkkGasYtCd, null);</span>
+        }
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (Boolean.TRUE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L136">            return new UsageCodeConfirmationAtOpeningOutput(hkkGasYtCd, hkkGasYtCd);</span>
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (Boolean.TRUE.equals(suguHtkFlg)) {</span>
+<span class="fc" id="L139">            return new UsageCodeConfirmationAtOpeningOutput(hkkGasYtCd, svckyaGasYtCd);</span>
+        }
+<span class="fc" id="L141">        return new UsageCodeConfirmationAtOpeningOutput(hkkGasYtCd, hkkGasYtCd);</span>
+    }
+
+    /**
+     * 概要: 報告ガス用途コードが未設定かを判定する。
+     * 主な仕様:
+     * - null または空白のみを未設定として扱う。
+     *
+     * @param hkkGasYtCd 報告ガス用途コード
+     * @return 未設定なら true
+     */
+    private boolean isUnsetUsageCode(String hkkGasYtCd) {
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        return hkkGasYtCd == null || hkkGasYtCd.isBlank();</span>
+    }
+
+    /**
+     * 概要: ＴＧ他小売区分が他小売かを判定する。
+     * 主な仕様:
+     * - KH005 の「他小売」定数と一致する場合のみ true を返す。
+     *
+     * @param tgTkurKbn ＴＧ他小売区分
+     * @return 他小売なら true
+     */
+    private boolean isOtherRetail(String tgTkurKbn) {
+<span class="fc" id="L165">        return otherRetailCategory.equals(tgTkurKbn);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataAccessAnnotationProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core.processor</a> &gt; <span class="el_source">DataAccessAnnotationProcessor.java</span></div><h1>DataAccessAnnotationProcessor.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core.processor;
+
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.RoundEnvironment;
+import javax.annotation.processing.SupportedAnnotationTypes;
+import javax.annotation.processing.SupportedSourceVersion;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.util.Elements;
+import javax.tools.Diagnostic;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccess;
+
+/**
+ * DataAccess アノテーションに対する静的検査を行うアノテーションプロセッサ。
+ *
+ * &lt;p&gt;目的は以下の 3 点:
+ * &lt;ul&gt;
+ *   &lt;li&gt;@DataAccess の identifier 未設定/空白をビルド時に検出&lt;/li&gt;
+ *   &lt;li&gt;@DataAccess の name 未設定/空白をビルド時に検出&lt;/li&gt;
+ *   &lt;li&gt;@DataAccess の identifier 重複をビルド時に検出&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;対象は DataAccess API 層のみに限定する。
+ * {@code jp.co.tokyo_gas.kaiheisen.libs.da.api.} パッケージ配下の
+ * インターフェースメソッドのみを走査することで、実装層やテストの誤検知を避ける。
+ *
+ * &lt;p&gt;重複チェックはモジュール（コンパイル単位）内に限定される点に注意。
+ * 複数モジュール横断の重複検出は別途仕組みが必要。
+ */
+@SupportedAnnotationTypes(&quot;jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccess&quot;)
+@SupportedSourceVersion(SourceVersion.RELEASE_21)
+<span class="nc" id="L39">public class DataAccessAnnotationProcessor extends AbstractProcessor {</span>
+
+    /** DataAccess API 層のクラス判定に使うパッケージ接頭辞。 */
+    private static final String API_PACKAGE_PREFIX = &quot;jp.co.tokyo_gas.kaiheisen.libs.da.api.&quot;;
+
+    @Override
+    public boolean process(Set&lt;? extends TypeElement&gt; annotations, RoundEnvironment roundEnv) {
+        // 対象アノテーションが無いラウンドは処理しない。
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (annotations.isEmpty()) {</span>
+<span class="nc" id="L48">            return false;</span>
+        }
+<span class="nc" id="L50">        Elements elementUtils = processingEnv.getElementUtils();</span>
+        // identifier の重複検知用に初出の要素を保持する。
+<span class="nc" id="L52">        Map&lt;String, Element&gt; identifiers = new HashMap&lt;&gt;();</span>
+
+        // @DataAccess が付いた要素を走査する。
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        for (Element element : roundEnv.getElementsAnnotatedWith(DataAccess.class)) {</span>
+            // メソッド以外に付いている場合は無視（想定外の付与を許容しない）。
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (element.getKind() != ElementKind.METHOD) {</span>
+<span class="nc" id="L58">                continue;</span>
+            }
+<span class="nc" id="L60">            ExecutableElement method = (ExecutableElement) element;</span>
+<span class="nc" id="L61">            TypeElement owner = (TypeElement) method.getEnclosingElement();</span>
+<span class="nc" id="L62">            String ownerName = elementUtils.getBinaryName(owner).toString();</span>
+            // API 層以外は検査対象外（実装層・テスト層の誤検知を避ける）。
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            if (!ownerName.startsWith(API_PACKAGE_PREFIX)) {</span>
+<span class="nc" id="L65">                continue;</span>
+            }
+
+<span class="nc" id="L68">            DataAccess dataAccess = method.getAnnotation(DataAccess.class);</span>
+<span class="nc" id="L69">            String identifier = normalize(dataAccess.identifier());</span>
+<span class="nc" id="L70">            String name = normalize(dataAccess.name());</span>
+
+            // identifier 未設定（空/空白）をエラー化。
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            if (identifier.isEmpty()) {</span>
+<span class="nc" id="L74">                error(method, &quot;@DataAccess identifier must not be blank: %s&quot;, signature(ownerName, method));</span>
+            }
+            // name 未設定（空/空白）をエラー化。
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            if (name.isEmpty()) {</span>
+<span class="nc" id="L78">                error(method, &quot;@DataAccess name must not be blank: %s&quot;, signature(ownerName, method));</span>
+            }
+            // identifier の重複をエラー化（空は対象外）。
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (!identifier.isEmpty()) {</span>
+<span class="nc" id="L82">                Element existing = identifiers.putIfAbsent(identifier, method);</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                if (existing != null) {</span>
+<span class="nc" id="L84">                    error(method, &quot;@DataAccess identifier must be unique: %s&quot;, identifier);</span>
+                }
+            }
+<span class="nc" id="L87">        }</span>
+        // 他のプロセッサにも処理を委譲できるよう false を返す。
+<span class="nc" id="L89">        return false;</span>
+    }
+
+    /**
+     * null/空白を空文字に正規化する。
+     */
+    private static String normalize(String value) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L97">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L99">        return value.trim();</span>
+    }
+
+    /**
+     * コンパイルエラーとして報告する。
+     */
+    private void error(Element element, String message, Object... args) {
+<span class="nc" id="L106">        processingEnv.getMessager().printMessage(</span>
+                Diagnostic.Kind.ERROR,
+<span class="nc" id="L108">                String.format(Locale.ROOT, message, args),</span>
+                element
+        );
+<span class="nc" id="L111">    }</span>
+
+    /**
+     * エラーメッセージ用に &quot;完全修飾名#メソッド名&quot; の簡易シグネチャを返す。
+     */
+    private static String signature(String owner, ExecutableElement method) {
+<span class="nc" id="L117">        return owner + &quot;#&quot; + method.getSimpleName();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

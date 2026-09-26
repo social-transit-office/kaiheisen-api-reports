@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentMeterReadingDataImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmentmeterreadingdata</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentMeterReadingDataImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentMeterReadingDataImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingData;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentMeterReadingDataOutput;
+
+/**
+ * 概要: SV-099（閉栓取消実施可否判定：検針データ）のサービス実装。
+ * 主な仕様:
+ * - `duknIsrsCd=CCJG1301` 以外の場合は KTMGMKK の最新レコードを取得し、報告年月日と
+ *   RequestContext.systemDatetime、検針結果作成事由種別、報告年月日と `trkKnsYmd` の順に
+ *   閉栓取消可否を判定する。
+ * - 正常終了時は KTMGMKK の主要キーを API 出力へ写像する。
+ * 既知の制約:
+ * - `duknIsrsCd=CCJG1301` の分岐は設計曖昧さがあるため、best-effort で空 output を返し、
+ *   この経路では RequestContext.systemDatetime を参照しない。
+ * - RequestContext.systemDatetime は KTMGMKK 判定へ進む経路で必須であり、未設定時は
+ *   fail-fast する。
+ */
+public class ClosingCancelFeasibilityJudgmentMeterReadingDataImpl
+        implements ClosingCancelFeasibilityJudgmentMeterReadingData {
+
+<span class="fc" id="L34">    private static final ClosingCancelFeasibilityJudgmentMeterReadingDataOutput EMPTY_OUTPUT =</span>
+            new ClosingCancelFeasibilityJudgmentMeterReadingDataOutput(null, null, null);
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String supplyOutageWorkDetailCode;
+
+    private final Set&lt;String&gt; supportedReasonTypes;
+
+    /**
+     * 概要: 必要な依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - KTMGMKK 参照と RequestContext を保持する。
+     * - 判定に必要な J0496 / 07000 の定数を初期化時に検証する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須 CIRIUS 定数が不足している場合は初期化時点で失敗する。
+     *
+     * @param ktmgmkkDataAccess KTMGMKK データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public ClosingCancelFeasibilityJudgmentMeterReadingDataImpl(
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L61">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L67">        this.supplyOutageWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit
+                        .SUPPLY_OUTAGE_CCJG1301);
+<span class="fc" id="L72">        String relocationClosureReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .RELOCATION_CLOSURE);
+<span class="fc" id="L77">        String unusedClosureReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.UNUSED_CLOSURE);
+<span class="fc" id="L81">        this.supportedReasonTypes = Set.of(relocationClosureReasonType, unusedClosureReasonType);</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * 概要: 検針データから閉栓取消可否を判定する。
+     * 主な仕様:
+     * - 対象業務詳細コードの場合は KTMGMKK を参照せず空 output を返す。
+     * - 対象外の場合は最新 KTMGMKK レコードを検証し、正常時に主要キーを返す。
+     * 既知の制約:
+     * - `systemDatetime` は RequestContext から取得する。
+     *
+     * @param duknIsrsCd 異動・作業履歴業務詳細コード（導管）
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 判定結果
+     */
+    @Override
+    public ClosingCancelFeasibilityJudgmentMeterReadingDataOutput execute(
+            String duknIsrsCd,
+            Long gasMtstNo,
+            LocalDate trkKnsYmd) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (shouldSkipEvaluation(duknIsrsCd)) {</span>
+<span class="fc" id="L103">            return EMPTY_OUTPUT;</span>
+        }
+<span class="fc" id="L105">        LocalDate systemDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L106">        KtmgmkkRecord meterReadingResult = findRequiredMeterReadingResult(gasMtstNo);</span>
+<span class="fc" id="L107">        validateReportDateMatchesSystemDate(meterReadingResult, systemDate);</span>
+<span class="fc" id="L108">        validateSupportedReasonType(meterReadingResult);</span>
+<span class="fc" id="L109">        validateReportDateMatchesTrackingDate(meterReadingResult, trkKnsYmd);</span>
+<span class="fc" id="L110">        return toOutput(meterReadingResult);</span>
+    }
+
+    /**
+     * 概要: 判定対象外の業務詳細コードかを判定する。
+     * 主な仕様:
+     * - `CCJG1301` の場合は spec の 1.b 分岐として扱う。
+     * - それ以外は KTMGMKK 判定へ進める。
+     *
+     * @param duknIsrsCd 異動・作業履歴業務詳細コード（導管）
+     * @return 判定対象外なら true
+     */
+    private boolean shouldSkipEvaluation(String duknIsrsCd) {
+<span class="fc" id="L123">        return supplyOutageWorkDetailCode.equals(duknIsrsCd);</span>
+    }
+
+    /**
+     * 概要: KTMGMKK の必須レコードを取得する。
+     * 主な仕様:
+     * - ガスメーター設置場所番号で最新レコードを取得する。
+     * - 未取得時は業務エラー 020000021 を送出する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 取得した KTMGMKK レコード
+     */
+    private KtmgmkkRecord findRequiredMeterReadingResult(Long gasMtstNo) {
+<span class="fc" id="L136">        return ktmgmkkDataAccess.findByGasMtstNo(gasMtstNo)</span>
+<span class="fc" id="L137">                .orElseThrow(() -&gt; new BusinessRuleException(</span>
+                        ErrorCodeConstants.ERROR_CODE_020000021));
+    }
+
+    /**
+     * 概要: 報告年月日とシステム日付の一致を検証する。
+     * 主な仕様:
+     * - KTMGMKK の検針業務担当者報告年月日と RequestContext.systemDatetime の日付部を比較する。
+     * - 不一致時は業務エラー 020000021 を送出する。
+     *
+     * @param meterReadingResult KTMGMKK レコード
+     * @param systemDate システム日付
+     */
+    private void validateReportDateMatchesSystemDate(
+            KtmgmkkRecord meterReadingResult,
+            LocalDate systemDate) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (!Objects.equals(meterReadingResult.kgtsHukkYmd(), systemDate)) {</span>
+<span class="fc" id="L154">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000021);</span>
+        }
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * 概要: 許容された検針結果作成事由種別かを検証する。
+     * 主な仕様:
+     * - `07000 132` と `07000 136` のみを許容する。
+     * - それ以外は業務エラー 020000022 を送出する。
+     *
+     * @param meterReadingResult KTMGMKK レコード
+     */
+    private void validateSupportedReasonType(KtmgmkkRecord meterReadingResult) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (!supportedReasonTypes.contains(meterReadingResult.knkkSksiJysb())) {</span>
+<span class="fc" id="L168">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000022);</span>
+        }
+<span class="fc" id="L170">    }</span>
+
+    /**
+     * 概要: 検針年月日と取消対象検針年月日の一致を検証する。
+     * 主な仕様:
+     * - KTMGMKK の検針年月日と引数の取消対象検針年月日を比較する。
+     * - 不一致時は業務エラー 020000022 を送出する。
+     *
+     * @param meterReadingResult KTMGMKK レコード
+     * @param trkKnsYmd 取消対象検針年月日
+     */
+    private void validateReportDateMatchesTrackingDate(
+            KtmgmkkRecord meterReadingResult,
+            LocalDate trkKnsYmd) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (!Objects.equals(meterReadingResult.knsYmd(), trkKnsYmd)) {</span>
+<span class="fc" id="L185">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000022);</span>
+        }
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * 概要: KTMGMKK レコードを API 出力へ変換する。
+     * 主な仕様:
+     * - 主要キー 3 項目のみを API 出力へ詰め替える。
+     * - 下位 DA レコードをそのまま公開しない。
+     *
+     * @param meterReadingResult KTMGMKK レコード
+     * @return API 出力モデル
+     */
+    private ClosingCancelFeasibilityJudgmentMeterReadingDataOutput toOutput(
+            KtmgmkkRecord meterReadingResult) {
+<span class="fc" id="L200">        return new ClosingCancelFeasibilityJudgmentMeterReadingDataOutput(</span>
+<span class="fc" id="L201">                meterReadingResult.gasMtstNo(),</span>
+<span class="fc" id="L202">                meterReadingResult.knsYmd(),</span>
+<span class="fc" id="L203">                meterReadingResult.knsKkaTsno());</span>
+    }
+
+    /**
+     * 概要: RequestContext のシステム日時を取得する。
+     * 主な仕様:
+     * - `RequestContext.systemDatetime` を取得する。
+     * - 未設定時は項目名付きの IllegalStateException を送出する。
+     *
+     * @return システム日時
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L215">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L216">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasUsageForBillingDerivationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-gasusageforbillingderivation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">GasUsageForBillingDerivationImpl.java</span></div><h1>GasUsageForBillingDerivationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasBillingCalculationInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasBillingCalculationInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageRelatedInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageRelatedInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultRetroactiveDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultRetroactiveDateAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KkyCushInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnkkJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+
+/** TG導管ガス使用量（料金計算用）取得サービス実装。 */
+public class GasUsageForBillingDerivationImpl implements GasUsageForBillingDerivation {
+
+    private final MeterReadingResultRetroactiveDateAcquisition
+            meterReadingResultRetroactiveDateAcquisition;
+
+    private final MeterReadingResultAcquisition meterReadingResultAcquisition;
+
+    private final GasUsageRelatedInfoAcquisition
+            gasUsageRelatedInfoAcquisition;
+
+    private final GasBillingCalculationInfoAcquisition
+            gasBillingCalculationInfoAcquisition;
+
+    /**
+     * TG導管ガス使用量（料金計算用）取得サービス実装を生成する。
+     *
+     * @param meterReadingResultRetroactiveDateAcquisition 検針結果遡及日取得サービス
+     * @param meterReadingResultAcquisition 検針結果取得サービス
+     * @param gasUsageRelatedInfoAcquisition ガス使用量関連情報取得サービス
+     * @param gasBillingCalculationInfoAcquisition ガス料金計算用情報取得サービス
+     */
+    public GasUsageForBillingDerivationImpl(
+            MeterReadingResultRetroactiveDateAcquisition meterReadingResultRetroactiveDateAcquisition,
+            MeterReadingResultAcquisition meterReadingResultAcquisition,
+            GasUsageRelatedInfoAcquisition gasUsageRelatedInfoAcquisition,
+<span class="fc" id="L49">            GasBillingCalculationInfoAcquisition gasBillingCalculationInfoAcquisition) {</span>
+<span class="fc" id="L50">        this.meterReadingResultRetroactiveDateAcquisition =</span>
+<span class="fc" id="L51">                Objects.requireNonNull(</span>
+                        meterReadingResultRetroactiveDateAcquisition,
+                        &quot;meterReadingResultRetroactiveDateAcquisition&quot;);
+<span class="fc" id="L54">        this.meterReadingResultAcquisition =</span>
+<span class="fc" id="L55">                Objects.requireNonNull(meterReadingResultAcquisition, &quot;meterReadingResultAcquisition&quot;);</span>
+<span class="fc" id="L56">        this.gasUsageRelatedInfoAcquisition =</span>
+<span class="fc" id="L57">                Objects.requireNonNull(</span>
+                        gasUsageRelatedInfoAcquisition,
+                        &quot;gasUsageRelatedInfoAcquisition&quot;);
+<span class="fc" id="L60">        this.gasBillingCalculationInfoAcquisition =</span>
+<span class="fc" id="L61">                Objects.requireNonNull(</span>
+                        gasBillingCalculationInfoAcquisition,
+                        &quot;gasBillingCalculationInfoAcquisition&quot;);
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * 概要: SV-313 から SV-316 を順に呼び出し、SV-312 の戻り値へ集約する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @param gmtShjSu ガスメーター指示数
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @param sjskKbn 指示数回帰区分
+     * @param gmtKhsJtkb ガスメーター開閉栓状態区分
+     * @param jkarSu 実供給圧力数
+     * @param sjsuMincSu 指示数最小値数
+     * @param sjskHticSu 指示数回帰判定値数
+     * @param sgyjKytiSyry 作業時協定使用量
+     * @param knsKkaTseiMaeJh 検針結果訂正前情報
+     * @return TG導管ガス使用量（料金計算用）取得結果
+     */
+    @Override
+    public GasUsageForBillingDerivationOutput execute(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long gmtShjSu,
+            String knkkSsjyShbt,
+            String sjskKbn,
+            String gmtKhsJtkb,
+            Integer jkarSu,
+            BigDecimal sjsuMincSu,
+            Long sjskHticSu,
+            BigDecimal sgyjKytiSyry,
+            KnsKkaTseiMaeJh knsKkaTseiMaeJh) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        LocalDate tsimKnsYmd = knsKkaTseiMaeJh == null ? null : knsKkaTseiMaeJh.knsYmd();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        Integer tsimKnsKkaTsno = knsKkaTseiMaeJh == null ? null : knsKkaTseiMaeJh.knsKkaTsno();</span>
+
+<span class="fc" id="L98">        MeterReadingResultRetroactiveDateAcquisitionOutput retroactiveDateOutput =</span>
+<span class="fc" id="L99">                meterReadingResultRetroactiveDateAcquisition.execute(</span>
+                        tsimKnsYmd, knsYmd, gmtKhsJtkb, knkkSsjyShbt);
+<span class="fc" id="L101">        MeterReadingResultAcquisitionOutput meterReadingResultOutput =</span>
+<span class="fc" id="L102">                meterReadingResultAcquisition.execute(</span>
+                        gasMtstNo,
+                        knsYmd,
+<span class="fc" id="L105">                        retroactiveDateOutput.kensakuTaishoukikanJouhou().knskTsksYmd(),</span>
+<span class="fc" id="L106">                        retroactiveDateOutput.kensakuTaishoukikanJouhou().knskTskeYmd(),</span>
+                        knsKkaTseiMaeJh);
+        List&lt;KnsKkaInf&gt; knsKkaInfList =
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                meterReadingResultOutput.knkkJhList() == null</span>
+<span class="fc" id="L110">                        ? List.of()</span>
+<span class="fc" id="L111">                        : toKnsKkaInfList(meterReadingResultOutput.knkkJhList());</span>
+<span class="fc" id="L112">        GasUsageRelatedInfoAcquisitionOutput gasUsageRelatedInfoOutput =</span>
+<span class="fc" id="L113">                gasUsageRelatedInfoAcquisition.execute(</span>
+                        gasMtstNo,
+                        knsYmd,
+                        knkkSsjyShbt,
+                        gmtShjSu,
+                        sgyjKytiSyry,
+                        sjskKbn,
+                        tsimKnsYmd,
+                        tsimKnsKkaTsno,
+                        knsKkaInfList,
+<span class="fc" id="L123">                        toBigDecimal(meterReadingResultOutput.tsimSyry()));</span>
+        List&lt;KkyCushInf&gt; kkyCushInfList =
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                gasUsageRelatedInfoOutput.kkyCushInfList() == null</span>
+<span class="nc" id="L126">                        ? List.of()</span>
+<span class="fc" id="L127">                        : gasUsageRelatedInfoOutput.kkyCushInfList();</span>
+<span class="fc" id="L128">        GasBillingCalculationInfoAcquisitionOutput gasBillingCalculationInfoOutput =</span>
+<span class="fc" id="L129">                gasBillingCalculationInfoAcquisition.execute(</span>
+                        knsYmd,
+<span class="fc" id="L131">                        gasUsageRelatedInfoOutput.znkiKnkkInf(),</span>
+                        kkyCushInfList,
+                        knsKkaInfList,
+<span class="fc" id="L134">                        createSv316InputGasRknKsnInf(gasUsageRelatedInfoOutput.gasRknKsnInf()));</span>
+
+<span class="fc" id="L136">        return new GasUsageForBillingDerivationOutput(</span>
+<span class="fc" id="L137">                gasUsageRelatedInfoOutput.znkiKnkkInf(),</span>
+<span class="fc" id="L138">                gasUsageRelatedInfoOutput.skinKnkkInf(),</span>
+<span class="fc" id="L139">                mergeGasRknKsnInf(</span>
+<span class="fc" id="L140">                        gasUsageRelatedInfoOutput.gasRknKsnInf(),</span>
+<span class="fc" id="L141">                        gasBillingCalculationInfoOutput.gasRknKsnInf()),</span>
+<span class="fc" id="L142">                gasUsageRelatedInfoOutput.konKnkkInf(),</span>
+<span class="fc" id="L143">                gasUsageRelatedInfoOutput.kyuMtrInf(),</span>
+<span class="fc" id="L144">                gasUsageRelatedInfoOutput.sjskKbn());</span>
+    }
+
+    /**
+     * 概要: SV-315 戻り値から SV-316 入力用のガス料金計算情報を組み立てる。
+     *
+     * @param gasRknKsnInf ガス料金計算情報
+     * @return SV-316 入力用のガス料金計算情報
+     */
+    private GasRknKsnInf createSv316InputGasRknKsnInf(GasRknKsnInf gasRknKsnInf) {
+<span class="fc" id="L154">        return new GasRknKsnInf(</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                gasRknKsnInf == null ? null : gasRknKsnInf.kokiRkksYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 概要: SV-315 戻り値をベースに、SV-316 由来の項目だけを上書きして最終戻り値を生成する。
+     *
+     * @param gasUsageRelatedInfoGasRknKsnInf ガス使用量関連情報取得サービスのガス料金計算情報
+     * @param gasBillingCalculationInfoGasRknKsnInf ガス料金計算用情報取得サービスのガス料金計算情報
+     * @return SV-312 の最終ガス料金計算情報
+     */
+    private GasRknKsnInf mergeGasRknKsnInf(
+            GasRknKsnInf gasUsageRelatedInfoGasRknKsnInf,
+            GasRknKsnInf gasBillingCalculationInfoGasRknKsnInf) {
+<span class="fc" id="L175">        return new GasRknKsnInf(</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L177">                        ? null</span>
+<span class="fc" id="L178">                        : gasUsageRelatedInfoGasRknKsnInf.kokiRkksYmd(),</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L180">                        ? null</span>
+<span class="fc" id="L181">                        : gasUsageRelatedInfoGasRknKsnInf.jkarSuKnzgGasSyry(),</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L183">                        ? null</span>
+<span class="fc" id="L184">                        : gasUsageRelatedInfoGasRknKsnInf.jkarSuKnzmGasSyry(),</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L186">                        ? null</span>
+<span class="fc" id="L187">                        : gasUsageRelatedInfoGasRknKsnInf.tsmJkarSuKnzgGasSyry(),</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L189">                        ? null</span>
+<span class="fc" id="L190">                        : gasUsageRelatedInfoGasRknKsnInf.shyDdsu(),</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                gasBillingCalculationInfoGasRknKsnInf == null</span>
+<span class="fc" id="L192">                        ? null</span>
+<span class="fc" id="L193">                        : gasBillingCalculationInfoGasRknKsnInf.kkyCushDdsu(),</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                gasBillingCalculationInfoGasRknKsnInf == null</span>
+<span class="fc" id="L195">                        ? null</span>
+<span class="fc" id="L196">                        : gasBillingCalculationInfoGasRknKsnInf.tksuSvkyNo(),</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                gasUsageRelatedInfoGasRknKsnInf == null</span>
+<span class="fc" id="L198">                        ? null</span>
+<span class="fc" id="L199">                        : gasUsageRelatedInfoGasRknKsnInf.sghsFkumFlg());</span>
+    }
+
+    private static List&lt;KnsKkaInf&gt; toKnsKkaInfList(List&lt;KnkkJh&gt; knkkJhList) {
+<span class="fc" id="L203">        return knkkJhList.stream().map(GasUsageForBillingDerivationImpl::toKnsKkaInf).toList();</span>
+    }
+
+    private static KnsKkaInf toKnsKkaInf(KnkkJh knkkJh) {
+<span class="fc" id="L207">        return new KnsKkaInf(</span>
+<span class="fc" id="L208">                knkkJh.knkkKtmeFlg(),</span>
+<span class="fc" id="L209">                knkkJh.knsYmd(),</span>
+<span class="fc" id="L210">                knkkJh.knsKkaTsno(),</span>
+<span class="fc" id="L211">                knkkJh.knkkSksiJysb(),</span>
+<span class="fc" id="L212">                knkkJh.gmtShjSu(),</span>
+<span class="fc" id="L213">                toBigDecimal(knkkJh.gasSyry()),</span>
+<span class="fc" id="L214">                toBigDecimal(knkkJh.sgyjKytiSyry()),</span>
+<span class="fc" id="L215">                knkkJh.shyDdsu(),</span>
+<span class="fc" id="L216">                knkkJh.sjskKbn(),</span>
+<span class="fc" id="L217">                knkkJh.knsJsjkCd(),</span>
+                null);
+    }
+
+    private static BigDecimal toBigDecimal(Double value) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        return value == null ? null : BigDecimal.valueOf(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

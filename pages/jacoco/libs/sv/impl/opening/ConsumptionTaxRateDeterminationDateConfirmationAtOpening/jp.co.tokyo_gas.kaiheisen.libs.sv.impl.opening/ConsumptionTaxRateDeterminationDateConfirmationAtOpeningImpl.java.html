@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConsumptionTaxRateDeterminationDateConfirmationAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-consumptiontaxratedeterminationdateconfirmationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ConsumptionTaxRateDeterminationDateConfirmationAtOpeningImpl.java</span></div><h1>ConsumptionTaxRateDeterminationDateConfirmationAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ConsumptionTaxRateDeterminationDateConfirmationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ConsumptionTaxRateDeterminationDateConfirmationAtOpeningOutput;
+
+/**
+ * 概要: 開栓時消費税率判定用年月日確定サービス（SV-229）の実装。
+ * 主な仕様:
+ * - 代替判定結果、開栓事由、供給停止精算状態区分を優先的に評価し、確定日付を早期決定する。
+ * - 必要時のみ総合他メーター関連の下位 DA を参照し、総合メーターの状態に応じて返却日付を決定する。
+ * - 下位 DA 例外は握りつぶさずにそのまま上位へ伝播する。
+ * 既知の制約:
+ * - `correlationId`、`hukkSysShbt`、`systemDatetime` は RequestContext/MDC 管理であり、本クラスの公開メソッド引数に含めない。
+ * - 総合他メーター判定経路では RequestContext の `systemDatetime` が必須であり、未設定の場合は `IllegalStateException` を送出する。
+ */
+public class ConsumptionTaxRateDeterminationDateConfirmationAtOpeningImpl
+        implements ConsumptionTaxRateDeterminationDateConfirmationAtOpening {
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final List&lt;String&gt; relatedStatuses;
+
+    private final Set&lt;String&gt; priorOpeningReasons;
+
+    private final Set&lt;String&gt; priorClosureReasons;
+
+    private final String supplyStopPaymentPending;
+
+    private final String gasMeterOpening;
+
+    private final String gasMeterClosed;
+
+    private final String closureReasonSupplyOutage;
+
+    /**
+     * 概要: SV-229 の実行に必要な DA 依存を初期化する。
+     * 主な仕様: サービス契約・メーター設置場所関連、ガスメーター設置場所＜導管＞、供給停止管理の各 DA を保持する。
+     * 既知の制約: 必須依存が null の場合はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞ DA
+     * @param kkytskrDataAccess 供給停止管理 DA
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public ConsumptionTaxRateDeterminationDateConfirmationAtOpeningImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            KkytskrDataAccess kkytskrDataAccess,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L72">            RequestContext requestContext) {</span>
+<span class="fc" id="L73">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L76">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+
+<span class="fc" id="L78">        CiriusConstantService requiredCiriusConstantService =</span>
+<span class="fc" id="L79">            Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L80">        this.relatedStatuses = List.of(</span>
+<span class="fc" id="L81">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID),
+<span class="fc" id="L85">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03));
+<span class="fc" id="L89">        this.priorOpeningReasons = Set.of(</span>
+<span class="fc" id="L90">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION),
+<span class="fc" id="L94">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.DISASTER_RECOVERY));
+<span class="fc" id="L98">        this.priorClosureReasons = Set.of(</span>
+<span class="fc" id="L99">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE),
+<span class="fc" id="L103">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER));
+<span class="fc" id="L107">        this.supplyStopPaymentPending =</span>
+<span class="fc" id="L108">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L112">        this.gasMeterOpening =</span>
+<span class="fc" id="L113">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L117">        this.gasMeterClosed =</span>
+<span class="fc" id="L118">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L122">        this.closureReasonSupplyOutage =</span>
+<span class="fc" id="L123">            RequiredConstantResolver.requireCiriusConstant(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * 概要: 開栓時の確定消費税率判定用年月日を確定する。
+         * 主な仕様: 入力優先の短絡判定後、総合他メーターの状態を評価して、開栓作業年月日または消費税率判定用年月日を返却する。
+         * 既知の制約: 代替判定結果フラグは null を許容せず、総合他メーター評価経路で RequestContext の `systemDatetime` が未設定の場合は `IllegalStateException` となる。
+     */
+    @Override
+    public ConsumptionTaxRateDeterminationDateConfirmationAtOpeningOutput execute(
+            Long gasMtstNo,
+            Long kktSvkyNo,
+            LocalDate kasgYmd,
+            String kasJysb,
+            LocalDate szirHtyoYmd,
+            Boolean digwrHntFlg,
+            String kkysSisnJtkb,
+            LocalDate ksenHkkKnuKigenYmd) {
+<span class="fc" id="L144">        boolean alternativeJudgmentResult = digwrHntFlg;</span>
+
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (alternativeJudgmentResult) {</span>
+<span class="fc" id="L147">            return output(kasgYmd);</span>
+        }
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (priorOpeningReasons.contains(kasJysb)) {</span>
+<span class="fc" id="L150">            return output(szirHtyoYmd);</span>
+        }
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (Objects.equals(kkysSisnJtkb, supplyStopPaymentPending)) {</span>
+<span class="fc" id="L153">            return output(szirHtyoYmd);</span>
+        }
+
+<span class="fc" id="L156">        List&lt;SvmstkrRecord&gt; relatedMeters = svmstkrDataAccess</span>
+<span class="fc" id="L157">                .findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNoForR015(</span>
+                        kktSvkyNo,
+                        relatedStatuses,
+                        kasgYmd,
+                        kasgYmd,
+                        gasMtstNo);
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (relatedMeters.isEmpty()) {</span>
+<span class="fc" id="L164">            return output(kasgYmd);</span>
+        }
+
+<span class="fc" id="L167">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L168">                .map(systemDatetime -&gt; systemDatetime.toLocalDate())</span>
+<span class="fc" id="L169">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L170">        boolean hasOpeningMeter = false;</span>
+<span class="fc" id="L171">        boolean hasOtherClosingReason = false;</span>
+
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (SvmstkrRecord relatedMeter : relatedMeters) {</span>
+<span class="fc" id="L174">            Optional&lt;GmtsetdRecord&gt; gasMeter =</span>
+<span class="fc" id="L175">                    gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(relatedMeter.mtstNo(), systemDate);</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">            if (gasMeter.isEmpty()) {</span>
+<span class="nc" id="L177">                continue;</span>
+            }
+<span class="fc" id="L179">            GmtsetdRecord gasMeterRecord = gasMeter.get();</span>
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (Objects.equals(gasMeterRecord.gmtKhsJtkb(), gasMeterOpening)) {</span>
+<span class="fc" id="L182">                hasOpeningMeter = true;</span>
+<span class="fc" id="L183">                continue;</span>
+            }
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">            if (!Objects.equals(gasMeterRecord.gmtKhsJtkb(), gasMeterClosed)) {</span>
+<span class="nc" id="L186">                continue;</span>
+            }
+
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (Objects.equals(gasMeterRecord.hesnJysb(), closureReasonSupplyOutage)) {</span>
+<span class="fc" id="L190">                Optional&lt;KkytskrRecord&gt; supplyStopRecord =</span>
+<span class="fc" id="L191">                        kkytskrDataAccess.findByGasMtstNo(relatedMeter.mtstNo());</span>
+<span class="fc" id="L192">                if (supplyStopRecord</span>
+<span class="fc" id="L193">                        .map(KkytskrRecord::kkysSisnJtkb)</span>
+<span class="fc" id="L194">                        .filter(supplyStopPaymentPending::equals)</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">                        .isPresent()) {</span>
+<span class="fc" id="L196">                    return output(szirHtyoYmd);</span>
+                }
+                continue;
+            }
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">            if (priorClosureReasons.contains(gasMeterRecord.hesnJysb())) {</span>
+<span class="fc" id="L202">                return output(szirHtyoYmd);</span>
+            }
+
+<span class="fc" id="L205">            hasOtherClosingReason = true;</span>
+<span class="fc" id="L206">        }</span>
+
+<span class="pc bpc" id="L208" title="1 of 4 branches missed.">        if (!hasOpeningMeter &amp;&amp; hasOtherClosingReason) {</span>
+<span class="fc" id="L209">            return output(kasgYmd);</span>
+        }
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (!ksenHkkKnuKigenYmd.isBefore(szirHtyoYmd)) {</span>
+<span class="fc" id="L212">            return output(szirHtyoYmd);</span>
+        }
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (kasgYmd.isBefore(szirHtyoYmd)) {</span>
+<span class="fc" id="L215">            return output(kasgYmd);</span>
+        }
+<span class="fc" id="L217">        return output(szirHtyoYmd);</span>
+    }
+
+    private static ConsumptionTaxRateDeterminationDateConfirmationAtOpeningOutput output(LocalDate date) {
+<span class="fc" id="L221">        return new ConsumptionTaxRateDeterminationDateConfirmationAtOpeningOutput(date);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelocationDestinationManagementRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-relocationdestinationmanagementregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">RelocationDestinationManagementRegistrationImpl.java</span></div><h1>RelocationDestinationManagementRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import jakarta.inject.Inject;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.RelocationDestinationManagementAddition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.RelocationDestinationManagementRegistration;
+
+/**
+ * 概要: SV-129（移転先管理登録）のサービス実装。
+ * 主な仕様:
+ * - 移転前管轄支社コードから移転前管轄基地コードを決定する。
+ * - 計算した基地コードを付与して SV-262 へ処理を委譲する。
+ * 既知の制約:
+ * - SV-129 自身は RequestContext を参照せず、群馬支社判定と下位 SV 委譲のみを責務とする。
+ */
+public class RelocationDestinationManagementRegistrationImpl
+        implements RelocationDestinationManagementRegistration {
+
+    static final String GUNMA_BRANCH_BASE_CODE = &quot;002&quot;;
+
+    static final String DEFAULT_BRANCH_BASE_CODE = &quot;001&quot;;
+
+    private final RelocationDestinationManagementAddition relocationDestinationManagementAddition;
+
+    private final String gunmaBranchCode;
+
+    /**
+     * 概要: SV-129 に必要な依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - 下位 SV 依存と開閉栓定数サービス依存を fail-fast で検証する。
+     * - 群馬支社コード定数の存在をコンストラクタ初期化時点で確認する。
+     * 既知の制約:
+     * - 基地コード `001` / `002` 自体は source 正本に従う固定値として保持する。
+     *
+     * @param relocationDestinationManagementAddition 移転先管理追加サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public RelocationDestinationManagementRegistrationImpl(
+            RelocationDestinationManagementAddition relocationDestinationManagementAddition,
+<span class="fc" id="L44">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L45">        this.relocationDestinationManagementAddition = Objects.requireNonNull(</span>
+                relocationDestinationManagementAddition,
+                &quot;relocationDestinationManagementAddition&quot;);
+<span class="fc" id="L48">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L51">        this.gunmaBranchCode = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BranchCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.BranchCode.GUNMA_BRANCH);
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * 概要: 移転先管理登録を実行する。
+     * 主な仕様:
+     * - 群馬支社コードの場合は基地コード `002`、それ以外は `001` を設定する。
+     * - 計算結果を付与して SV-262 に処理を委譲する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param svkyNo サービス契約番号
+     * @param itmSihKiyNo 移転前支払契約番号
+     * @param itmKktSsyaCd 移転前管轄支社コード
+     * @param itmKktEgsyCd 移転前管轄営業所コード
+     */
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            Long svkyNo,
+            Long itmSihKiyNo,
+            String itmKktSsyaCd,
+            String itmKktEgsyCd) {
+<span class="fc" id="L76">        relocationDestinationManagementAddition.execute(</span>
+                gasMtstNo,
+                svkyNo,
+                itmSihKiyNo,
+                itmKktSsyaCd,
+                itmKktEgsyCd,
+<span class="fc" id="L82">                resolveBaseCode(itmKktSsyaCd));</span>
+<span class="fc" id="L83">    }</span>
+
+    /**
+     * 概要: 支社コードから移転前管轄基地コードを決定する。
+     * 主な仕様:
+     * - 群馬支社コードの場合は `002` を返す。
+     * - それ以外の場合は `001` を返す。
+     * 既知の制約:
+     * - 基地コードは source 正本に記載された固定値をそのまま返す。
+     *
+     * @param itmKktSsyaCd 移転前管轄支社コード
+     * @return 移転前管轄基地コード
+     */
+    private String resolveBaseCode(String itmKktSsyaCd) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (gunmaBranchCode.equals(itmKktSsyaCd)) {</span>
+<span class="fc" id="L98">            return GUNMA_BRANCH_BASE_CODE;</span>
+        }
+<span class="fc" id="L100">        return DEFAULT_BRANCH_BASE_CODE;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

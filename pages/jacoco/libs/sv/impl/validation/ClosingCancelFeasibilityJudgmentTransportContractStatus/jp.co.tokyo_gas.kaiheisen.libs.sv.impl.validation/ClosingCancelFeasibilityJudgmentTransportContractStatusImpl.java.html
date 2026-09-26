@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentTransportContractStatusImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmenttransportcontractstatus</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentTransportContractStatusImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentTransportContractStatusImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentTransportContractStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentTransportContractStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TaksmtrInf;
+
+/**
+ * 概要: SV-104 閉栓取消実施可否判定: 託送契約状態コードサービス実装.
+ *
+ * &lt;p&gt;主な仕様: 託送メータ情報を取得し、託送契約状態コードが解約済かを判定して、
+ * 判定対象レコードを SV API の出力 DTO へ変換して返却する。
+ *
+ * &lt;p&gt;既知の制約: public 引数の入力妥当性は上位レイヤで保証済みを前提とし、
+ * 本クラスでは追加バリデーションや HTTP 変換を行わない。
+ */
+public final class ClosingCancelFeasibilityJudgmentTransportContractStatusImpl
+        implements ClosingCancelFeasibilityJudgmentTransportContractStatus {
+
+    /** 託送メータ情報 DA. */
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    /** 解約済の託送契約状態コード. */
+    private final String canceledStatus;
+
+    /**
+        * 概要: 必須依存を受け取って初期化する.
+        *
+        * &lt;p&gt;主な仕様: 依存 DA と CIRIUS 定数サービスを fail-fast で検証し、
+        * 解約済の託送契約状態コードを初期化時に解決する。
+        *
+        * &lt;p&gt;既知の制約: 必須定数が定義されていない場合はインスタンス生成時に例外で失敗する。
+     *
+     * @param taksmtrDataAccessParam 託送メータ情報 DA
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ClosingCancelFeasibilityJudgmentTransportContractStatusImpl(
+            final TaksmtrDataAccess taksmtrDataAccessParam,
+<span class="fc" id="L51">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L52">        this.taksmtrDataAccess = Objects.requireNonNull(</span>
+                taksmtrDataAccessParam,
+                &quot;taksmtrDataAccess&quot;);
+<span class="fc" id="L55">        CiriusConstantService resolvedConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L58">        this.canceledStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.CANCELED);
+<span class="fc" id="L62">    }</span>
+
+        /**
+         * 概要: 託送契約状態コードを判定し、判定対象レコードを返す.
+     *
+     * &lt;p&gt;主な仕様: DA-019-R001 で対象レコード一覧を取得し、0 件の場合は
+     * {@link DataInconsistencyException} を送出する。先頭レコードの託送契約状態コードが
+     * 0H800 4:解約済と一致しない場合は {@link BusinessRuleException} として業務エラー
+     * 020000054 を送出する。一致する場合は取得した託送契約番号、引込位置番号、
+     * ガスメータ設置場所番号を出力 DTO へ移送して返却する。
+     *
+     * &lt;p&gt;既知の制約: public 引数の null/形式妥当性は上位レイヤで検証済みを前提とし、
+     * 本メソッドでは追加バリデーションを行わない。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 判定対象レコードから生成した出力 DTO
+     */
+    @Override
+    public ClosingCancelFeasibilityJudgmentTransportContractStatusOutput execute(
+            final Long gasMtstNo) {
+<span class="fc" id="L82">        List&lt;TaksmtrRecord&gt; records = taksmtrDataAccess.findAllByGmtSetNo(gasMtstNo);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (records.isEmpty()) {</span>
+<span class="fc" id="L84">            throw dataInconsistencyForTaksmtr(gasMtstNo);</span>
+        }
+
+<span class="fc" id="L87">        TaksmtrRecord record = records.get(0);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (!canceledStatus.equals(record.taksKyJtCd())) {</span>
+<span class="fc" id="L89">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000054);</span>
+        }
+
+<span class="fc" id="L92">        return toOutput(record);</span>
+    }
+
+    /**
+     * 概要: 取得レコードを出力 DTO へ変換する.
+     *
+     * &lt;p&gt;主な仕様: 託送契約番号、引込位置番号、ガスメータ設置場所番号を
+     * SV API の出力 DTO へ移送する。
+     *
+     * &lt;p&gt;既知の制約: 変換対象は SV-104 が利用する項目に限定し、それ以外の DA 項目は返却しない。
+     *
+     * @param record 託送メータ情報
+     * @return 出力 DTO
+     */
+    private ClosingCancelFeasibilityJudgmentTransportContractStatusOutput toOutput(
+            final TaksmtrRecord record) {
+<span class="fc" id="L108">        return new ClosingCancelFeasibilityJudgmentTransportContractStatusOutput(</span>
+                new TaksmtrInf(
+<span class="fc" id="L110">                        record.takskyNo(),</span>
+<span class="fc" id="L111">                        record.hkkmItiNo(),</span>
+<span class="fc" id="L112">                        record.gmtSetNo()));</span>
+    }
+
+        /**
+         * 概要: DA-019-R001 の 0 件結果をデータ不整合として生成する.
+         *
+         * &lt;p&gt;主な仕様: 対象 DA の tableName、CallSpecs の identifier、gmtSetNo を含む
+         * parameterJsonString を用いて DataInconsistencyException を構築する。
+         *
+         * &lt;p&gt;既知の制約: parameterJsonString は gmtSetNo のみを出力し、キー順はこのメソッドの
+         * put 呼び出し順に従う。
+         *
+         * @param gasMtstNo ガスメーター設置場所番号
+         * @return データ不整合例外
+         */
+    private DataInconsistencyException dataInconsistencyForTaksmtr(final Long gasMtstNo) {
+<span class="fc" id="L128">        DataAccessCallSpec callSpec = TaksmtrDataAccess.CallSpecs.FIND_ALL_BY_GMT_SET_NO;</span>
+<span class="fc" id="L129">        FlatJsonBuilder parameterBuilder = new FlatJsonBuilder()</span>
+<span class="fc" id="L130">            .put(&quot;gmtSetNo&quot;, gasMtstNo);</span>
+<span class="fc" id="L131">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L132">                taksmtrDataAccess.tableName(),</span>
+<span class="fc" id="L133">                callSpec.identifier(),</span>
+                parameterBuilder);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

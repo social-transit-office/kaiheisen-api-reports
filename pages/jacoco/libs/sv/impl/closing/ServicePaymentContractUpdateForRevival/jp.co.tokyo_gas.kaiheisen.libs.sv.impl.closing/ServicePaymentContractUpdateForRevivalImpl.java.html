@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServicePaymentContractUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-servicepaymentcontractupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">ServicePaymentContractUpdateForRevivalImpl.java</span></div><h1>ServicePaymentContractUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SVKY_NO_AND_SKNO;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrSknoOptionalUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServicePaymentContractUpdateForRevival;
+
+/**
+ * 概要: SV-114（サービス契約・支払契約関連更新（契約復活））のサービス実装。
+ * 支払契約番号、サービス契約番号、および世代管理番号に紐づくサービス契約・支払契約関連を更新する。
+ */
+public final class ServicePaymentContractUpdateForRevivalImpl
+        implements ServicePaymentContractUpdateForRevival {
+
+    static final String SERVICE_USER_ID = &quot;KHSS114&quot;;
+
+<span class="fc" id="L32">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+<span class="fc" id="L34">    static final YearMonth MAX_YEAR_MONTH = YearMonth.of(9999, 12);</span>
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String applyingPaymentContractStatus;
+
+    private final String allAtOnceFinalInstallmentBillingServiceType;
+
+    private final String allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType;
+
+    /**
+     * 概要: 必須依存と定数を初期化する。
+     *
+     * @param svsihkrDataAccess サービス契約・支払契約関連 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public ServicePaymentContractUpdateForRevivalImpl(
+            SvsihkrDataAccess svsihkrDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L60">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L61">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L62">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L63">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L66">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L69">        this.applyingPaymentContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L73">        this.allAtOnceFinalInstallmentBillingServiceType =</span>
+<span class="fc" id="L74">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                        ConstantLookupKeys.Cirius.BillingServiceType.ALL_AT_ONCE_FINAL_INSTALLMENT);
+<span class="fc" id="L78">        this.allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType =</span>
+<span class="fc" id="L79">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                        ConstantLookupKeys.Cirius.BillingServiceType.ALL_AT_ONCE_NEXT_3RD_BUSINESS_YEAR_CLOSING_AVAILABLE_AT_SHORT_NOTICE);
+<span class="fc" id="L83">    }</span>
+
+    /**
+     * 概要: 支払契約番号、サービス契約番号、世代管理番号に紐づくサービス契約・支払契約関連を契約復活状態へ更新する。
+     * 仕様:
+     * - 更新対象キーは支払契約番号、サービス契約番号、世代管理番号
+     * - 請求サービス種別が一括対象の場合は一括請求終了年月に最大年月を設定する
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param svkyNo サービス契約番号
+     * @param skno 世代管理番号
+     * @param sikSvcShbt 請求サービス種別
+     */
+    @Override
+    public void execute(
+            Long sihKiyNo,
+            Long svkyNo,
+            Integer skno,
+            String sikSvcShbt) {
+<span class="fc" id="L102">        YearMonth ikskEndYm = resolveIkskEndYm(sikSvcShbt);</span>
+<span class="fc" id="L103">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L104">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+<span class="fc" id="L105">        int updatedCount = svsihkrDataAccess.updateBySihKiyNoAndSvkyNoAndSkno(</span>
+                new SvsihkrWriteRecord(
+                        sihKiyNo,
+                        svkyNo,
+                        skno,
+                        null,
+                        MAX_DATE,
+                        applyingPaymentContractStatus,
+                        null,
+                        null,
+                        ikskEndYm,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L122">                EnumSet.of(</span>
+                        SvsihkrColumn.TYEN_YMD,
+                        SvsihkrColumn.SIH_KIY_JTKB,
+                        SvsihkrColumn.IKSK_END_YM),
+                new SvsihkrSknoOptionalUpdateKey(sihKiyNo, svkyNo, skno, null),
+                auditContext);
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            String ikskEndYmJsonValue = ikskEndYm == null ? null : ikskEndYm.toString();</span>
+<span class="fc" id="L130">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L131">                    svsihkrDataAccess.tableName(),</span>
+<span class="fc" id="L132">                    UPDATE_BY_SIH_KIY_NO_AND_SVKY_NO_AND_SKNO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L134">                            .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L135">                            .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L136">                            .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L137">                            .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L138">                            .put(&quot;sihKiyJtkb&quot;, applyingPaymentContractStatus)</span>
+<span class="fc" id="L139">                            .put(&quot;ikskEndYm&quot;, ikskEndYmJsonValue)</span>
+<span class="fc" id="L140">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L141">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L143">    }</span>
+
+    private YearMonth resolveIkskEndYm(String sikSvcShbt) {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (allAtOnceFinalInstallmentBillingServiceType.equals(sikSvcShbt)</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                || allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType.equals(</span>
+                        sikSvcShbt)) {
+<span class="fc" id="L149">            return MAX_YEAR_MONTH;</span>
+        }
+<span class="fc" id="L151">        return null;</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L155">        String hukkSysShbt = requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L156">                () -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.hukkSysShbt is required&quot;));
+<span class="fc" id="L158">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (decodedOriginFunctionId == null) {</span>
+<span class="fc" id="L162">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L167">        return decodedOriginFunctionId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

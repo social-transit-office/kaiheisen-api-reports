@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractRequestLoggingFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-common-observability</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.observability.logging</a> &gt; <span class="el_source">AbstractRequestLoggingFilter.java</span></div><h1>AbstractRequestLoggingFilter.java</h1><pre class="source lang-java linenums">/**
+ * @file AbstractRequestLoggingFilter.java
+ * 概要: HTTP 入口/出口ログの共通テンプレートを定義する。
+ * 主な仕様:
+ * - クエリ/ボディを含むリクエスト情報をログ出力する。
+ * - 入口/出口のレイテンシを計測する。
+ * 既知の制限事項:
+ * - 実際の登録はアプリ側で @Provider を付与して行う。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.observability.logging;
+
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.container.ContainerResponseContext;
+import jakarta.ws.rs.container.ContainerResponseFilter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+
+/**
+ * HTTP 入口/出口ログの共通テンプレート。
+ */
+public abstract class AbstractRequestLoggingFilter
+        implements ContainerRequestFilter, ContainerResponseFilter {
+
+    private static final String START_TIME_NANOS = &quot;logging.startTimeNanos&quot;;
+
+    private static final String REQUEST_METHOD = &quot;logging.httpMethod&quot;;
+
+    private static final String REQUEST_PATH = &quot;logging.path&quot;;
+
+    private final StructuredLogger logger;
+
+    private final LogLayer layer;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param owner ロガーの所有クラス。型: Class&lt;?&gt;
+     * @param layer レイヤ。型: LogLayer
+     */
+    protected AbstractRequestLoggingFilter(Class&lt;?&gt; owner, LogLayer layer) {
+<span class="nc" id="L56">        this(new JbossStructuredLogger(owner), layer);</span>
+<span class="nc" id="L57">    }</span>
+
+    /**
+     * コンストラクタ。
+     *
+     * @param logger 構造化ロガー。型: StructuredLogger
+     * @param layer レイヤ。型: LogLayer
+     */
+<span class="nc" id="L65">    protected AbstractRequestLoggingFilter(StructuredLogger logger, LogLayer layer) {</span>
+<span class="nc" id="L66">        this.logger = logger;</span>
+<span class="nc" id="L67">        this.layer = layer;</span>
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public void filter(ContainerRequestContext requestContext) throws IOException {
+<span class="nc" id="L72">        String method = requestContext.getMethod();</span>
+<span class="nc" id="L73">        String path = requestContext.getUriInfo().getPath();</span>
+<span class="nc" id="L74">        long startNanos = System.nanoTime();</span>
+<span class="nc" id="L75">        requestContext.setProperty(START_TIME_NANOS, startNanos);</span>
+<span class="nc" id="L76">        requestContext.setProperty(REQUEST_METHOD, method);</span>
+<span class="nc" id="L77">        requestContext.setProperty(REQUEST_PATH, path);</span>
+
+<span class="nc" id="L79">        onRequestStartNanos(startNanos);</span>
+
+<span class="nc" id="L81">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L82">        attributes.put(LogField.HTTP_METHOD.key(), method);</span>
+<span class="nc" id="L83">        attributes.put(LogField.PATH.key(), path);</span>
+<span class="nc" id="L84">        attributes.put(LogField.QUERY_PARAMS.key(), toQueryParams(requestContext));</span>
+<span class="nc" id="L85">        attributes.put(LogField.REQUEST_BODY.key(), readRequestBody(requestContext));</span>
+
+<span class="nc" id="L87">        logger.info(new LogEvent(</span>
+                &quot;request.in&quot;,
+                &quot;HTTP request received&quot;,
+                layer,
+                null,
+                null,
+                attributes));
+<span class="nc" id="L94">    }</span>
+
+    /**
+     * リクエスト入口時刻をサブクラスへ通知する。
+     *
+     * @param startNanos {@link System#nanoTime()} で取得した開始時刻
+     */
+    protected void onRequestStartNanos(final long startNanos) {
+        // 既定では何もしない
+<span class="nc" id="L103">    }</span>
+
+    /**
+     * 詳細性能計測が有効かを返す。
+     *
+     * @return 有効の場合 {@code true}
+     */
+    protected boolean performanceObservabilityEnabled() {
+<span class="nc" id="L111">        return PerformanceObservabilitySettings.isEnabled();</span>
+    }
+
+    @Override
+    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+<span class="nc" id="L116">        Long start = (Long) requestContext.getProperty(START_TIME_NANOS);</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        long latencyMs = start == null ? 0L : (System.nanoTime() - start) / 1_000_000L;</span>
+<span class="nc" id="L118">        String method = (String) requestContext.getProperty(REQUEST_METHOD);</span>
+<span class="nc" id="L119">        String path = (String) requestContext.getProperty(REQUEST_PATH);</span>
+
+<span class="nc" id="L121">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L122">        attributes.put(LogField.HTTP_METHOD.key(), method);</span>
+<span class="nc" id="L123">        attributes.put(LogField.PATH.key(), path);</span>
+<span class="nc" id="L124">        attributes.put(LogField.LATENCY_MS.key(), latencyMs);</span>
+
+<span class="nc" id="L126">        logger.info(new LogEvent(</span>
+                &quot;request.out&quot;,
+                &quot;HTTP response sent&quot;,
+                layer,
+<span class="nc" id="L130">                responseContext.getStatus(),</span>
+                null,
+                attributes));
+<span class="nc" id="L133">    }</span>
+
+    private static Map&lt;String, List&lt;String&gt;&gt; toQueryParams(ContainerRequestContext requestContext) {
+<span class="nc" id="L136">        Map&lt;String, List&lt;String&gt;&gt; params = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L137">        requestContext.getUriInfo().getQueryParameters().forEach(params::put);</span>
+<span class="nc" id="L138">        return params;</span>
+    }
+
+    private static String readRequestBody(ContainerRequestContext requestContext) throws IOException {
+<span class="nc" id="L142">        InputStream inputStream = requestContext.getEntityStream();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        if (inputStream == null) {</span>
+<span class="nc" id="L144">            return null;</span>
+        }
+<span class="nc" id="L146">        byte[] body = readAllBytes(inputStream);</span>
+<span class="nc" id="L147">        requestContext.setEntityStream(new ByteArrayInputStream(body));</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (body.length == 0) {</span>
+<span class="nc" id="L149">            return null;</span>
+        }
+<span class="nc" id="L151">        return new String(body, StandardCharsets.UTF_8);</span>
+    }
+
+    private static byte[] readAllBytes(InputStream inputStream) throws IOException {
+<span class="nc" id="L155">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="nc" id="L156">        byte[] buffer = new byte[1024];</span>
+        int read;
+<span class="nc bnc" id="L158" title="All 2 branches missed.">        while ((read = inputStream.read(buffer)) != -1) {</span>
+<span class="nc" id="L159">            output.write(buffer, 0, read);</span>
+        }
+<span class="nc" id="L161">        return output.toByteArray();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

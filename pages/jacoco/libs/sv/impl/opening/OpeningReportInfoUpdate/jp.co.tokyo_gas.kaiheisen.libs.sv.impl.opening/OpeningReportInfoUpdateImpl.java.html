@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningReportInfoUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingreportinfoupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningReportInfoUpdateImpl.java</span></div><h1>OpeningReportInfoUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkUpdatableColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportInfoEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportInfoEditOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportInfoUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportInfoUpdateOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.MtgInf;
+
+/**
+ * 開栓報告情報更新を実装する。
+ */
+public class OpeningReportInfoUpdateImpl implements OpeningReportInfoUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS233&quot;;
+
+<span class="fc" id="L39">    private static final Set&lt;KasnhkUpdatableColumn&gt; TARGET_COLUMNS =</span>
+<span class="fc" id="L40">            EnumSet.of(</span>
+                    KasnhkUpdatableColumn.KAS_HUKK_JTKB,
+                    KasnhkUpdatableColumn.KAS_HUKR_YMD,
+                    KasnhkUpdatableColumn.KAS_YMD,
+                    KasnhkUpdatableColumn.KASG_NWK_CD,
+                    KasnhkUpdatableColumn.CKTK_CD,
+                    KasnhkUpdatableColumn.KTN_CD,
+                    KasnhkUpdatableColumn.GAS_MTST_NO,
+                    KasnhkUpdatableColumn.KASS_KYO_TRNO,
+                    KasnhkUpdatableColumn.KASS_SVKY_NO,
+                    KasnhkUpdatableColumn.KASS_SIKE_NO,
+                    KasnhkUpdatableColumn.TGKU_HTK_FLG,
+                    KasnhkUpdatableColumn.KAS_JYSB,
+                    KasnhkUpdatableColumn.SVKY_STT_JYSB,
+                    KasnhkUpdatableColumn.CTNM_KN1,
+                    KasnhkUpdatableColumn.CTNM_KJ1,
+                    KasnhkUpdatableColumn.TSIG_GMSB_NO,
+                    KasnhkUpdatableColumn.TSGK_KYO_TRNO,
+                    KasnhkUpdatableColumn.TSIG_KAS_JYSB,
+                    KasnhkUpdatableColumn.TSIG_SVKS_JYSB,
+                    KasnhkUpdatableColumn.TGON_KN1,
+                    KasnhkUpdatableColumn.TGON_KJ1);
+
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    private final OpeningReportInfoEdit openingReportInfoEdit;
+
+    private final KasnhkDataAccess kasnhkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final ExistingOpeningReportInfoReader existingOpeningReportInfoReader;
+
+    private final List&lt;String&gt; searchStatusList;
+
+    /**
+     * SV-233 を初期化する。
+     *
+     * @param kbagmstDataAccess KBAGMST データアクセス
+     * @param openingReportInfoEdit 開栓報告情報編集
+     * @param kasnhkDataAccess KASNHK データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public OpeningReportInfoUpdateImpl(
+            KbagmstDataAccess kbagmstDataAccess,
+            OpeningReportInfoEdit openingReportInfoEdit,
+            KasnhkDataAccess kasnhkDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService) {
+<span class="nc" id="L94">        this(</span>
+                kbagmstDataAccess,
+                openingReportInfoEdit,
+                kasnhkDataAccess,
+                requestContext,
+                kaiheisenConstantService,
+                ciriusConstantService,
+                null);
+<span class="nc" id="L102">    }</span>
+
+    OpeningReportInfoUpdateImpl(
+            KbagmstDataAccess kbagmstDataAccess,
+            OpeningReportInfoEdit openingReportInfoEdit,
+            KasnhkDataAccess kasnhkDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L111">            ExistingOpeningReportInfoReader existingOpeningReportInfoReader) {</span>
+<span class="fc" id="L112">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L113">        this.openingReportInfoEdit = Objects.requireNonNull(openingReportInfoEdit, &quot;openingReportInfoEdit&quot;);</span>
+<span class="fc" id="L114">        this.kasnhkDataAccess = Objects.requireNonNull(kasnhkDataAccess, &quot;kasnhkDataAccess&quot;);</span>
+<span class="fc" id="L115">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L116">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L119">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L120">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L121">        this.searchStatusList = List.of(</span>
+<span class="fc" id="L122">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReportStatus.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReportStatus.REPORTING_OPENING),
+<span class="fc" id="L126">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReportStatus.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReportStatus.FOLLOW_UP_ON_OPENING));
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        this.existingOpeningReportInfoReader = existingOpeningReportInfoReader == null</span>
+<span class="fc" id="L131">                ? this::readExistingOpeningReportInfo</span>
+<span class="pc" id="L132">                : existingOpeningReportInfoReader;</span>
+<span class="fc" id="L133">    }</span>
+
+    @Override
+    public OpeningReportInfoUpdateOutput execute(
+            String sgyAnknNo,
+            LocalDate kasHukkYmd,
+            LocalDate kasgYmd,
+            Long gasMtstNo,
+            String gmb,
+            String kasJysb,
+            String tgTkurKbn,
+            String sgytNwkCd,
+            String ctnmKn1,
+            String ctnmKj1,
+            Long kktSyoKyoTrno,
+            Long kktSvkyNo,
+            Long kktSihKiyNo,
+            String ckrtGmscJtkb,
+            Boolean snyTkmtFlg,
+            String svkySttJysb,
+            Boolean digwrHntFlg,
+            MtgInf mtgInf,
+            Boolean suguHtkFlg,
+            Boolean kiyUmFlg,
+            Boolean syoriHnt4XFlg,
+            KiycstKktInf kiycstKktInf,
+            String isrrGymCd) {
+<span class="fc" id="L160">        AuditContext auditContext = resolveAuditContext();</span>
+<span class="fc" id="L161">        KbagmstRecord areaInfo = resolveAreaInfo(gasMtstNo, kasgYmd);</span>
+<span class="fc" id="L162">        OpeningReportInfoEditOutput edited = openingReportInfoEdit.execute(</span>
+                sgyAnknNo,
+                kasHukkYmd,
+                kasgYmd,
+                gasMtstNo,
+                gmb,
+                kasJysb,
+                tgTkurKbn,
+                sgytNwkCd,
+                ctnmKn1,
+                ctnmKj1,
+                kktSyoKyoTrno,
+                kktSvkyNo,
+                kktSihKiyNo,
+                ckrtGmscJtkb,
+                snyTkmtFlg,
+                svkySttJysb,
+                digwrHntFlg,
+                mtgInf,
+                suguHtkFlg,
+                kiyUmFlg,
+                syoriHnt4XFlg,
+                kiycstKktInf,
+                isrrGymCd,
+<span class="fc" id="L186">                areaInfo.kbabCktkCd(),</span>
+<span class="fc" id="L187">                areaInfo.kbabKtnCd());</span>
+
+<span class="fc" id="L189">        ExistingOpeningReportSearchResult existing = existingOpeningReportInfoReader.read(edited);</span>
+<span class="pc bpc" id="L190" title="1 of 3 branches missed.">        switch (existing.state()) {</span>
+<span class="fc" id="L191">            case NONE -&gt; kasnhkDataAccess.insert(buildWriteRecord(edited), auditContext);</span>
+<span class="fc" id="L192">            case SINGLE -&gt; updateExistingOpeningReportInfo(edited, existing.record(), auditContext);</span>
+        }
+<span class="fc" id="L194">        return new OpeningReportInfoUpdateOutput(edited.kassSvkyNo(), sgyAnknNo);</span>
+    }
+
+    private AuditContext resolveAuditContext() {
+<span class="fc" id="L198">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L199">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.hukkSysShbt is required&quot;));
+<span class="fc" id="L201">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc" id="L204">        return AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+    }
+
+    private KbagmstRecord resolveAreaInfo(Long gasMtstNo, LocalDate kasgYmd) {
+<span class="fc" id="L208">        YearMonth knskKjnYm = YearMonth.of(kasgYmd.getYear(), kasgYmd.getMonthValue());</span>
+<span class="fc" id="L209">        String daIdentifier = KbagmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM</span>
+<span class="fc" id="L210">                .identifier();</span>
+<span class="fc" id="L211">        return kbagmstDataAccess.findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, knskKjnYm)</span>
+<span class="pc" id="L212">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="nc" id="L213">                        kbagmstDataAccess.tableName(),</span>
+                        daIdentifier,
+                        new FlatJsonBuilder()
+<span class="nc" id="L216">                                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="nc" id="L217">                                .put(&quot;knskKjnYm&quot;, knskKjnYm.toString())));</span>
+    }
+
+    private ExistingOpeningReportSearchResult readExistingOpeningReportInfo(
+            OpeningReportInfoEditOutput edited) {
+<span class="fc" id="L222">        Optional&lt;KasnhkRecord&gt; existingRecord =</span>
+<span class="fc" id="L223">                kasnhkDataAccess.findByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndKasHukkJtkb(</span>
+<span class="fc" id="L224">                        edited.gmb(),</span>
+<span class="fc" id="L225">                        edited.kasgYmd(),</span>
+<span class="fc" id="L226">                        edited.kasHukkYmd(),</span>
+<span class="fc" id="L227">                        edited.lvltAnknNo(),</span>
+                        searchStatusList);
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (existingRecord.isEmpty()) {</span>
+<span class="fc" id="L230">            return ExistingOpeningReportSearchResult.none();</span>
+        }
+<span class="fc" id="L232">        return ExistingOpeningReportSearchResult.single(existingRecord.orElseThrow());</span>
+    }
+
+    private void updateExistingOpeningReportInfo(
+            OpeningReportInfoEditOutput edited,
+            KasnhkRecord existingRecord,
+            AuditContext auditContext) {
+<span class="fc" id="L239">        KasnhkWriteRecord writeRecord = buildWriteRecord(edited);</span>
+<span class="fc" id="L240">        KasnhkU002UpdateKey updateKey = new KasnhkU002UpdateKey(</span>
+<span class="fc" id="L241">                edited.gmb(),</span>
+<span class="fc" id="L242">                edited.kasgYmd(),</span>
+<span class="fc" id="L243">                edited.kasHukkYmd(),</span>
+<span class="fc" id="L244">                edited.lvltAnknNo(),</span>
+<span class="fc" id="L245">                existingRecord.recUpdJnjNo());</span>
+<span class="fc" id="L246">        int updatedCount = kasnhkDataAccess</span>
+<span class="fc" id="L247">                .updateByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndRecUpdJnjNo(</span>
+                        writeRecord,
+                        TARGET_COLUMNS,
+                        updateKey,
+                        auditContext);
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (updatedCount != 1) {</span>
+<span class="fc" id="L253">            String daIdentifier = KasnhkDataAccess.CallSpecs</span>
+                    .UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_LVLT_ANKN_NO_AND_REC_UPD_JNJ_NO_U002
+<span class="fc" id="L255">                    .identifier();</span>
+<span class="fc" id="L256">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L257">                    kasnhkDataAccess.tableName(),</span>
+                    daIdentifier,
+<span class="fc" id="L259">                    buildUpdateParameterJson(edited, existingRecord.recUpdJnjNo(), auditContext));</span>
+        }
+<span class="fc" id="L261">    }</span>
+
+    private FlatJsonBuilder buildUpdateParameterJson(
+            OpeningReportInfoEditOutput edited,
+            Integer recUpdJnjNo,
+            AuditContext auditContext) {
+<span class="fc" id="L267">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L268">                .put(&quot;gmb&quot;, edited.gmb())</span>
+<span class="fc" id="L269">                .put(&quot;kasgYmd&quot;, edited.kasgYmd())</span>
+<span class="fc" id="L270">                .put(&quot;kasHukkYmd&quot;, edited.kasHukkYmd())</span>
+<span class="fc" id="L271">                .put(&quot;lvltAnknNo&quot;, edited.lvltAnknNo())</span>
+<span class="fc" id="L272">                .put(&quot;hukkSysShbt&quot;, edited.hukkSysShbt())</span>
+<span class="fc" id="L273">                .put(&quot;kasHukkJtkb&quot;, edited.kasHukkJtkb())</span>
+<span class="fc" id="L274">                .put(&quot;kasHukrYmd&quot;, edited.kasHukrYmd())</span>
+<span class="fc" id="L275">                .put(&quot;kasYmd&quot;, edited.kasYmd())</span>
+<span class="fc" id="L276">                .put(&quot;kasgNwkCd&quot;, edited.kasgNwkCd())</span>
+<span class="fc" id="L277">                .put(&quot;cktkCd&quot;, edited.cktkCd())</span>
+<span class="fc" id="L278">                .put(&quot;ktnCd&quot;, edited.ktnCd())</span>
+<span class="fc" id="L279">                .put(&quot;gasMtstNo&quot;, edited.gasMtstNo())</span>
+<span class="fc" id="L280">                .put(&quot;kassKyoTrno&quot;, edited.kassKyoTrno())</span>
+<span class="fc" id="L281">                .put(&quot;kassSvkyNo&quot;, edited.kassSvkyNo())</span>
+<span class="fc" id="L282">                .put(&quot;kassSikeNo&quot;, edited.kassSikeNo())</span>
+<span class="fc" id="L283">                .put(&quot;tgkuHtkFlg&quot;, edited.tgkuHtkFlg())</span>
+<span class="fc" id="L284">                .put(&quot;kasJysb&quot;, edited.kasJysb())</span>
+<span class="fc" id="L285">                .put(&quot;svkySttJysb&quot;, edited.svkySttJysb())</span>
+<span class="fc" id="L286">                .put(&quot;ctnmKn1&quot;, edited.ctnmKn1())</span>
+<span class="fc" id="L287">                .put(&quot;ctnmKj1&quot;, edited.ctnmKj1())</span>
+<span class="fc" id="L288">                .put(&quot;tsigGmsbNo&quot;, edited.tsigGmsbNo())</span>
+<span class="fc" id="L289">                .put(&quot;tsgkKyoTrno&quot;, edited.tsgkKyoTrno())</span>
+<span class="fc" id="L290">                .put(&quot;tsigKasJysb&quot;, edited.tsigKasJysb())</span>
+<span class="fc" id="L291">                .put(&quot;tsigSvksJysb&quot;, edited.tsigSvksJysb())</span>
+<span class="fc" id="L292">                .put(&quot;tgonKn1&quot;, edited.tsgCtnmKn1())</span>
+<span class="fc" id="L293">                .put(&quot;tgonKj1&quot;, edited.tsgCtnmKj1())</span>
+<span class="fc" id="L294">                .put(&quot;recUpdJnjNo&quot;, recUpdJnjNo)</span>
+<span class="fc" id="L295">                .put(&quot;updUsrId&quot;, auditContext.userId())</span>
+<span class="fc" id="L296">                .put(&quot;updKtnKinoId&quot;, auditContext.kinoId());</span>
+    }
+
+    private KasnhkWriteRecord buildWriteRecord(OpeningReportInfoEditOutput edited) {
+<span class="fc" id="L300">        return new KasnhkWriteRecord(</span>
+<span class="fc" id="L301">                edited.gmb(),</span>
+<span class="fc" id="L302">                edited.kasgYmd(),</span>
+<span class="fc" id="L303">                edited.kasHukkYmd(),</span>
+<span class="fc" id="L304">                edited.hukkSysShbt(),</span>
+<span class="fc" id="L305">                edited.lvltAnknNo(),</span>
+<span class="fc" id="L306">                edited.kasHukkJtkb(),</span>
+<span class="fc" id="L307">                edited.kasHukrYmd(),</span>
+<span class="fc" id="L308">                edited.kasYmd(),</span>
+<span class="fc" id="L309">                edited.kasgNwkCd(),</span>
+<span class="fc" id="L310">                edited.cktkCd(),</span>
+<span class="fc" id="L311">                edited.ktnCd(),</span>
+<span class="fc" id="L312">                edited.gasMtstNo(),</span>
+<span class="fc" id="L313">                edited.kassKyoTrno(),</span>
+<span class="fc" id="L314">                edited.kassSvkyNo(),</span>
+<span class="fc" id="L315">                edited.kassSikeNo(),</span>
+<span class="fc" id="L316">                edited.tgkuHtkFlg(),</span>
+<span class="fc" id="L317">                edited.kasJysb(),</span>
+<span class="fc" id="L318">                edited.svkySttJysb(),</span>
+<span class="fc" id="L319">                edited.ctnmKn1(),</span>
+<span class="fc" id="L320">                edited.ctnmKj1(),</span>
+<span class="fc" id="L321">                edited.tsigGmsbNo(),</span>
+<span class="fc" id="L322">                edited.tsgkKyoTrno(),</span>
+<span class="fc" id="L323">                edited.tsigKasJysb(),</span>
+<span class="fc" id="L324">                edited.tsigSvksJysb(),</span>
+<span class="fc" id="L325">                edited.tsgCtnmKn1(),</span>
+<span class="fc" id="L326">                edited.tsgCtnmKj1(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    @FunctionalInterface
+    interface ExistingOpeningReportInfoReader {
+        ExistingOpeningReportSearchResult read(OpeningReportInfoEditOutput edited);
+    }
+
+<span class="fc" id="L388">    enum ExistingOpeningReportState {</span>
+<span class="fc" id="L389">        NONE,</span>
+<span class="fc" id="L390">                SINGLE</span>
+    }
+
+<span class="fc" id="L393">    record ExistingOpeningReportSearchResult(</span>
+            ExistingOpeningReportState state,
+            KasnhkRecord record) {
+
+        static ExistingOpeningReportSearchResult none() {
+<span class="fc" id="L398">            return new ExistingOpeningReportSearchResult(</span>
+                    ExistingOpeningReportState.NONE,
+                    null);
+        }
+
+        static ExistingOpeningReportSearchResult single(KasnhkRecord record) {
+<span class="fc" id="L404">            return new ExistingOpeningReportSearchResult(</span>
+                    ExistingOpeningReportState.SINGLE,
+<span class="fc" id="L406">                    Objects.requireNonNull(record, &quot;record&quot;));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

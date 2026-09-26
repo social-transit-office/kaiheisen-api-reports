@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HrikmiDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-hrikmi</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.hrikmi</a> &gt; <span class="el_source">HrikmiDataAccessImpl.java</span></div><h1>HrikmiDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.hrikmi;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-093 の SQL 振る舞いを模した HRIKMI インメモリ実装。 */
+public class HrikmiDataAccessImpl extends DataAccessBase implements HrikmiDataAccess {
+
+<span class="fc" id="L34">    private static final ReflectiveInMemoryRowMapper&lt;HrikmiColumn, HrikmiRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L35">            ReflectiveInMemoryRowMapper.create(HrikmiColumn.class, HrikmiRecord.class);</span>
+
+<span class="fc" id="L37">    private static final AutoNeutralValueResolver&lt;HrikmiColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L38">            AutoNeutralValueResolver.create(HrikmiColumn.class, HrikmiRecord.class);</span>
+
+<span class="fc" id="L40">    private final List&lt;EnumMap&lt;HrikmiColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;HrikmiWriteRecord, HrikmiColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;HrikmiWriteRecord, HrikmiColumn&gt;
+            updateSupport;
+
+    /** デフォルト依存でインスタンスを生成する。 */
+    public HrikmiDataAccessImpl() {
+<span class="fc" id="L53">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L54">    }</span>
+
+    /** テスト用に依存を差し替えてインスタンスを生成する。 */
+    HrikmiDataAccessImpl(
+<span class="fc" id="L58">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L59">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L60">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L61">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L62">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(HrikmiWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L64">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        HrikmiWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L67">    }</span>
+
+    /** テストデータを 1 行追加する。 */
+    public HrikmiDataAccessImpl addRow(HrikmiRecord row) {
+<span class="fc" id="L71">        EnumMap&lt;HrikmiColumn, Object&gt; values =</span>
+<span class="fc" id="L72">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L73">        NEUTRAL_VALUE_RESOLVER.complement(values, HrikmiWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L74">        rows.add(values);</span>
+<span class="fc" id="L75">        return this;</span>
+    }
+
+    /** 保持中の行をレコードとして返す。 */
+    public List&lt;HrikmiRecord&gt; getRows() {
+<span class="nc" id="L80">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int insert(HrikmiWriteRecord record, AuditContext context) {
+<span class="fc" id="L85">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L86">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L87">        rows.add(</span>
+<span class="fc" id="L88">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L91">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(HrikmiColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L95">        return 1;</span>
+    }
+
+    @Override
+    public int deleteBySihKiyNoAndSihKiySkno(
+            Long sihKiyNo, Integer sihKiySkno, Integer recUpdJnjNo) {
+<span class="fc" id="L101">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L102">        Integer safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L103">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(HrikmiColumn.SIH_KIY_NO), safeSihKiyNo)</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(row.get(HrikmiColumn.SIH_KIY_SKNO), safeSihKiySkno),</span>
+                HrikmiColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                HrikmiDataAccess.Identifiers.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO,
+<span class="nc" id="L110">                () -&gt; new DataInconsistencyException(&quot;HRIKMI&quot;, HrikmiDataAccess.Identifiers.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO, &quot;{}&quot;),</span>
+                safeSihKiyNo,
+                safeSihKiySkno);
+    }
+
+    @Override
+    public Optional&lt;HrikmiRecord&gt; findBySihKiyNoAndSihKiySkno(Long sihKiyNo, Integer sihKiySkno) {
+<span class="fc" id="L117">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L118">        Integer safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L119">        return rows.stream()</span>
+<span class="fc" id="L120">                .filter(r -&gt; Objects.equals(r.get(HrikmiColumn.SIH_KIY_NO), safeSihKiyNo))</span>
+<span class="fc" id="L121">                .filter(r -&gt; Objects.equals(r.get(HrikmiColumn.SIH_KIY_SKNO), safeSihKiySkno))</span>
+<span class="fc" id="L122">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L123">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySkno(
+            HrikmiWriteRecord record,
+            Set&lt;HrikmiColumn&gt; targetColumns,
+            HrikmiSihKiyUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L132">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L133">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L134">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L135">        return update(</span>
+                rows,
+                record,
+                targetColumns,
+<span class="fc" id="L139">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L140">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L141">                updateKey.recUpdJnjNo(),</span>
+                context,
+                HrikmiDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO);
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySknoAndRecUpdJnjNo(
+            HrikmiWriteRecord record,
+            Set&lt;HrikmiColumn&gt; targetColumns,
+            HrikmiSihKiyJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L152">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L153">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L154">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L155">        return update(</span>
+                rows,
+                record,
+                targetColumns,
+<span class="fc" id="L159">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L160">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L161">                updateKey.recUpdJnjNo(),</span>
+                context,
+                HrikmiDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO_AND_REC_UPD_JNJ_NO);
+    }
+
+    private int update(
+            List&lt;EnumMap&lt;HrikmiColumn, Object&gt;&gt; targetRows,
+            HrikmiWriteRecord record,
+            Set&lt;HrikmiColumn&gt; targetColumns,
+            Long sihKiyNo,
+            Integer sihKiySkno,
+            Integer recUpdJnjNo,
+            AuditContext context,
+            String daId) {
+<span class="fc" id="L175">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L176">        Integer safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L177">        return InMemoryOptimisticUpdateSupport.update(</span>
+                targetRows,
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(HrikmiColumn.SIH_KIY_NO), safeSihKiyNo)</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(row.get(HrikmiColumn.SIH_KIY_SKNO), safeSihKiySkno),</span>
+                row -&gt;
+<span class="fc" id="L182">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L186">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(HrikmiColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc" id="L190">                                                (Integer) row.get(HrikmiColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L191">                updateSupport::apply,</span>
+                HrikmiColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                daId,
+                safeSihKiyNo,
+                safeSihKiySkno);
+    }
+
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L200">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeInt(Integer value, String paramName) {
+<span class="fc" id="L204">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

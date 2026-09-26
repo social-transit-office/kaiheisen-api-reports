@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BuildingUpdateAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-buildingupdateatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BuildingUpdateAtOpeningImpl.java</span></div><h1>BuildingUpdateAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.BuildingKanjiDisplayFlagAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BuildingUpdateAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BuildingUpdateAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BuildingUpdateGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.JusyoKsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonHkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonKktInf;
+
+/**
+ * 概要: 開栓時建物更新サービス実装。
+ * 主な仕様: 住宅区分指定コード、住所差分、建物名称差分を判定し、必要な場合のみ SV-076 と DA-007-U001 を使って建物情報を更新する。
+ * 既知の制約: 相関IDとシステム日時は public 引数へ露出せず、報告システム種別のみ RequestContext から監査用途で利用する。
+ */
+public final class BuildingUpdateAtOpeningImpl implements BuildingUpdateAtOpening {
+
+    static final String SERVICE_USER_ID = &quot;KHSS293&quot;;
+
+    private final TatemonDataAccess tatemonDataAccess;
+
+    private final BuildingKanjiDisplayFlagAcquisition buildingKanjiDisplayFlagAcquisition;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String housingClassificationCodeNotSpecified;
+
+    private final String housingClassificationCodeSpecified;
+
+    /**
+     * 概要: CDI から依存を受け取って初期化する。
+     * 主な仕様: DA、下位 SV、RequestContext、定数サービスを保持する。
+     * 既知の制約: 必須依存が null の場合はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param tatemonDataAccess 建物データアクセス
+     * @param buildingKanjiDisplayFlagAcquisition 建物漢字表示可否コード取得 SV
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public BuildingUpdateAtOpeningImpl(
+            TatemonDataAccess tatemonDataAccess,
+            BuildingKanjiDisplayFlagAcquisition buildingKanjiDisplayFlagAcquisition,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L64">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L65">        this.tatemonDataAccess = Objects.requireNonNull(tatemonDataAccess, &quot;tatemonDataAccess&quot;);</span>
+<span class="fc" id="L66">        this.buildingKanjiDisplayFlagAcquisition = Objects.requireNonNull(</span>
+                buildingKanjiDisplayFlagAcquisition,
+                &quot;buildingKanjiDisplayFlagAcquisition&quot;);
+<span class="fc" id="L69">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L70">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L71">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L72">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L75">        this.housingClassificationCodeNotSpecified = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.HousingClassificationCode.TYPE,
+                ConstantLookupKeys.Cirius.HousingClassificationCode.NOT_SPECIFIED);
+<span class="fc" id="L79">        this.housingClassificationCodeSpecified = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.HousingClassificationCode.TYPE,
+                ConstantLookupKeys.Cirius.HousingClassificationCode.SPECIFIED);
+<span class="fc" id="L83">    }</span>
+
+    /**
+     * 概要: 開栓報告時に訂正された建物情報を判定し、必要な場合のみ建物更新を実行する。
+     * 主な仕様: 初期出力へ入力建物情報コピーを設定し、更新要否がある場合だけ確定建物情報と DA 更新パラメータを再構成する。
+     * 既知の制約: public 引数の null は補正せず、そのまま比較または下位依存へ引き渡す。
+     *
+     * @param tatemonInf 建物情報
+     * @param tatemonHkkInf 建物報告情報
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所＜導管＞情報（開栓作業日時点）
+     * @param jusyoKsenjInf 住所情報（開栓時）
+     * @return 建物更新結果
+     */
+    @Override
+    public BuildingUpdateAtOpeningOutput execute(
+            TatemonInf tatemonInf,
+            TatemonHkkInf tatemonHkkInf,
+            BuildingUpdateGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            JusyoKsenjInf jusyoKsenjInf) {
+<span class="fc" id="L102">        TatemonKktInf initialConfirmedBuildingInfo = toConfirmedBuildingInfo(tatemonInf);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!housingClassificationCodeNotSpecified.equals(tatemonInf.jutakKbnStCd())) {</span>
+<span class="fc" id="L104">            return new BuildingUpdateAtOpeningOutput(Boolean.FALSE, Boolean.FALSE, initialConfirmedBuildingInfo);</span>
+        }
+
+<span class="fc" id="L107">        boolean addressChanged = hasAddressDifference(tatemonInf, jusyoKsenjInf);</span>
+<span class="fc" id="L108">        boolean nameChanged = hasNameDifference(tatemonInf, tatemonHkkInf);</span>
+<span class="fc bfc" id="L109" title="All 4 branches covered.">        if (!addressChanged &amp;&amp; !nameChanged) {</span>
+<span class="fc" id="L110">            return new BuildingUpdateAtOpeningOutput(Boolean.FALSE, Boolean.FALSE, initialConfirmedBuildingInfo);</span>
+        }
+
+<span class="fc" id="L113">        TatemonKktInf confirmedBuildingInfo = resolveConfirmedBuildingInfo(</span>
+                tatemonInf,
+                tatemonHkkInf,
+                gmtsetdKsenSaymdInf,
+                jusyoKsenjInf,
+                addressChanged,
+                nameChanged);
+<span class="fc" id="L120">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L121">        TatemonWriteRecord writeRecord = toWriteRecord(confirmedBuildingInfo);</span>
+<span class="fc" id="L122">        LinkedHashSet&lt;TatemonColumn&gt; targetColumns = buildTargetColumns(addressChanged, nameChanged);</span>
+<span class="fc" id="L123">        TatemonUpdateKey updateKey = new TatemonUpdateKey(tatemonInf.bldNo(), tatemonInf.recUpdJnjNo());</span>
+<span class="fc" id="L124">        tatemonDataAccess.updateByBldNoAndRecUpdJnjNo(</span>
+                writeRecord,
+<span class="fc" id="L126">                Set.copyOf(targetColumns),</span>
+                updateKey,
+<span class="fc" id="L128">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L129">        return new BuildingUpdateAtOpeningOutput(</span>
+<span class="fc" id="L130">                Boolean.valueOf(nameChanged),</span>
+<span class="fc" id="L131">                Boolean.valueOf(addressChanged),</span>
+                confirmedBuildingInfo);
+    }
+
+    /**
+     * 概要: 入力建物情報を返却用の建物情報（確定）へ変換する。
+     * 主な仕様: 返却対象外の監査項目と排他制御項目を除いた値をそのまま転記する。
+     * 既知の制約: null 項目は補完せず、そのまま返却 DTO に保持する。
+     *
+     * @param tatemonInf 建物情報
+     * @return 建物情報（確定）
+     */
+    private static TatemonKktInf toConfirmedBuildingInfo(TatemonInf tatemonInf) {
+<span class="fc" id="L144">        return new TatemonKktInf(</span>
+<span class="fc" id="L145">                tatemonInf.bldNo(),</span>
+<span class="fc" id="L146">                tatemonInf.bldnKn(),</span>
+<span class="fc" id="L147">                tatemonInf.bldnKj(),</span>
+<span class="fc" id="L148">                tatemonInf.tymkBantGo_1(),</span>
+<span class="fc" id="L149">                tatemonInf.tymkBantGo_2(),</span>
+<span class="fc" id="L150">                tatemonInf.tymkBantGo_3(),</span>
+<span class="fc" id="L151">                tatemonInf.autolockCd(),</span>
+<span class="fc" id="L152">                tatemonInf.autolockAnsNo(),</span>
+<span class="fc" id="L153">                tatemonInf.autolockComent(),</span>
+<span class="fc" id="L154">                tatemonInf.bldKjhkFlg(),</span>
+<span class="fc" id="L155">                tatemonInf.jyutakuKbnCd(),</span>
+<span class="fc" id="L156">                tatemonInf.jutakKbnStCd(),</span>
+<span class="fc" id="L157">                tatemonInf.szcGkkCd(),</span>
+<span class="fc" id="L158">                tatemonInf.szcMchCd(),</span>
+<span class="fc" id="L159">                tatemonInf.szcCmazCd());</span>
+    }
+
+    /**
+     * 概要: 建物丁目番地号の差分有無を判定する。
+     * 主な仕様: 3 項目のいずれかが不一致であれば住所変更ありと判定する。
+     * 既知の制約: 前後空白の除去や正規化は行わず、完全一致比較のみを行う。
+     *
+     * @param tatemonInf 建物情報
+     * @param jusyoKsenjInf 住所情報（開栓時）
+     * @return 差分がある場合 true
+     */
+    private static boolean hasAddressDifference(TatemonInf tatemonInf, JusyoKsenjInf jusyoKsenjInf) {
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        return !Objects.equals(tatemonInf.tymkBantGo_1(), jusyoKsenjInf.kktCbgSuj1())</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                || !Objects.equals(tatemonInf.tymkBantGo_2(), jusyoKsenjInf.kktCbgKn2())</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                || !Objects.equals(tatemonInf.tymkBantGo_3(), jusyoKsenjInf.kktCbgKn3());</span>
+    }
+
+    /**
+     * 概要: 建物名称の差分有無を判定する。
+     * 主な仕様: 建物報告情報.建物名カナが null または空文字以外であり、かつ建物名カナまたは建物名漢字が不一致のとき true を返す。
+     * 既知の制約: 建物報告情報.建物名カナが空文字のときは建物名漢字だけが不一致でも名称変更とみなさない。
+     *
+     * @param tatemonInf 建物情報
+     * @param tatemonHkkInf 建物報告情報
+     * @return 差分がある場合 true
+     */
+    private static boolean hasNameDifference(TatemonInf tatemonInf, TatemonHkkInf tatemonHkkInf) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        return !isNullOrEmpty(tatemonHkkInf.bldnKn())</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">                &amp;&amp; (!Objects.equals(tatemonInf.bldnKn(), tatemonHkkInf.bldnKn())</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                || !Objects.equals(tatemonInf.bldnKj(), tatemonHkkInf.bldnKj()));</span>
+    }
+
+    /**
+     * 概要: null または空文字かを判定する。
+     * 主な仕様: 空白のみ文字列は空文字扱いしない。
+     * 既知の制約: YAML 設計に合わせて blank 判定ではなく empty 判定のみを行う。
+     *
+     * @param value 判定対象文字列
+     * @return null または空文字の場合 true
+     */
+    private static boolean isNullOrEmpty(String value) {
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        return value == null || value.isEmpty();</span>
+    }
+
+    /**
+     * 概要: 更新後の建物情報（確定）を構築する。
+     * 主な仕様: 名称変更時は SV-076 を使って建物漢字表示可否フラグと住宅区分指定コードを更新し、住所変更時は住所項目と所在地コード項目を更新する。
+     * 既知の制約: 名称変更と住所変更は独立に評価し、両方成立する場合は両方の更新を反映する。
+     *
+     * @param tatemonInf 建物情報
+     * @param tatemonHkkInf 建物報告情報
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所＜導管＞情報（開栓作業日時点）
+     * @param jusyoKsenjInf 住所情報（開栓時）
+     * @param addressChanged 住所差分有無
+     * @param nameChanged 名称差分有無
+     * @return 更新後の建物情報（確定）
+     */
+    private TatemonKktInf resolveConfirmedBuildingInfo(
+            TatemonInf tatemonInf,
+            TatemonHkkInf tatemonHkkInf,
+            BuildingUpdateGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            JusyoKsenjInf jusyoKsenjInf,
+            boolean addressChanged,
+            boolean nameChanged) {
+<span class="fc" id="L224">        String resolvedBuildingNameKana = tatemonInf.bldnKn();</span>
+<span class="fc" id="L225">        String resolvedBuildingNameKanji = tatemonInf.bldnKj();</span>
+<span class="fc" id="L226">        Boolean resolvedBuildingKanjiDisplayFlag = tatemonInf.bldKjhkFlg();</span>
+<span class="fc" id="L227">        String resolvedHousingCategoryCode = tatemonInf.jyutakuKbnCd();</span>
+<span class="fc" id="L228">        String resolvedHousingCategorySpecifiedCode = tatemonInf.jutakKbnStCd();</span>
+<span class="fc" id="L229">        String resolvedAddress1 = tatemonInf.tymkBantGo_1();</span>
+<span class="fc" id="L230">        String resolvedAddress2 = tatemonInf.tymkBantGo_2();</span>
+<span class="fc" id="L231">        String resolvedAddress3 = tatemonInf.tymkBantGo_3();</span>
+<span class="fc" id="L232">        String resolvedGkkCd = tatemonInf.szcGkkCd();</span>
+<span class="fc" id="L233">        String resolvedMchCd = tatemonInf.szcMchCd();</span>
+<span class="fc" id="L234">        String resolvedCmazCd = tatemonInf.szcCmazCd();</span>
+
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (nameChanged) {</span>
+<span class="fc" id="L237">            resolvedBuildingNameKana = tatemonHkkInf.bldnKn();</span>
+<span class="fc" id="L238">            resolvedBuildingNameKanji = tatemonHkkInf.bldnKj();</span>
+<span class="fc" id="L239">            resolvedBuildingKanjiDisplayFlag = buildingKanjiDisplayFlagAcquisition</span>
+<span class="fc" id="L240">                    .execute(tatemonHkkInf.bldnKj())</span>
+<span class="fc" id="L241">                    .bldKjHyojiCd();</span>
+<span class="fc" id="L242">            resolvedHousingCategorySpecifiedCode = housingClassificationCodeSpecified;</span>
+        }
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (addressChanged) {</span>
+<span class="fc" id="L245">            resolvedAddress1 = jusyoKsenjInf.kktCbgSuj1();</span>
+<span class="fc" id="L246">            resolvedAddress2 = jusyoKsenjInf.kktCbgKn2();</span>
+<span class="fc" id="L247">            resolvedAddress3 = jusyoKsenjInf.kktCbgKn3();</span>
+<span class="fc" id="L248">            resolvedGkkCd = gmtsetdKsenSaymdInf.gkkCd();</span>
+<span class="fc" id="L249">            resolvedMchCd = gmtsetdKsenSaymdInf.mchCd();</span>
+<span class="fc" id="L250">            resolvedCmazCd = gmtsetdKsenSaymdInf.cmazCd();</span>
+        }
+<span class="fc" id="L252">        return new TatemonKktInf(</span>
+<span class="fc" id="L253">                tatemonInf.bldNo(),</span>
+                resolvedBuildingNameKana,
+                resolvedBuildingNameKanji,
+                resolvedAddress1,
+                resolvedAddress2,
+                resolvedAddress3,
+<span class="fc" id="L259">                tatemonInf.autolockCd(),</span>
+<span class="fc" id="L260">                tatemonInf.autolockAnsNo(),</span>
+<span class="fc" id="L261">                tatemonInf.autolockComent(),</span>
+                resolvedBuildingKanjiDisplayFlag,
+                resolvedHousingCategoryCode,
+                resolvedHousingCategorySpecifiedCode,
+                resolvedGkkCd,
+                resolvedMchCd,
+                resolvedCmazCd);
+    }
+
+    /**
+     * 概要: 更新対象列集合を構築する。
+     * 主な仕様: 名称変更時は名称系 5 列、住所変更時は住所系 6 列を追加し、両方成立する場合は union を返す。
+     * 既知の制約: 列の追加順は更新意図を読み取りやすいよう固定する。
+     *
+     * @param addressChanged 住所差分有無
+     * @param nameChanged 名称差分有無
+     * @return 更新対象列
+     */
+    private static LinkedHashSet&lt;TatemonColumn&gt; buildTargetColumns(boolean addressChanged, boolean nameChanged) {
+<span class="fc" id="L280">        LinkedHashSet&lt;TatemonColumn&gt; targetColumns = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (nameChanged) {</span>
+<span class="fc" id="L282">            targetColumns.add(TatemonColumn.BLD_NAM_KN);</span>
+<span class="fc" id="L283">            targetColumns.add(TatemonColumn.BLD_NAM_KJ);</span>
+<span class="fc" id="L284">            targetColumns.add(TatemonColumn.BLD_KJ_HYOJI_CD);</span>
+<span class="fc" id="L285">            targetColumns.add(TatemonColumn.JYUTAKU_KBN_CD);</span>
+<span class="fc" id="L286">            targetColumns.add(TatemonColumn.JUTAK_KBN_ST_CD);</span>
+        }
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (addressChanged) {</span>
+<span class="fc" id="L289">            targetColumns.add(TatemonColumn.TYMK_BANT_GO_1);</span>
+<span class="fc" id="L290">            targetColumns.add(TatemonColumn.TYMK_BANT_GO_2);</span>
+<span class="fc" id="L291">            targetColumns.add(TatemonColumn.TYMK_BANT_GO_3);</span>
+<span class="fc" id="L292">            targetColumns.add(TatemonColumn.SYOZA_GYOK_CD);</span>
+<span class="fc" id="L293">            targetColumns.add(TatemonColumn.SYOZA_MATI_CD);</span>
+<span class="fc" id="L294">            targetColumns.add(TatemonColumn.SYOZA_TYMKAZ_CD);</span>
+        }
+<span class="fc" id="L296">        return targetColumns;</span>
+    }
+
+    /**
+     * 概要: 建物情報（確定）を DA 更新レコードへ変換する。
+     * 主な仕様: 監査列と主キーを除く TATEMON 更新対象列へ対応する値を転記する。
+     * 既知の制約: targetColumns に含まれない項目もレコードへ保持するが、DA 側で更新対象外として扱われる。
+     *
+     * @param confirmedBuildingInfo 建物情報（確定）
+     * @return DA 更新レコード
+     */
+    private static TatemonWriteRecord toWriteRecord(TatemonKktInf confirmedBuildingInfo) {
+<span class="fc" id="L308">        return new TatemonWriteRecord(</span>
+<span class="fc" id="L309">                confirmedBuildingInfo.bldnKn(),</span>
+<span class="fc" id="L310">                confirmedBuildingInfo.bldnKj(),</span>
+<span class="fc" id="L311">                confirmedBuildingInfo.tymkBantGo_1(),</span>
+<span class="fc" id="L312">                confirmedBuildingInfo.tymkBantGo_2(),</span>
+<span class="fc" id="L313">                confirmedBuildingInfo.tymkBantGo_3(),</span>
+<span class="fc" id="L314">                confirmedBuildingInfo.autolockCd(),</span>
+<span class="fc" id="L315">                confirmedBuildingInfo.autolockAnsNo(),</span>
+<span class="fc" id="L316">                confirmedBuildingInfo.autolockComent(),</span>
+<span class="fc" id="L317">                confirmedBuildingInfo.bldKjhkFlg(),</span>
+<span class="fc" id="L318">                confirmedBuildingInfo.jyutakuKbnCd(),</span>
+<span class="fc" id="L319">                confirmedBuildingInfo.jutakKbnStCd(),</span>
+<span class="fc" id="L320">                confirmedBuildingInfo.szcGkkCd(),</span>
+<span class="fc" id="L321">                confirmedBuildingInfo.szcMchCd(),</span>
+<span class="fc" id="L322">                confirmedBuildingInfo.szcCmazCd());</span>
+    }
+
+    /**
+     * 概要: 報告元機能 ID を復元する。
+     * 主な仕様: RequestContext から取得した報告システム種別を使って開閉栓定数サービスで名称解決する。
+     * 既知の制約: 報告システム種別の妥当性確認は定数解決側の契約に委ねる。
+     *
+     * @return 報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L333">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L335">                requestContext.getHukkSysShbt().orElse(null));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

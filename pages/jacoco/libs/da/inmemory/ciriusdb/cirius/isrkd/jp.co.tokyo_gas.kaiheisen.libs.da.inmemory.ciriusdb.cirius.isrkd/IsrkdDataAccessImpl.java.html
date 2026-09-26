@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IsrkdDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-isrkd</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.isrkd</a> &gt; <span class="el_source">IsrkdDataAccessImpl.java</span></div><h1>IsrkdDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.isrkd;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+
+/** DA-101-R001 の SQL をインメモリで再現する実装。 */
+<span class="fc" id="L17">public class IsrkdDataAccessImpl extends DataAccessBase implements IsrkdDataAccess {</span>
+
+    private static final int DUKN_ISRS_CD_LENGTH = 8;
+
+<span class="fc" id="L21">    private final List&lt;IsrkdRecord&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * テストデータを追加する。
+     *
+     * @param row 行データ
+     * @return このインスタンス
+     */
+    public IsrkdDataAccessImpl addRow(IsrkdRecord row) {
+<span class="fc" id="L30">        rows.add(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L31">        return this;</span>
+    }
+
+    @Override
+    public Optional&lt;IsrkdRecord&gt; findByArtyCstNoAndIsrrTriYmdAndDuknIsrsCd(
+            Long artyCstNo,
+            LocalDate isrrTriYmd,
+            List&lt;String&gt; duknIsrsCdList) {
+<span class="fc" id="L39">        List&lt;String&gt; safeDuknIsrsCdList = normalizeDuknIsrsCdList(duknIsrsCdList);</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (safeDuknIsrsCdList.isEmpty()) {</span>
+<span class="fc" id="L41">            return Optional.empty();</span>
+        }
+<span class="fc" id="L43">        Long safeArtyCstNo = WhereParamGuard.complement(artyCstNo, &quot;artyCstNo&quot;, 0L);</span>
+<span class="fc" id="L44">        BigDecimal safeIsrrTriYmd =</span>
+<span class="fc" id="L45">                WhereParamGuard.complement(</span>
+<span class="fc" id="L46">                toYmd(isrrTriYmd),</span>
+                        &quot;isrrTriYmd&quot;,
+                        BigDecimal.ZERO);
+
+<span class="fc" id="L50">        return rows.stream()</span>
+<span class="fc" id="L51">                .filter(row -&gt; normalizeLong(row.artyCstNo()).equals(safeArtyCstNo))</span>
+<span class="fc" id="L52">                .filter(row -&gt; normalizeYmd(row.isrrTriYmd()).equals(safeIsrrTriYmd))</span>
+<span class="fc" id="L53">                .filter(row -&gt; safeDuknIsrsCdList.contains(normalizeCode(row.duknIsrsCd())))</span>
+<span class="fc" id="L54">                .sorted(</span>
+<span class="fc" id="L55">                        Comparator.comparing(</span>
+                                        IsrkdDataAccessImpl::normalizeTsno,
+<span class="fc" id="L57">                                        Comparator.nullsLast(Integer::compareTo))</span>
+<span class="fc" id="L58">                                .reversed())</span>
+<span class="fc" id="L59">                .findFirst()</span>
+<span class="fc" id="L60">                .map(IsrkdDataAccessImpl::normalizeRecord);</span>
+    }
+
+    @Override
+    public Optional&lt;IsrkdRecord&gt; findByPK(Long artyCstNo, LocalDate isrrTriYmd, Integer isrrKytuTsno) {
+<span class="fc" id="L65">        Long safeArtyCstNo = WhereParamGuard.complement(artyCstNo, &quot;artyCstNo&quot;, 0L);</span>
+<span class="fc" id="L66">        BigDecimal safeIsrrTriYmd =</span>
+<span class="fc" id="L67">                WhereParamGuard.complement(</span>
+<span class="fc" id="L68">                    toYmd(isrrTriYmd),</span>
+                        &quot;isrrTriYmd&quot;,
+                        BigDecimal.ZERO);
+<span class="fc" id="L71">        Integer safeIsrrKytuTsno = WhereParamGuard.complement(isrrKytuTsno, &quot;isrrKytuTsno&quot;, 0);</span>
+
+<span class="fc" id="L73">        return rows.stream()</span>
+<span class="fc" id="L74">                .filter(row -&gt; normalizeLong(row.artyCstNo()).equals(safeArtyCstNo))</span>
+<span class="fc" id="L75">                .filter(row -&gt; normalizeYmd(row.isrrTriYmd()).equals(safeIsrrTriYmd))</span>
+<span class="fc" id="L76">                .filter(row -&gt; normalizeTsno(row).equals(safeIsrrKytuTsno))</span>
+<span class="fc" id="L77">                .findFirst()</span>
+<span class="fc" id="L78">                .map(IsrkdDataAccessImpl::normalizeRecord);</span>
+    }
+
+    /**
+     * IN 句検索用の業務詳細コード一覧を正規化する。
+     *
+     * &lt;p&gt;主な仕様: null の一覧は拒否し、空一覧はそのまま返す。
+     * 各要素は null/空白-only を入力不正として検証した後、固定長 8 文字へ整形する。
+     *
+     * &lt;p&gt;既知の制約: 要素に null または空白-only を含む一覧は入力不正として扱う。
+     */
+    private static List&lt;String&gt; normalizeDuknIsrsCdList(List&lt;String&gt; duknIsrsCdList) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (duknIsrsCdList == null) {</span>
+<span class="fc" id="L91">            throw new IllegalArgumentException(&quot;duknIsrsCdList must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (duknIsrsCdList.isEmpty()) {</span>
+<span class="fc" id="L94">            return List.of();</span>
+        }
+<span class="fc" id="L96">        return duknIsrsCdList.stream().map(IsrkdDataAccessImpl::normalizeInDuknIsrsCd).toList();</span>
+    }
+
+    /**
+     * IN 句要素の業務詳細コードを固定長条件値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: null と空白-only を入力不正として拒否した上で、fixedLengthNotNull により固定長 8 文字へ整形する。
+     *
+     * &lt;p&gt;既知の制約: 8 文字超の値は切り詰めず、そのまま返す。
+     */
+    private static String normalizeInDuknIsrsCd(String value) {
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L108">            throw new IllegalArgumentException(</span>
+                    &quot;duknIsrsCdList must not contain null or blank-only&quot;);
+        }
+<span class="fc" id="L111">        return WhereParamGuard.fixedLengthNotNull(value, &quot;duknIsrsCdList&quot;, DUKN_ISRS_CD_LENGTH);</span>
+    }
+
+    /**
+     * 顧客番号条件を補完付きで正規化する。
+     *
+     * &lt;p&gt;主な仕様: null は 0 に補完する。
+     *
+     * &lt;p&gt;既知の制約: 条件項目名は固定で value として扱う。
+     */
+    private static Long normalizeLong(Long value) {
+<span class="fc" id="L122">        return WhereParamGuard.complement(value, &quot;value&quot;, 0L);</span>
+    }
+
+    /**
+     * 通し番号を補完付きで正規化する。
+     *
+     * &lt;p&gt;主な仕様: null は 0 に補完する。
+     *
+     * &lt;p&gt;既知の制約: レコード本体から通し番号を取得して評価する。
+     */
+    private static Integer normalizeTsno(IsrkdRecord row) {
+<span class="fc" id="L133">        return WhereParamGuard.complement(row.isrrKytuTsno(), &quot;isrrKytuTsno&quot;, 0);</span>
+    }
+
+    /**
+     * 年月日条件を DB 数値形式へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: LocalDate を yyyymmdd 数値へ変換し、null は 0 に補完する。
+     *
+     * &lt;p&gt;既知の制約: DB 側比較に合わせて BigDecimal で返す。
+     */
+    private static BigDecimal normalizeYmd(LocalDate value) {
+<span class="fc" id="L144">        return WhereParamGuard.complement(toYmd(value), &quot;value&quot;, BigDecimal.ZERO);</span>
+    }
+
+    /**
+     * 年月日を DB 数値形式へ変換する。
+     *
+     * &lt;p&gt;主な仕様: LocalDate を yyyymmdd 形式の BigDecimal へ変換する。
+     *
+     * &lt;p&gt;既知の制約: null は null のまま返す。
+     */
+    private static BigDecimal toYmd(LocalDate value) {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L156">            return null;</span>
+        }
+<span class="fc" id="L158">        return BigDecimal.valueOf(value.getYear() * 10000L + value.getMonthValue() * 100L + value.getDayOfMonth());</span>
+    }
+
+    /**
+     * 業務詳細コードを固定長条件値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: 固定長 8 文字の NOT NULL 条件値へ補完する。
+     *
+     * &lt;p&gt;既知の制約: 入力値が null または空白-only の場合は半角スペース 1 文字へ補完される。
+     */
+    private static String normalizeCode(String value) {
+<span class="fc" id="L169">        return WhereParamGuard.fixedLengthNotNull(value, &quot;duknIsrsCd&quot;, DUKN_ISRS_CD_LENGTH);</span>
+    }
+
+    /**
+     * 取得結果レコードを API 公開値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: 固定長文字列の後続空白を除去し、数値 0 を null 相当へ変換して取得結果を API 公開表現へそろえる。
+     *
+     * &lt;p&gt;既知の制約: 日付・日時項目は入力値をそのまま引き継ぐ。
+     */
+    private static IsrkdRecord normalizeRecord(IsrkdRecord row) {
+<span class="fc" id="L180">        return new IsrkdRecord(</span>
+<span class="fc" id="L181">                normalizeResultLong(row.artyCstNo()),</span>
+<span class="fc" id="L182">                row.isrrTriYmd(),</span>
+<span class="fc" id="L183">                normalizeResultInteger(row.isrrKytuTsno()),</span>
+<span class="fc" id="L184">                normalizeResultLong(row.kyoTrkNo()),</span>
+<span class="fc" id="L185">                normalizeResultLong(row.gasMtstNo()),</span>
+<span class="fc" id="L186">                normalizeResultLong(row.tksuSvkyNo()),</span>
+<span class="fc" id="L187">                suppress(row.akrkKbn()),</span>
+<span class="fc" id="L188">                suppress(row.akrkTrskShbt()),</span>
+<span class="fc" id="L189">                suppress(row.duknIsrgCd()),</span>
+<span class="fc" id="L190">                suppress(row.duknIsrsCd()),</span>
+<span class="fc" id="L191">                suppress(row.isrrHkkrKbn()),</span>
+<span class="fc" id="L192">                suppress(row.isrrSktCd()),</span>
+<span class="fc" id="L193">                suppress(row.kyonKj1()),</span>
+<span class="fc" id="L194">                suppress(row.kyonKn1()),</span>
+<span class="fc" id="L195">                suppress(row.kyon1HujnShbt()),</span>
+<span class="fc" id="L196">                suppress(row.kyon1HshiShbt()),</span>
+<span class="fc" id="L197">                suppress(row.kyonKj2()),</span>
+<span class="fc" id="L198">                suppress(row.kyonKn2()),</span>
+<span class="fc" id="L199">                suppress(row.kyon2HujnShbt()),</span>
+<span class="fc" id="L200">                suppress(row.kyon2HshiShbt()),</span>
+<span class="fc" id="L201">                row.kyonKjhkFlg(),</span>
+<span class="fc" id="L202">                normalizeResultInteger(row.isrrTriHms()),</span>
+<span class="fc" id="L203">                row.idsgYmd(),</span>
+<span class="fc" id="L204">                suppress(row.isrrHusrId()),</span>
+<span class="fc" id="L205">                suppress(row.isrrHkunKj()),</span>
+<span class="fc" id="L206">                suppress(row.isrrHjsgId()),</span>
+<span class="fc" id="L207">                row.regTsmp(),</span>
+<span class="fc" id="L208">                suppress(row.regUsrId()),</span>
+<span class="fc" id="L209">                row.updTsmp(),</span>
+<span class="fc" id="L210">                suppress(row.updUsrId()),</span>
+<span class="fc" id="L211">                suppress(row.updKtnKinoId()),</span>
+<span class="fc" id="L212">                normalizeResultInteger(row.recUpdJnjNo()));</span>
+    }
+
+    /**
+     * 取得結果の Long 値を API 公開値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: 0 は DB 補完値として扱い、null へ変換する。
+     *
+     * &lt;p&gt;既知の制約: 0 以外の値はそのまま返す。
+     */
+    private static Long normalizeResultLong(Long value) {
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">        return value != null &amp;&amp; value == 0L ? null : value;</span>
+    }
+
+    /**
+     * 取得結果の Integer 値を API 公開値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: 0 は DB 補完値として扱い、null へ変換する。
+     *
+     * &lt;p&gt;既知の制約: 0 以外の値はそのまま返す。
+     */
+    private static Integer normalizeResultInteger(Integer value) {
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">        return value != null &amp;&amp; value == 0 ? null : value;</span>
+    }
+
+    /**
+     * 固定長文字列の後続空白を抑止する。
+     *
+     * &lt;p&gt;主な仕様: API 返却値として不要な右側空白を除去する。
+     *
+     * &lt;p&gt;既知の制約: null は null のまま返す。
+     */
+    private static String suppress(String value) {
+<span class="fc" id="L245">        return FixedLengthFormatter.suppressSpace(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

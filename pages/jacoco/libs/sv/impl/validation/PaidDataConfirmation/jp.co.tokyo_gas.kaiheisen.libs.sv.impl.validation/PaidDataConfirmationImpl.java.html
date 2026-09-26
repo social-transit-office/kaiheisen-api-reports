@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaidDataConfirmationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-paiddataconfirmation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">PaidDataConfirmationImpl.java</span></div><h1>PaidDataConfirmationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaidDataConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaidDataConfirmationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaymentExistenceJudgment;
+
+/** SV-021 入金済みデータ確認の実装。 */
+public final class PaidDataConfirmationImpl implements PaidDataConfirmation {
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final PaymentExistenceJudgment paymentExistenceJudgment;
+
+    private final RequestContext requestContext;
+
+    private final String invalidPaymentContractStatus;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param sihakyDataAccess 支払契約 DA
+     * @param paymentExistenceJudgment 入金有無判定 SV
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public PaidDataConfirmationImpl(
+            SihakyDataAccess sihakyDataAccess,
+            PaymentExistenceJudgment paymentExistenceJudgment,
+            RequestContext requestContext,
+<span class="fc" id="L41">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L42">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L43">        this.paymentExistenceJudgment = Objects.requireNonNull(</span>
+                paymentExistenceJudgment,
+                &quot;paymentExistenceJudgment&quot;);
+<span class="fc" id="L46">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L47">        CiriusConstantService resolvedConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L50">        this.invalidPaymentContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID);
+<span class="fc" id="L54">    }</span>
+
+    @Override
+    public PaidDataConfirmationOutput execute(Long shrkyNo1, Long shrkyNo2) {
+<span class="fc" id="L58">        LocalDate systemDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L59">        boolean firstResult = judgePaymentStatus(shrkyNo1, systemDate);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!firstResult) {</span>
+<span class="fc" id="L61">            return new PaidDataConfirmationOutput(false);</span>
+        }
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (shrkyNo2 == null) {</span>
+<span class="fc" id="L64">            return new PaidDataConfirmationOutput(true);</span>
+        }
+<span class="fc" id="L66">        return new PaidDataConfirmationOutput(judgePaymentStatus(shrkyNo2, systemDate));</span>
+    }
+
+    private boolean judgePaymentStatus(Long sihKiyNo, LocalDate systemDate) {
+<span class="fc" id="L70">        SihakyRecord sihakyRecord = sihakyDataAccess</span>
+<span class="fc" id="L71">                .findBySihKiyNoAndTkysYmdAndNotSihKiyJtkb(</span>
+                        sihKiyNo,
+                        systemDate,
+                        invalidPaymentContractStatus)
+<span class="fc" id="L75">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L76">                        sihakyDataAccess.tableName(),</span>
+                        SihakyDataAccess.CallSpecs
+                                .FIND_BY_SIH_KIY_NO_AND_TKYS_YMD_AND_NOT_SIH_KIY_JTKB
+<span class="fc" id="L79">                                .identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L81">                                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L82">                                .put(&quot;tkysYmd&quot;, systemDate)</span>
+<span class="fc" id="L83">                                .put(&quot;sihKiyJtkb&quot;, invalidPaymentContractStatus)));</span>
+<span class="fc" id="L84">        return paymentExistenceJudgment.execute(sihakyRecord.sikKrno()).nyukinZmFlg();</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L88">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L89">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

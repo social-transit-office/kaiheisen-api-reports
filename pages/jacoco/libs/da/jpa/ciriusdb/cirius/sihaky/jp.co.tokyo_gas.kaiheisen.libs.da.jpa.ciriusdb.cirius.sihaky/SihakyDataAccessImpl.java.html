@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SihakyDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-sihaky</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.sihaky</a> &gt; <span class="el_source">SihakyDataAccessImpl.java</span></div><h1>SihakyDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.sihaky;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakySknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/**
+ * 支払契約（SIHAKY）データアクセスの JPA 実装。
+ */
+public class SihakyDataAccessImpl extends DataAccessBase implements SihakyDataAccess {
+
+    private static final String TABLE_NAME = &quot;SIHAKY&quot;;
+
+    private static final int SIH_KIY_JTKB_LENGTH = 2;
+
+    private static final String WHERE_CLAUSE_BY_SKNO = &quot;SIH_KIY_NO = ? AND SKNO = ?&quot;;
+
+<span class="fc" id="L46">    static final ReflectiveRecordEntityMapper&lt;SihakyRecord, SihakyEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L47">            ReflectiveRecordEntityMapper.create(SihakyRecord.class, SihakyEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;SihakyWriteRecord, SihakyEntity&gt;
+<span class="fc" id="L50">            WRITE_MAPPER =</span>
+<span class="fc" id="L51">                    ReflectiveRecordEntityMapper.create(SihakyWriteRecord.class, SihakyEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;SihakyEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;SihakyWriteRecord, SihakyEntity, SihakyColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;SihakyWriteRecord, SihakyEntity, SihakyColumn&gt;
+            updateSupport;
+
+    /**
+     * 標準依存で初期化する。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public SihakyDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L76">        this(entityManager, criteriaBuilderFactory, new DefaultSystemDateTimeProvider());</span>
+<span class="nc" id="L77">    }</span>
+
+    SihakyDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L83">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L84">    }</span>
+
+    SihakyDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L90">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L91">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L92">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L93">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L94">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L95">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(SihakyEntity.class);</span>
+<span class="fc" id="L96">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L97">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L98">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SihakyWriteDefinition.INSTANCE,
+                        SihakyEntity.class,
+<span class="fc" id="L104">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L105">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SihakyWriteDefinition.INSTANCE,
+                        SihakyEntity.class,
+<span class="fc" id="L111">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L112">    }</span>
+
+    @Override
+    public int insert(SihakyWriteRecord record, AuditContext context) {
+<span class="fc" id="L116">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L117">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L118">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L121">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L122">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoAndSihKiyJtkb(Long sihKiyNo, String sihKiyJtkb) {
+<span class="fc" id="L127">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L128">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L129">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L130">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L131">        JpaWhere.eq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L132">        builder.orderByDesc(&quot;tkysYmd&quot;).orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L133">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoAndNotSihKiyJtkb(Long sihKiyNo, String sihKiyJtkb) {
+<span class="fc" id="L138">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L139">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L140">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L141">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L142">        JpaWhere.notEq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L143">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L144">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SihakyRecord&gt; findAllBySihKiyNoAndTkysYmdAndNotSihKiyJtkb(
+            Long sihKiyNo,
+            LocalDate tkysYmd,
+            String sihKiyJtkb) {
+<span class="fc" id="L152">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L153">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L154">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L155">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L156">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L157">        JpaWhere.ge(builder, &quot;tkysYmd&quot;, safeTkysYmd);</span>
+<span class="fc" id="L158">        JpaWhere.notEq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L159">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L160">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoAndTkysYmdAndNotSihKiyJtkb(
+            Long sihKiyNo,
+            LocalDate tkysYmd,
+            String sihKiyJtkb) {
+<span class="fc" id="L168">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L169">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L170">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L171">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L172">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L173">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeTkysYmd);</span>
+<span class="fc" id="L174">        JpaWhere.notEq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L175">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L176">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoAndKnskKjnYmdAndNotSihKiyJtkbOrderByTkysYmdDesc(
+            Long sihKiyNo,
+            LocalDate knskKjnYmd,
+            String sihKiyJtkb) {
+<span class="fc" id="L184">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L185">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L186">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L187">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L188">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L189">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L190">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L191">        JpaWhere.notEq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L192">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L193">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoAndKnskKjnYmdAndNotSihKiyJtkbOrderByTkysYmdDescAndSknoDesc(
+            Long sihKiyNo,
+            LocalDate knskKjnYmd,
+            String sihKiyJtkb) {
+<span class="fc" id="L201">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L202">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L203">        String safeSihKiyJtkb = safeFixedLength(sihKiyJtkb, &quot;sihKiyJtkb&quot;, SIH_KIY_JTKB_LENGTH);</span>
+<span class="fc" id="L204">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L205">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L206">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L207">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L208">        JpaWhere.notEq(builder, &quot;sihKiyJtkb&quot;, safeSihKiyJtkb);</span>
+<span class="fc" id="L209">        builder.orderByDesc(&quot;tkysYmd&quot;).orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L210">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findBySihKiyNoOrderByTkysYmdDescAndSknoDesc(Long sihKiyNo) {
+<span class="fc" id="L215">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L216">        var builder = criteriaBuilderFactory.create(entityManager, SihakyEntity.class);</span>
+<span class="fc" id="L217">        JpaWhere.eq(builder, &quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L218">        builder.orderByDesc(&quot;tkysYmd&quot;).orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L219">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SihakyRecord&gt; findByPK(Long sihKiyNo, Integer skno) {
+<span class="fc" id="L224">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L225">        BigDecimal safeSkno = safeInt(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L226">        SihakyEntity entity = entityManager.find(SihakyEntity.class, new SihakyId(safeSihKiyNo, safeSkno));</span>
+<span class="fc" id="L227">        return Optional.ofNullable(entity).map(READ_MAPPER::toRecord);</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSknoAndRecUpdJnjNo(
+            SihakyWriteRecord record,
+            Set&lt;SihakyColumn&gt; targetColumns,
+            SihakySknoJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L236">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L237">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L238">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L239">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+        Optional&lt;Integer&gt; currentRecUpdJnjNo =
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L242">                ? findCurrentRecUpdJnjNo(updateKey.sihKiyNo(), updateKey.skno())</span>
+<span class="fc" id="L243">                : Optional.of(updateKey.recUpdJnjNo());</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        if (currentRecUpdJnjNo.isEmpty()) {</span>
+<span class="nc" id="L245">            return 0;</span>
+        }
+<span class="fc" id="L247">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L251">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L252">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L255">                    currentRecUpdJnjNo.orElseThrow()),</span>
+<span class="fc" id="L256">                preparedWhereBySkno(updateKey.sihKiyNo(), updateKey.skno()),</span>
+<span class="fc" id="L257">                updateKey.recUpdJnjNo(),</span>
+                SihakyDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO);
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSkno(
+            SihakyWriteRecord record,
+            Set&lt;SihakyColumn&gt; targetColumns,
+            SihakySknoUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L267">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L268">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L269">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L270">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L271">        Optional&lt;Integer&gt; currentRecUpdJnjNo = findCurrentRecUpdJnjNo(updateKey.sihKiyNo(), updateKey.skno());</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (currentRecUpdJnjNo.isEmpty()) {</span>
+<span class="nc" id="L273">            return 0;</span>
+        }
+<span class="fc" id="L275">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L279">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L280">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L283">                                currentRecUpdJnjNo.orElseThrow()),</span>
+<span class="fc" id="L284">                preparedWhereBySkno(updateKey.sihKiyNo(), updateKey.skno()),</span>
+                null,
+                SihakyDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SKNO);
+    }
+
+    private PreparedWhere preparedWhereBySkno(Long sihKiyNo, Integer skno) {
+<span class="fc" id="L290">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L291">        BigDecimal safeSkno = safeInt(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L292">        return PreparedWhere.of(</span>
+                WHERE_CLAUSE_BY_SKNO,
+<span class="fc" id="L294">                (query, startIndex) -&gt; bindWhereBySkno(query, startIndex, safeSihKiyNo, safeSkno),</span>
+                safeSihKiyNo,
+                safeSkno);
+    }
+
+    private static int bindWhereBySkno(
+            Query query,
+            int startIndex,
+            BigDecimal sihKiyNo,
+            BigDecimal skno) {
+<span class="fc" id="L304">        int nextIndex = JpaBind.set(query, startIndex, sihKiyNo);</span>
+<span class="fc" id="L305">        return JpaBind.set(query, nextIndex, skno);</span>
+    }
+
+    private Optional&lt;Integer&gt; findCurrentRecUpdJnjNo(Long sihKiyNo, Integer skno) {
+<span class="fc" id="L309">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L310">        BigDecimal safeSkno = safeInt(skno, &quot;skno&quot;);</span>
+
+<span class="fc" id="L312">        String sql =</span>
+                &quot;SELECT REC_UPD_JNJ_NO FROM &quot;
+                        + TABLE_NAME
+                        + &quot; WHERE SIH_KIY_NO = :sihKiyNo AND SKNO = :skno&quot;;
+<span class="fc" id="L316">        SqlCapture.set(sql);</span>
+<span class="fc" id="L317">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L318">        query.setParameter(&quot;sihKiyNo&quot;, safeSihKiyNo);</span>
+<span class="fc" id="L319">        query.setParameter(&quot;skno&quot;, safeSkno);</span>
+
+<span class="fc" id="L321">        List&lt;?&gt; results = query.getResultList();</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (results.isEmpty()) {</span>
+<span class="nc" id="L323">            return Optional.empty();</span>
+        }
+
+<span class="fc" id="L326">        Object value = results.getFirst();</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L328">            return Optional.of(0);</span>
+        }
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (value instanceof BigDecimal bigDecimal) {</span>
+<span class="fc" id="L331">            return Optional.of(bigDecimal.intValueExact());</span>
+        }
+<span class="nc bnc" id="L333" title="All 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="nc" id="L334">            return Optional.of(number.intValue());</span>
+        }
+<span class="nc" id="L336">        return Optional.of(Integer.parseInt(value.toString()));</span>
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L340">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L341">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInt(Integer value, String paramName) {
+<span class="fc" id="L345">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L346">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L350">        return WhereParamGuard.complement(JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeFixedLength(String value, String paramName, int length) {
+<span class="fc" id="L354">        return WhereParamGuard.fixedLengthNotNull(value, paramName, length);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

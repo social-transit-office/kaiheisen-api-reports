@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserCorrectionExistenceJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-usercorrectionexistencejudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">UserCorrectionExistenceJudgmentAtOpeningImpl.java</span></div><h1>UserCorrectionExistenceJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UserCorrectionExistenceJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UserCorrectionExistenceJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KyotelkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.Sv252KiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.usercorrectionexistencejudgmentatopening.model.UserCorrectionCstGetHsenjInf;
+
+/**
+ * 概要: SV-252（開栓時使用者訂正有無判定）の実装。
+ * 主な仕様:
+ * - 既定値 false を基準とし、既存客番利用パターンで完全一致しない場合のみ true を返す。
+ * - 契約お客さま電話番号＜小売＞情報は DA-062-R001 で取得し、補助TSVの比較条件で評価する。
+ * - `hukkSysShbt`、`correlationId`、`systemDatetime` は source 設計上の入力項目だが、本 SV の判定条件では参照しない。
+ * 既知の制約:
+ * - public メソッド引数に対する null チェックは行わない。
+ * - 電話番号比較対象不足は完全一致不成立として扱う。
+ */
+public final class UserCorrectionExistenceJudgmentAtOpeningImpl
+        implements UserCorrectionExistenceJudgmentAtOpening {
+
+    private final KyotelkDataAccess kyotelkDataAccess;
+
+    private final UserCorrectionExistenceJudgmentAtOpeningMatcher matcher;
+
+    private final String useExistingCustomerNumberPattern;
+
+    /**
+     * 概要: SV-252 の依存オブジェクトと必須定数を初期化する。
+     *
+     * @param kyotelkDataAccess 契約お客さま電話番号＜小売＞データアクセス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public UserCorrectionExistenceJudgmentAtOpeningImpl(
+            KyotelkDataAccess kyotelkDataAccess,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="nc" id="L44">        this(</span>
+                kyotelkDataAccess,
+                kaiheisenConstantService,
+                new UserCorrectionExistenceJudgmentAtOpeningMatcher());
+<span class="nc" id="L48">    }</span>
+
+    UserCorrectionExistenceJudgmentAtOpeningImpl(
+            KyotelkDataAccess kyotelkDataAccess,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L53">            UserCorrectionExistenceJudgmentAtOpeningMatcher matcher) {</span>
+<span class="fc" id="L54">        this.kyotelkDataAccess = Objects.requireNonNull(kyotelkDataAccess, &quot;kyotelkDataAccess&quot;);</span>
+<span class="fc" id="L55">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L56">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L57">        this.matcher = Objects.requireNonNull(matcher, &quot;matcher&quot;);</span>
+<span class="fc" id="L58">        this.useExistingCustomerNumberPattern = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.TYPE,
+                ConstantLookupKeys.Kaiheisen.N3xUpdatePattern.USE_EXISTING_CUSTOMER_NUMBER);
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * 概要: 使用者訂正有無を判定する。
+     *
+     * @param cstUpdPtnKb 3x更新パターン区分
+     * @param kiycstKktInf 契約お客さま情報（確定）
+     * @param cstGetHsenjInf お客さま情報取得情報（閉栓時）
+     * @param bldNameHnkuFlg 建物名称変更フラグ
+     * @param bldTbgHnkuFlg 建物丁目番地号変更フラグ
+     * @return 使用者訂正有無判定結果
+     */
+    @Override
+    public UserCorrectionExistenceJudgmentAtOpeningOutput execute(
+            String cstUpdPtnKb,
+            Sv252KiycstKktInf kiycstKktInf,
+            UserCorrectionCstGetHsenjInf cstGetHsenjInf,
+            Boolean bldNameHnkuFlg,
+            Boolean bldTbgHnkuFlg) {
+<span class="fc" id="L81">        boolean userCorrectionExists = false;</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (useExistingCustomerNumberPattern.equals(cstUpdPtnKb)) {</span>
+<span class="fc" id="L83">            List&lt;KyotelkInf&gt; phoneInfoList = kyotelkDataAccess</span>
+<span class="fc" id="L84">                    .findAllByKyoTrkNo(kiycstKktInf.kyoTrkNo())</span>
+<span class="fc" id="L85">                    .stream()</span>
+<span class="fc" id="L86">                    .map(this::toPhoneInfo)</span>
+<span class="fc" id="L87">                    .toList();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (!matcher.isFullyMatched(</span>
+                    kiycstKktInf,
+                    cstGetHsenjInf,
+                    phoneInfoList,
+                    bldNameHnkuFlg,
+                    bldTbgHnkuFlg)) {
+<span class="fc" id="L94">                userCorrectionExists = true;</span>
+            }
+        }
+<span class="fc" id="L97">        return new UserCorrectionExistenceJudgmentAtOpeningOutput(userCorrectionExists);</span>
+    }
+
+    private KyotelkInf toPhoneInfo(KyotelkRecord kyotelkRecord) {
+<span class="fc" id="L101">        return new KyotelkInf(</span>
+<span class="fc" id="L102">                kyotelkRecord.kyoTelNo(),</span>
+<span class="fc" id="L103">                kyotelkRecord.telShbt(),</span>
+<span class="fc" id="L104">                kyotelkRecord.telRrskShbt());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

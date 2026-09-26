@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JpaOptimisticDeleteSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">JpaOptimisticDeleteSupport.java</span></div><h1>JpaOptimisticDeleteSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.ExclusiveException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+
+/** native DELETE 向けの排他制御 helper。 */
+public final class JpaOptimisticDeleteSupport {
+
+    private final EntityManager entityManager;
+
+    private final String tableName;
+
+    /**
+     * helper を生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param tableName 物理テーブル名
+     */
+<span class="fc" id="L26">    public JpaOptimisticDeleteSupport(EntityManager entityManager, String tableName) {</span>
+<span class="fc" id="L27">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L28">        this.tableName = Objects.requireNonNull(tableName, &quot;tableName&quot;);</span>
+<span class="fc" id="L29">    }</span>
+
+    /**
+     * 排他制御なしの delete を実行する。
+     *
+     * @param where WHERE 句 helper
+     * @return 削除件数
+     */
+    public int delete(PreparedWhere where) {
+<span class="nc" id="L38">        return delete(where, null, null, () -&gt; new DataInconsistencyException(tableName, null, &quot;{}&quot;));</span>
+    }
+
+    /**
+     * 排他制御付き delete を実行する。
+     *
+     * @param where 排他制御列を除く WHERE 句 helper
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @return 削除件数
+     */
+    public int delete(PreparedWhere where, Integer expectedRecUpdJnjNo, String daIdentifier) {
+<span class="nc" id="L50">        return delete(</span>
+                where,
+                expectedRecUpdJnjNo,
+                daIdentifier,
+<span class="nc" id="L54">                () -&gt; new DataInconsistencyException(tableName, daIdentifier, &quot;{}&quot;));</span>
+    }
+
+    /**
+     * 排他制御付き delete を実行する。
+     *
+     * @param where 排他制御列を除く WHERE 句 helper
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @param notFoundExceptionSupplier 対象データなし時の例外生成
+     * @return 削除件数
+     */
+    public int delete(
+            PreparedWhere where,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier,
+            Supplier&lt;? extends RuntimeException&gt; notFoundExceptionSupplier) {
+<span class="fc" id="L71">        Objects.requireNonNull(where, &quot;where&quot;);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (expectedRecUpdJnjNo != null) {</span>
+<span class="fc" id="L73">            Objects.requireNonNull(daIdentifier, &quot;daIdentifier&quot;);</span>
+        }
+
+<span class="fc" id="L76">        String sql =</span>
+                &quot;DELETE FROM &quot;
+                        + tableName
+                        + &quot; WHERE &quot;
+<span class="fc" id="L80">                        + where.clause()</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                        + (expectedRecUpdJnjNo == null ? &quot;&quot; : &quot; AND REC_UPD_JNJ_NO = ?&quot;);</span>
+<span class="fc" id="L82">        SqlCapture.set(sql);</span>
+<span class="fc" id="L83">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L84">        int nextIndex = where.bind(query, 1);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (expectedRecUpdJnjNo != null) {</span>
+<span class="fc" id="L86">            query.setParameter(nextIndex, JpaDbWriteValues.bigDecimal(expectedRecUpdJnjNo));</span>
+        }
+<span class="fc" id="L88">        int deleted = query.executeUpdate();</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">        if (deleted &gt; 0 || expectedRecUpdJnjNo == null) {</span>
+<span class="nc" id="L90">            return deleted;</span>
+        }
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (existsByBaseKey(where)) {</span>
+<span class="fc" id="L93">            throw new ExclusiveException(</span>
+                    daIdentifier,
+                    sql,
+<span class="fc" id="L96">                    optimisticConflictBindParameters(where, expectedRecUpdJnjNo));</span>
+        }
+<span class="nc" id="L98">        throw Objects.requireNonNull(notFoundExceptionSupplier, &quot;notFoundExceptionSupplier&quot;).get();</span>
+    }
+
+    private Object[] optimisticConflictBindParameters(
+            PreparedWhere where, Integer expectedRecUpdJnjNo) {
+<span class="fc" id="L103">        List&lt;Object&gt; bindParameters = new ArrayList&lt;&gt;(where.bindValues());</span>
+<span class="fc" id="L104">        bindParameters.add(</span>
+<span class="fc" id="L105">                JpaDbWriteValues.bigDecimal(</span>
+<span class="fc" id="L106">                        Objects.requireNonNull(expectedRecUpdJnjNo, &quot;expectedRecUpdJnjNo&quot;)));</span>
+<span class="fc" id="L107">        return bindParameters.toArray();</span>
+    }
+
+    private boolean existsByBaseKey(PreparedWhere where) {
+<span class="fc" id="L111">        String sql = &quot;SELECT 1 FROM &quot; + tableName + &quot; WHERE &quot; + where.clause();</span>
+<span class="fc" id="L112">        SqlCapture.set(sql);</span>
+<span class="fc" id="L113">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L114">        where.bind(query, 1);</span>
+<span class="fc" id="L115">        query.setMaxResults(1);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        return !query.getResultList().isEmpty();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

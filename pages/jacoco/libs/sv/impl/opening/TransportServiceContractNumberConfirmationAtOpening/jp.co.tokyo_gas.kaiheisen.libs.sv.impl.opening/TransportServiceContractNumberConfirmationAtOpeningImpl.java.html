@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransportServiceContractNumberConfirmationAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-transportservicecontractnumberconfirmationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">TransportServiceContractNumberConfirmationAtOpeningImpl.java</span></div><h1>TransportServiceContractNumberConfirmationAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransportServiceContractNumberConfirmationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransportServiceContractNumberConfirmationAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransportServiceContractConfirmationDedicatedMeterInfo;
+
+/**
+ * 開栓時託送サービス契約番号確定サービス実装。
+ */
+public final class TransportServiceContractNumberConfirmationAtOpeningImpl
+        implements TransportServiceContractNumberConfirmationAtOpening {
+
+    private final NumberingAllInOneSupport numberingAllInOneSupport;
+
+    private final String originalGasMeterStatus;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param numberingAllInOneSupport 他-048 採番ゲートウェイ
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public TransportServiceContractNumberConfirmationAtOpeningImpl(
+            NumberingAllInOneSupport numberingAllInOneSupport,
+<span class="fc" id="L33">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L34">        this.numberingAllInOneSupport = Objects.requireNonNull(numberingAllInOneSupport, &quot;numberingAllInOneSupport&quot;);</span>
+<span class="fc" id="L35">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L36">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L37">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * 代替判定結果フラグと直列ガスメーター設置状態区分に応じて確定託送サービス契約番号を返却する。
+     * 代替ありの場合は主契約番号を採番し、元ガスメーターの場合は専用メーター件数分も採番する。
+     * 代替なしの場合は入力の託送サービス契約番号を採用し、元ガスメーター時のみ専用メーター情報を確定番号へ移送する。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param digwrHntFlg 代替判定結果フラグ
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @param snyInfList 専用メーター情報リスト
+     * @return 確定託送サービス契約番号と専用メーター情報
+     */
+    @Override
+    public TransportServiceContractNumberConfirmationAtOpeningOutput execute(
+            String ckrtGmscJtkb,
+            Boolean digwrHntFlg,
+            Long tksuSvkyNo,
+            List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; snyInfList) {
+<span class="fc" id="L60">        boolean alternative = Boolean.TRUE.equals(digwrHntFlg);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        Long confirmedTransportServiceContractNumber = alternative</span>
+<span class="fc" id="L62">                ? numberingAllInOneSupport.issueTransportServiceContractNumber()</span>
+<span class="fc" id="L63">                : tksuSvkyNo;</span>
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (!originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L66">            return new TransportServiceContractNumberConfirmationAtOpeningOutput(</span>
+                    confirmedTransportServiceContractNumber,
+<span class="fc" id="L68">                    List.of());</span>
+        }
+
+<span class="fc" id="L71">        List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; normalizedSnyInfList =</span>
+<span class="fc" id="L72">                normalizeSnyInfList(snyInfList);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; confirmedDedicatedMeters = alternative</span>
+<span class="fc" id="L74">                ? issueDedicatedMeterNumbers(normalizedSnyInfList)</span>
+<span class="fc" id="L75">                : mapDedicatedMeterNumbers(normalizedSnyInfList);</span>
+
+<span class="fc" id="L77">        return new TransportServiceContractNumberConfirmationAtOpeningOutput(</span>
+                confirmedTransportServiceContractNumber,
+                confirmedDedicatedMeters);
+    }
+
+    /**
+     * 専用メーター情報リストの件数分だけ託送サービス契約番号を採番し、確定結果へ詰め替える。
+     *
+     * @param snyInfList 専用メーター情報リスト
+     * @return 採番後の専用メーター情報リスト
+     */
+    private List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; issueDedicatedMeterNumbers(
+            List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; snyInfList) {
+<span class="fc" id="L90">        List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; confirmedDedicatedMeters = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for (TransportServiceContractConfirmationDedicatedMeterInfo snyInf : snyInfList) {</span>
+<span class="fc" id="L92">            confirmedDedicatedMeters.add(</span>
+                    new TransportServiceContractConfirmationDedicatedMeterInfo(
+                            null,
+<span class="fc" id="L95">                            numberingAllInOneSupport.issueTransportServiceContractNumber()));</span>
+<span class="fc" id="L96">        }</span>
+<span class="fc" id="L97">        return List.copyOf(confirmedDedicatedMeters);</span>
+    }
+
+    /**
+     * 入力の専用メーター情報リストから託送サービス契約番号を確定結果へ移送する。
+     *
+     * @param snyInfList 専用メーター情報リスト
+     * @return 確定後の専用メーター情報リスト
+     */
+    private List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; mapDedicatedMeterNumbers(
+            List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; snyInfList) {
+<span class="fc" id="L108">        List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; confirmedDedicatedMeters = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        for (TransportServiceContractConfirmationDedicatedMeterInfo snyInf : snyInfList) {</span>
+<span class="fc" id="L110">            confirmedDedicatedMeters.add(new TransportServiceContractConfirmationDedicatedMeterInfo(</span>
+                    null,
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                    snyInf == null ? null : snyInf.tksuSvkyNo()));</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">        return List.copyOf(confirmedDedicatedMeters);</span>
+    }
+
+    /**
+     * 専用メーター情報リストが null の場合は空リストへ正規化する。
+     *
+     * @param snyInfList 専用メーター情報リスト
+     * @return 正規化後の専用メーター情報リスト
+     */
+    private List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; normalizeSnyInfList(
+            List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt; snyInfList) {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        return snyInfList == null ? List.of() : snyInfList;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

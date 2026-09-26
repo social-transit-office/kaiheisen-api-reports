@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GetOpeningResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.get_opening</a> &gt; <span class="el_source">GetOpeningResource.java</span></div><h1>GetOpeningResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.get_opening;
+
+import jakarta.inject.Inject;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.time.LocalDate;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.Bff;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.InterFieldValidation;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.response.BffResponseValueNormalizer;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.DownstreamErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.KaisenRuleErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_opening.GetOpeningEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_opening.GetOpeningRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_opening.GetOpeningResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_none.LivalitOpeningWorkInfoGetRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_none.LivalitOpeningWorkInfoGetResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_other.LivalitOpeningWorkInfoGetOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_other.LivalitOpeningWorkInfoGetOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.pod_other.livalit_opening_work_info_retail_none.LivalitOpeningWorkInfoGetNoneRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.pod_other.livalit_opening_work_info_retail_other.LivalitOpeningWorkInfoGetOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.pod_other.livalit_opening_work_info_retail_tg.LivalitOpeningWorkInfoGetTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.retail_division.RetailDivisionMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkRecord;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * BFF-001 LIVALIT用：開栓作業関連情報取得 API。
+ */
+@Bff(identifier = &quot;BFF-001&quot;, name = &quot;LIVALIT用：開栓作業関連情報取得&quot;)
+@Tag(name = &quot;opening&quot;, description = &quot;BFF-001 LIVALIT用：開栓作業関連情報取得&quot;)
+@Path(GetOpeningEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+public class GetOpeningResource extends BaseResource&lt;GetOpeningRequest&gt; {
+
+    private final GasmtrkDataAccess gasmtrkDataAccess;
+
+    private final RetailDivisionMaAdapter retailDivisionMaAdapter;
+
+    private final LivalitOpeningWorkInfoGetOtherRetailMaAdapter otherRetailMaAdapter;
+
+    private final LivalitOpeningWorkInfoGetNoneRetailMaAdapter retailNoneMaAdapter;
+
+    private final LivalitOpeningWorkInfoGetTgRetailMaAdapter tgRetailMaAdapter;
+
+    private final String reportingSystemType;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @param gasmtrkDataAccess GASMTRK データアクセス
+     * @param retailDivisionMaAdapter MA-107 adapter
+     * @param tgRetailMaAdapter MA-044 adapter
+     * @param otherRetailMaAdapter MA-045 adapter
+     * @param retailNoneMaAdapter MA-046 adapter
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    @Inject
+    public GetOpeningResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            GasmtrkDataAccess gasmtrkDataAccess,
+            RetailDivisionMaAdapter retailDivisionMaAdapter,
+            LivalitOpeningWorkInfoGetTgRetailMaAdapter tgRetailMaAdapter,
+            LivalitOpeningWorkInfoGetOtherRetailMaAdapter otherRetailMaAdapter,
+            LivalitOpeningWorkInfoGetNoneRetailMaAdapter retailNoneMaAdapter,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L96">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L97">        this.gasmtrkDataAccess = gasmtrkDataAccess;</span>
+<span class="fc" id="L98">        this.retailDivisionMaAdapter = retailDivisionMaAdapter;</span>
+<span class="fc" id="L99">        this.tgRetailMaAdapter = tgRetailMaAdapter;</span>
+<span class="fc" id="L100">        this.otherRetailMaAdapter = otherRetailMaAdapter;</span>
+<span class="fc" id="L101">        this.retailNoneMaAdapter = retailNoneMaAdapter;</span>
+<span class="fc" id="L102">        this.reportingSystemType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT);
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * 開栓作業関連情報を取得する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    @GET
+    @Operation(
+            summary = &quot;LIVALIT用：開栓作業関連情報取得&quot;,
+            description = &quot;処理区分に応じてガスメーター設置場所番号を確定し、開栓作業関連情報を返却する。&quot;,
+            operationId = &quot;getOpening&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常レスポンス&quot;,
+            content = @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = GetOpeningResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(anyOf = {CommonErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(anyOf = {KaiheisenErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;default&quot;,
+            description = &quot;MA API エラー&quot;,
+            content = {
+                @Content(mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(implementation = DownstreamErrorResponse.class)),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    public Response getOpening(@BeanParam GetOpeningRequest request) {
+<span class="fc" id="L149">        return execute(request, () -&gt; doProcess(request));</span>
+    }
+
+    @Override
+    protected InterFieldValidation&lt;GetOpeningRequest&gt; interFieldValidation() {
+<span class="fc" id="L154">        return request -&gt; {</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">            if (&quot;1&quot;.equals(request.syoriKbn()) &amp;&amp; request.gasMtstNo() == null) {</span>
+<span class="fc" id="L156">                return List.of(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;gasMtstNo&quot;));</span>
+            }
+<span class="pc bpc" id="L158" title="2 of 6 branches missed.">            if (&quot;2&quot;.equals(request.syoriKbn()) &amp;&amp; (request.gmb() == null || request.gmb().trim().isEmpty())) {</span>
+<span class="nc" id="L159">                return List.of(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;gmb&quot;));</span>
+            }
+<span class="fc" id="L161">            return List.of();</span>
+        };
+    }
+
+    private Response doProcess(GetOpeningRequest request) {
+<span class="fc" id="L166">        Long resolvedGasMtstNo = resolveGasMtstNo(request);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (resolvedGasMtstNo == null) {</span>
+<span class="fc" id="L168">            return temporaryBusinessError();</span>
+        }
+
+<span class="fc" id="L171">        String systemDatetime = boundSystemDatetimeText();</span>
+
+<span class="fc" id="L173">        RetailDivisionResponse retailDivisionResponse = retailDivisionMaAdapter.invoke(new RetailDivisionRequest(</span>
+                &quot;2&quot;,
+<span class="fc" id="L175">                String.valueOf(resolvedGasMtstNo),</span>
+<span class="fc" id="L176">                request.knskKjnYmd(),</span>
+                reportingSystemType,
+                systemDatetime));
+
+<span class="fc" id="L180">        String kuHntKbn = retailDivisionResponse.kuHntKbn();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (RetailTypeJudgmentCode.TOKYO_GAS.code().equals(kuHntKbn)) {</span>
+<span class="fc" id="L182">            jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningWorkInfoGetResponse maResponse =</span>
+<span class="fc" id="L183">                    tgRetailMaAdapter.invoke(</span>
+                            new jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningWorkInfoGetRequest(
+<span class="fc" id="L185">                                    String.valueOf(resolvedGasMtstNo),</span>
+<span class="fc" id="L186">                                    request.knskKjnYmd(),</span>
+                                    reportingSystemType,
+                                    systemDatetime));
+<span class="fc" id="L189">            return Response.ok(toResponse(maResponse)).build();</span>
+        }
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (RetailTypeJudgmentCode.OTHER.code().equals(kuHntKbn)) {</span>
+<span class="fc" id="L192">            LivalitOpeningWorkInfoGetOtherRetailResponse maResponse = otherRetailMaAdapter.invoke(</span>
+                    new LivalitOpeningWorkInfoGetOtherRetailRequest(
+<span class="fc" id="L194">                            String.valueOf(resolvedGasMtstNo),</span>
+<span class="fc" id="L195">                            request.knskKjnYmd(),</span>
+                            reportingSystemType,
+                            systemDatetime));
+<span class="fc" id="L198">            return Response.ok(toResponse(maResponse)).build();</span>
+        }
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (RetailTypeJudgmentCode.NO_DATA.code().equals(kuHntKbn)) {</span>
+<span class="fc" id="L201">            return invokeRetailNoneMa(resolvedGasMtstNo, request.knskKjnYmd(), systemDatetime);</span>
+        }
+
+        // 既存挙動に合わせ、KH031 以外の値も対象データなし経路へフォールバックする。
+<span class="nc" id="L205">        return invokeRetailNoneMa(resolvedGasMtstNo, request.knskKjnYmd(), systemDatetime);</span>
+    }
+
+    private Response invokeRetailNoneMa(
+            Long resolvedGasMtstNo,
+            String knskKjnYmd,
+            String systemDatetime) {
+<span class="fc" id="L212">        LivalitOpeningWorkInfoGetResponse maResponse = retailNoneMaAdapter.invoke(</span>
+                new LivalitOpeningWorkInfoGetRequest(
+<span class="fc" id="L214">                        String.valueOf(resolvedGasMtstNo),</span>
+                        knskKjnYmd,
+                        reportingSystemType,
+                        systemDatetime));
+<span class="fc" id="L218">        return Response.ok(toResponse(maResponse)).build();</span>
+    }
+
+    private Long resolveGasMtstNo(GetOpeningRequest request) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (&quot;1&quot;.equals(request.syoriKbn())) {</span>
+<span class="fc" id="L223">            return request.gasMtstNo();</span>
+        }
+<span class="fc" id="L225">        LocalDate knskKjnYmd = Rfc3339LocalDateParser.parse(request.knskKjnYmd());</span>
+<span class="fc" id="L226">        List&lt;GasmtrkRecord&gt; gasmtrkRecords = gasmtrkDataAccess.findAllByGmbAndGmtkYmdAndGmtThkgYmd(request.gmb(), knskKjnYmd);</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        if (gasmtrkRecords.isEmpty()) {</span>
+<span class="fc" id="L228">            return null;</span>
+        }
+<span class="fc" id="L230">        return gasmtrkRecords.getFirst().ttkGmsbNo();</span>
+    }
+
+    private Response temporaryBusinessError() {
+<span class="fc" id="L234">        return Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="fc" id="L235">            .entity(new KaisenRuleErrorResponse(</span>
+                ErrorCodeConstants.ERROR_CODE_020100012,
+                &quot;ガス未使用のため受付できません。正しいお客さまを特定しなおしてください。&quot;,
+<span class="fc" id="L238">                List.of(),</span>
+                &quot;CXXM20859E&quot;,
+<span class="fc" id="L240">                List.of(),</span>
+                &quot;12&quot;))
+<span class="fc" id="L242">            .build();</span>
+    }
+
+    private GetOpeningResponse toResponse(LivalitOpeningWorkInfoGetOtherRetailResponse response) {
+<span class="fc" id="L246">        return new GetOpeningResponse(</span>
+<span class="fc" id="L247">                BffResponseValueNormalizer.longOrZero(response.ttkGmsbNo()),</span>
+<span class="fc" id="L248">                BffResponseValueNormalizer.stringOrEmpty(response.hesnYmd()),</span>
+<span class="fc" id="L249">                BffResponseValueNormalizer.stringOrEmpty(response.kasYmd()),</span>
+<span class="fc" id="L250">                BffResponseValueNormalizer.stringOrEmpty(response.gmtKhsJtkb()),</span>
+<span class="fc" id="L251">                BffResponseValueNormalizer.stringOrEmpty(response.ohmKj()),</span>
+<span class="fc" id="L252">                BffResponseValueNormalizer.stringOrEmpty(response.szcGkkCd()),</span>
+<span class="fc" id="L253">                BffResponseValueNormalizer.stringOrEmpty(response.szcMchCd()),</span>
+<span class="fc" id="L254">                BffResponseValueNormalizer.stringOrEmpty(response.szcCmazCd()),</span>
+<span class="fc" id="L255">                BffResponseValueNormalizer.stringOrEmpty(response.cbgSuj1()),</span>
+<span class="fc" id="L256">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn2()),</span>
+<span class="fc" id="L257">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn3()),</span>
+<span class="fc" id="L258">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn4()),</span>
+<span class="fc" id="L259">                BffResponseValueNormalizer.stringOrEmpty(response.tunoKn()),</span>
+<span class="fc" id="L260">                BffResponseValueNormalizer.stringOrEmpty(response.hynKn()),</span>
+<span class="fc" id="L261">                BffResponseValueNormalizer.booleanOrFalse(response.htuFlg()),</span>
+<span class="fc" id="L262">                BffResponseValueNormalizer.stringOrEmpty(response.snstGkjYm()),</span>
+<span class="fc" id="L263">                BffResponseValueNormalizer.stringOrEmpty(response.knsHuhuKbn()),</span>
+<span class="fc" id="L264">                BffResponseValueNormalizer.stringOrEmpty(response.gasYtCd()),</span>
+<span class="fc" id="L265">                BffResponseValueNormalizer.stringOrEmpty(response.ckrtGmscJtkb()),</span>
+<span class="fc" id="L266">                BffResponseValueNormalizer.stringOrEmpty(response.kkyuGmtKbn()),</span>
+<span class="fc" id="L267">                BffResponseValueNormalizer.stringOrEmpty(response.kngmStbJtkb()),</span>
+<span class="fc" id="L268">                BffResponseValueNormalizer.stringOrEmpty(response.kysfYmd()),</span>
+<span class="fc" id="L269">                BffResponseValueNormalizer.stringOrEmpty(response.gmicDbriShbt()),</span>
+<span class="fc" id="L270">                BffResponseValueNormalizer.booleanOrFalse(response.knsKhFlg()),</span>
+<span class="fc" id="L271">                BffResponseValueNormalizer.stringOrEmpty(response.gmicSbriShbt()),</span>
+<span class="fc" id="L272">                BffResponseValueNormalizer.stringOrEmpty(response.hesnSdnShbt()),</span>
+<span class="fc" id="L273">                BffResponseValueNormalizer.stringOrEmpty(response.bldNo()),</span>
+<span class="fc" id="L274">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKn()),</span>
+<span class="fc" id="L275">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKj()),</span>
+<span class="fc" id="L276">                BffResponseValueNormalizer.booleanOrFalse(response.bldnKjhkFlg()),</span>
+<span class="fc" id="L277">                BffResponseValueNormalizer.stringOrEmpty(response.jutKbn()),</span>
+<span class="fc" id="L278">                BffResponseValueNormalizer.stringOrEmpty(response.jutakKbnStCd()),</span>
+<span class="fc" id="L279">                BffResponseValueNormalizer.stringOrEmpty(response.gmtItiInf()),</span>
+<span class="fc" id="L280">                BffResponseValueNormalizer.stringOrEmpty(response.gmb()),</span>
+<span class="fc" id="L281">                BffResponseValueNormalizer.stringOrEmpty(response.gmkShbt()),</span>
+<span class="fc" id="L282">                BffResponseValueNormalizer.decimalOrZero(response.gmtGusu()),</span>
+<span class="fc" id="L283">                BffResponseValueNormalizer.stringOrEmpty(response.ktyYm()),</span>
+<span class="fc" id="L284">                BffResponseValueNormalizer.decimalOrZero(response.sjsuMincSu()),</span>
+<span class="fc" id="L285">                BffResponseValueNormalizer.stringOrEmpty(response.kiyShbt()),</span>
+<span class="fc" id="L286">                BffResponseValueNormalizer.stringOrEmpty(response.hesnJysb()),</span>
+<span class="fc" id="L287">                BffResponseValueNormalizer.stringOrEmpty(response.svkyEndJysb()),</span>
+<span class="fc" id="L288">                BffResponseValueNormalizer.stringOrEmpty(response.kkysSisnJtkb()),</span>
+<span class="fc" id="L289">                BffResponseValueNormalizer.stringOrEmpty(response.kasJysb()),</span>
+<span class="fc" id="L290">                BffResponseValueNormalizer.longOrZero(response.gmtShjSu()),</span>
+<span class="fc" id="L291">                BffResponseValueNormalizer.stringOrEmpty(response.jkiTkytYmd()),</span>
+<span class="fc" id="L292">                BffResponseValueNormalizer.stringOrEmpty(response.gassKknKkaCd()),</span>
+<span class="fc" id="L293">                BffResponseValueNormalizer.stringOrEmpty(response.ulfKknKkaCd()),</span>
+<span class="fc" id="L294">                BffResponseValueNormalizer.stringOrEmpty(response.flxStzTktCd()),</span>
+<span class="fc" id="L295">                BffResponseValueNormalizer.stringOrEmpty(response.correlationId()));</span>
+    }
+
+    private GetOpeningResponse toResponse(
+            jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningWorkInfoGetResponse response) {
+<span class="fc" id="L300">        return new GetOpeningResponse(</span>
+<span class="fc" id="L301">                BffResponseValueNormalizer.longOrZero(response.ttkGmsbNo()),</span>
+<span class="fc" id="L302">                BffResponseValueNormalizer.stringOrEmpty(response.hesnYmd()),</span>
+<span class="fc" id="L303">                BffResponseValueNormalizer.stringOrEmpty(response.kasYmd()),</span>
+<span class="fc" id="L304">                BffResponseValueNormalizer.stringOrEmpty(response.gmtKhsJtkb()),</span>
+<span class="fc" id="L305">                BffResponseValueNormalizer.stringOrEmpty(response.ohmKj()),</span>
+<span class="fc" id="L306">                BffResponseValueNormalizer.stringOrEmpty(response.szcGkkCd()),</span>
+<span class="fc" id="L307">                BffResponseValueNormalizer.stringOrEmpty(response.szcMchCd()),</span>
+<span class="fc" id="L308">                BffResponseValueNormalizer.stringOrEmpty(response.szcCmazCd()),</span>
+<span class="fc" id="L309">                BffResponseValueNormalizer.stringOrEmpty(response.cbgSuj1()),</span>
+<span class="fc" id="L310">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn2()),</span>
+<span class="fc" id="L311">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn3()),</span>
+<span class="fc" id="L312">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn4()),</span>
+<span class="fc" id="L313">                BffResponseValueNormalizer.stringOrEmpty(response.tunoKn()),</span>
+<span class="fc" id="L314">                BffResponseValueNormalizer.stringOrEmpty(response.hynKn()),</span>
+<span class="fc" id="L315">                BffResponseValueNormalizer.booleanOrFalse(response.htuFlg()),</span>
+<span class="fc" id="L316">                BffResponseValueNormalizer.stringOrEmpty(response.snstGkjYm()),</span>
+<span class="fc" id="L317">                BffResponseValueNormalizer.stringOrEmpty(response.knsHuhuKbn()),</span>
+<span class="fc" id="L318">                BffResponseValueNormalizer.stringOrEmpty(response.gasYtCd()),</span>
+<span class="fc" id="L319">                BffResponseValueNormalizer.stringOrEmpty(response.ckrtGmscJtkb()),</span>
+<span class="fc" id="L320">                BffResponseValueNormalizer.stringOrEmpty(response.kkyuGmtKbn()),</span>
+<span class="fc" id="L321">                BffResponseValueNormalizer.stringOrEmpty(response.kngmStbJtkb()),</span>
+<span class="fc" id="L322">                BffResponseValueNormalizer.stringOrEmpty(response.kysfYmd()),</span>
+<span class="fc" id="L323">                BffResponseValueNormalizer.stringOrEmpty(response.gmicDbriShbt()),</span>
+<span class="fc" id="L324">                BffResponseValueNormalizer.booleanOrFalse(response.knsKhFlg()),</span>
+<span class="fc" id="L325">                BffResponseValueNormalizer.stringOrEmpty(response.gmicSbriShbt()),</span>
+<span class="fc" id="L326">                BffResponseValueNormalizer.stringOrEmpty(response.hesnSdnShbt()),</span>
+<span class="fc" id="L327">                BffResponseValueNormalizer.stringOrEmpty(response.bldNo()),</span>
+<span class="fc" id="L328">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKn()),</span>
+<span class="fc" id="L329">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKj()),</span>
+<span class="fc" id="L330">                BffResponseValueNormalizer.booleanOrFalse(response.bldnKjhkFlg()),</span>
+<span class="fc" id="L331">                BffResponseValueNormalizer.stringOrEmpty(response.jutKbn()),</span>
+<span class="fc" id="L332">                BffResponseValueNormalizer.stringOrEmpty(response.jutakKbnStCd()),</span>
+<span class="fc" id="L333">                BffResponseValueNormalizer.stringOrEmpty(response.gmtItiInf()),</span>
+<span class="fc" id="L334">                BffResponseValueNormalizer.stringOrEmpty(response.gmb()),</span>
+<span class="fc" id="L335">                BffResponseValueNormalizer.stringOrEmpty(response.gmkShbt()),</span>
+<span class="fc" id="L336">                BffResponseValueNormalizer.decimalOrZero(response.gmtGusu()),</span>
+<span class="fc" id="L337">                BffResponseValueNormalizer.stringOrEmpty(response.ktyYm()),</span>
+<span class="fc" id="L338">                BffResponseValueNormalizer.decimalOrZero(response.sjsuMincSu()),</span>
+<span class="fc" id="L339">                BffResponseValueNormalizer.stringOrEmpty(response.kiyShbt()),</span>
+<span class="fc" id="L340">                BffResponseValueNormalizer.stringOrEmpty(response.hesnJysb()),</span>
+<span class="fc" id="L341">                BffResponseValueNormalizer.stringOrEmpty(response.svkyEndJysb()),</span>
+<span class="fc" id="L342">                BffResponseValueNormalizer.stringOrEmpty(response.kkysSisnJtkb()),</span>
+<span class="fc" id="L343">                BffResponseValueNormalizer.stringOrEmpty(response.kasJysb()),</span>
+<span class="fc" id="L344">                BffResponseValueNormalizer.longOrZero(response.gmtShjSu()),</span>
+<span class="fc" id="L345">                BffResponseValueNormalizer.stringOrEmpty(response.jkiTkytYmd()),</span>
+<span class="fc" id="L346">                BffResponseValueNormalizer.stringOrEmpty(response.gassKknKkaCd()),</span>
+<span class="fc" id="L347">                BffResponseValueNormalizer.stringOrEmpty(response.ulfKknKkaCd()),</span>
+<span class="fc" id="L348">                BffResponseValueNormalizer.stringOrEmpty(response.flxStzTktCd()),</span>
+<span class="fc" id="L349">                BffResponseValueNormalizer.stringOrEmpty(response.correlationId()));</span>
+    }
+
+    private GetOpeningResponse toResponse(LivalitOpeningWorkInfoGetResponse response) {
+<span class="fc" id="L353">        return new GetOpeningResponse(</span>
+<span class="fc" id="L354">                BffResponseValueNormalizer.longOrZero(response.ttkGmsbNo()),</span>
+<span class="fc" id="L355">                BffResponseValueNormalizer.stringOrEmpty(response.hesnYmd()),</span>
+<span class="fc" id="L356">                BffResponseValueNormalizer.stringOrEmpty(response.kasYmd()),</span>
+<span class="fc" id="L357">                BffResponseValueNormalizer.stringOrEmpty(response.gmtKhsJtkb()),</span>
+<span class="fc" id="L358">                BffResponseValueNormalizer.stringOrEmpty(response.ohmKj()),</span>
+<span class="fc" id="L359">                BffResponseValueNormalizer.stringOrEmpty(response.szcGkkCd()),</span>
+<span class="fc" id="L360">                BffResponseValueNormalizer.stringOrEmpty(response.szcMchCd()),</span>
+<span class="fc" id="L361">                BffResponseValueNormalizer.stringOrEmpty(response.szcCmazCd()),</span>
+<span class="fc" id="L362">                BffResponseValueNormalizer.stringOrEmpty(response.cbgSuj1()),</span>
+<span class="fc" id="L363">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn2()),</span>
+<span class="fc" id="L364">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn3()),</span>
+<span class="fc" id="L365">                BffResponseValueNormalizer.stringOrEmpty(response.cbgKn4()),</span>
+<span class="fc" id="L366">                BffResponseValueNormalizer.stringOrEmpty(response.tunoKn()),</span>
+<span class="fc" id="L367">                BffResponseValueNormalizer.stringOrEmpty(response.hynKn()),</span>
+<span class="fc" id="L368">                BffResponseValueNormalizer.booleanOrFalse(response.htuFlg()),</span>
+<span class="fc" id="L369">                BffResponseValueNormalizer.stringOrEmpty(response.snstGkjYm()),</span>
+<span class="fc" id="L370">                BffResponseValueNormalizer.stringOrEmpty(response.knsHuhuKbn()),</span>
+<span class="fc" id="L371">                BffResponseValueNormalizer.stringOrEmpty(response.gasYtCd()),</span>
+<span class="fc" id="L372">                BffResponseValueNormalizer.stringOrEmpty(response.ckrtGmscJtkb()),</span>
+<span class="fc" id="L373">                BffResponseValueNormalizer.stringOrEmpty(response.kkyuGmtKbn()),</span>
+<span class="fc" id="L374">                BffResponseValueNormalizer.stringOrEmpty(response.kngmStbJtkb()),</span>
+<span class="fc" id="L375">                BffResponseValueNormalizer.stringOrEmpty(response.kysfYmd()),</span>
+<span class="fc" id="L376">                BffResponseValueNormalizer.stringOrEmpty(response.gmicDbriShbt()),</span>
+<span class="fc" id="L377">                BffResponseValueNormalizer.booleanOrFalse(response.knsKhFlg()),</span>
+<span class="fc" id="L378">                BffResponseValueNormalizer.stringOrEmpty(response.gmicSbriShbt()),</span>
+<span class="fc" id="L379">                BffResponseValueNormalizer.stringOrEmpty(response.hesnSdnShbt()),</span>
+<span class="fc" id="L380">                BffResponseValueNormalizer.stringOrEmpty(response.bldNo()),</span>
+<span class="fc" id="L381">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKn()),</span>
+<span class="fc" id="L382">                BffResponseValueNormalizer.stringOrEmpty(response.bldnKj()),</span>
+<span class="fc" id="L383">                BffResponseValueNormalizer.booleanOrFalse(response.bldnKjhkFlg()),</span>
+<span class="fc" id="L384">                BffResponseValueNormalizer.stringOrEmpty(response.jutKbn()),</span>
+<span class="fc" id="L385">                BffResponseValueNormalizer.stringOrEmpty(response.jutakKbnStCd()),</span>
+<span class="fc" id="L386">                BffResponseValueNormalizer.stringOrEmpty(response.gmtItiInf()),</span>
+<span class="fc" id="L387">                BffResponseValueNormalizer.stringOrEmpty(response.gmb()),</span>
+<span class="fc" id="L388">                BffResponseValueNormalizer.stringOrEmpty(response.gmkShbt()),</span>
+<span class="fc" id="L389">                BffResponseValueNormalizer.decimalOrZero(response.gmtGusu()),</span>
+<span class="fc" id="L390">                BffResponseValueNormalizer.stringOrEmpty(response.ktyYm()),</span>
+<span class="fc" id="L391">                BffResponseValueNormalizer.decimalOrZero(response.sjsuMincSu()),</span>
+<span class="fc" id="L392">                BffResponseValueNormalizer.stringOrEmpty(response.kiyShbt()),</span>
+<span class="fc" id="L393">                BffResponseValueNormalizer.stringOrEmpty(response.hesnJysb()),</span>
+<span class="fc" id="L394">                BffResponseValueNormalizer.stringOrEmpty(response.svkyEndJysb()),</span>
+<span class="fc" id="L395">                BffResponseValueNormalizer.stringOrEmpty(response.kkysSisnJtkb()),</span>
+<span class="fc" id="L396">                BffResponseValueNormalizer.stringOrEmpty(response.kasJysb()),</span>
+<span class="fc" id="L397">                BffResponseValueNormalizer.longOrZero(response.gmtShjSu()),</span>
+<span class="fc" id="L398">                BffResponseValueNormalizer.stringOrEmpty(response.jkiTkytYmd()),</span>
+<span class="fc" id="L399">                BffResponseValueNormalizer.stringOrEmpty(response.gassKknKkaCd()),</span>
+<span class="fc" id="L400">                BffResponseValueNormalizer.stringOrEmpty(response.ulfKknKkaCd()),</span>
+<span class="fc" id="L401">                BffResponseValueNormalizer.stringOrEmpty(response.flxStzTktCd()),</span>
+<span class="fc" id="L402">                BffResponseValueNormalizer.stringOrEmpty(response.correlationId()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

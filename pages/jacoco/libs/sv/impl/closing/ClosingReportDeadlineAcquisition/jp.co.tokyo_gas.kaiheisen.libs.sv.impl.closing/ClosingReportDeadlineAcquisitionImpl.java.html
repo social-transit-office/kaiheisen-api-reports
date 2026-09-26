@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingReportDeadlineAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-closingreportdeadlineacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">ClosingReportDeadlineAcquisitionImpl.java</span></div><h1>ClosingReportDeadlineAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ClosingReportDeadlineAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ClosingReportDeadlineAcquisitionOutput;
+
+/**
+ * 概要: 閉栓報告可能期限日取得サービス（SV-068）の実装.
+ * 主な仕様:
+ * - 基準日、該当年月日、各DA取得日を比較し、優先順位に従って閉栓報告可能期限日を決定する。
+ * - 検針結果作成事由種別の判定およびDA固定値は CIRIUS 共通定数から解決する。
+ * - 基準日は execute 引数の検針年月日を使用し、DA検索上限日は RequestContext の systemDatetime を使用する。
+ * 既知の制約:
+ * - 入力妥当性検証と例外変換は本クラスでは行わず、上位層責務とする。
+ * - 下位層で発生した例外は握りつぶさずに上位へ伝播する。
+ */
+public class ClosingReportDeadlineAcquisitionImpl
+    implements ClosingReportDeadlineAcquisition {
+
+    /** 導管通知確定使用量データアクセス. */
+    private final DktksryDataAccess dktksryDataAccess;
+
+    /** 確定前ガスメーター検針結果データアクセス. */
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    /** ガスメーター検針結果＜導管＞データアクセス. */
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 定例のSW開始を表す検針結果作成事由種別. */
+    private final String reasonRegularSwStart;
+
+    /** 臨時のSW開始を表す検針結果作成事由種別. */
+    private final String reasonTemporarySwStart;
+
+    /** 異動受付みなし検針を表す検針結果作成事由種別. */
+    private final String reasonMeterReadingWithoutTransferAcceptance;
+
+    /** 災害時閉栓関連の検針結果作成事由種別一覧. */
+    private final List&lt;String&gt; disasterClosingReasons;
+
+    /**
+     * 概要: 依存を注入するコンストラクタ.
+     * 主な仕様:
+     * - 3件のDA、定数サービス、RequestContext を保持する。
+     * - CIRIUS定数サービスから期限日判定に必要な検針結果作成事由種別を解決して保持する。
+     * 既知の制約:
+     * - 必須定数が未登録の場合は初期化時に例外が発生する。
+     *
+     * @param dktksryDataAccessArg 導管通知確定使用量データアクセス
+     * @param ktmgmkkDataAccessArg 確定前ガスメーター検針結果データアクセス
+     * @param gmkskkdDataAccessArg ガスメーター検針結果＜導管＞
+     *     データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param requestContextArg リクエストコンテキスト
+     */
+    public ClosingReportDeadlineAcquisitionImpl(
+            final DktksryDataAccess dktksryDataAccessArg,
+            final KtmgmkkDataAccess ktmgmkkDataAccessArg,
+            final GmkskkdDataAccess gmkskkdDataAccessArg,
+            final CiriusConstantService ciriusConstantService,
+<span class="fc" id="L78">            final RequestContext requestContextArg) {</span>
+<span class="fc" id="L79">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L80">            Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L81">        this.dktksryDataAccess =</span>
+<span class="fc" id="L82">            Objects.requireNonNull(</span>
+                dktksryDataAccessArg,
+                &quot;dktksryDataAccessArg&quot;);
+<span class="fc" id="L85">        this.ktmgmkkDataAccess =</span>
+<span class="fc" id="L86">            Objects.requireNonNull(</span>
+                ktmgmkkDataAccessArg,
+                &quot;ktmgmkkDataAccessArg&quot;);
+<span class="fc" id="L89">        this.gmkskkdDataAccess =</span>
+<span class="fc" id="L90">            Objects.requireNonNull(</span>
+                gmkskkdDataAccessArg,
+                &quot;gmkskkdDataAccessArg&quot;);
+<span class="fc" id="L93">        this.requestContext =</span>
+<span class="fc" id="L94">            Objects.requireNonNull(requestContextArg, &quot;requestContextArg&quot;);</span>
+<span class="fc" id="L95">        this.reasonRegularSwStart =</span>
+<span class="fc" id="L96">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults
+                    .REGULAR_SW_START);
+<span class="fc" id="L103">        this.reasonTemporarySwStart =</span>
+<span class="fc" id="L104">                RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults
+                    .TEMPORARY_SW_START);
+<span class="fc" id="L111">        this.reasonMeterReadingWithoutTransferAcceptance =</span>
+<span class="fc" id="L112">                RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius
+                    .ReasonTypeForCreatingMeterReadingResults
+                    .METER_READING_WITHOUT_TRANSFER_ACCEPTANCE);
+<span class="fc" id="L119">        this.disasterClosingReasons =</span>
+<span class="fc" id="L120">                List.of(</span>
+<span class="fc" id="L121">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                    nonNullCiriusConstantService,
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .TYPE,
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .RESTORATION_OF_SHUTOFF_IN_CASE_OF_DISASTER),
+<span class="fc" id="L129">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                            nonNullCiriusConstantService,
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .TYPE,
+                    ConstantLookupKeys.Cirius
+                        .ReasonTypeForCreatingMeterReadingResults
+                        .CLOSED_IN_CASE_OF_DISASTER));
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * 概要: SV-068を実行し、閉栓報告可能期限日を返却する.
+     * 主な仕様:
+     * - 基準日、該当年月日、3件のDA取得日を比較して優先順位順に返却値を決定する。
+     * - 判定順序は設計書 step 6 の 6.a → 6.b → 6.c → 6.d → 6.e に一致させる。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @return 閉栓報告可能期限日
+     */
+    @Override
+    public ClosingReportDeadlineAcquisitionOutput execute(
+            final Long gasMtstNo,
+            final LocalDate knsYmd,
+            final String knkkSsjyShbt) {
+<span class="fc" id="L155">        LocalDate baseDate = knsYmd;</span>
+<span class="fc" id="L156">        LocalDate currentDate = resolveCurrentDateForDaRangeTo();</span>
+<span class="fc" id="L157">        LocalDate dktksryDate =</span>
+<span class="fc" id="L158">                findDktksryDate(gasMtstNo, baseDate, currentDate);</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">        if (dktksryDate != null &amp;&amp; dktksryDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L160">            return new ClosingReportDeadlineAcquisitionOutput(dktksryDate);</span>
+        }
+<span class="fc" id="L162">        LocalDate deemedDate = resolveApplicableDate(baseDate, knkkSsjyShbt);</span>
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        if (deemedDate != null &amp;&amp; deemedDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L164">            return new ClosingReportDeadlineAcquisitionOutput(deemedDate);</span>
+        }
+<span class="fc" id="L166">        LocalDate ktmgmkkDate =</span>
+<span class="fc" id="L167">                findKtmgmkkDate(gasMtstNo, baseDate, currentDate);</span>
+<span class="fc bfc" id="L168" title="All 4 branches covered.">        if (ktmgmkkDate != null &amp;&amp; ktmgmkkDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L169">            return new ClosingReportDeadlineAcquisitionOutput(ktmgmkkDate);</span>
+        }
+<span class="fc" id="L171">        LocalDate gmkskkdDate =</span>
+<span class="fc" id="L172">                findGmkskkdDate(gasMtstNo, baseDate, currentDate);</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">        if (gmkskkdDate != null &amp;&amp; gmkskkdDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L174">            return new ClosingReportDeadlineAcquisitionOutput(gmkskkdDate);</span>
+        }
+<span class="fc" id="L176">        return new ClosingReportDeadlineAcquisitionOutput(baseDate);</span>
+    }
+
+    /**
+     * 概要: DA検索上限日に用いる実日付を解決する.
+     * 主な仕様:
+     * - RequestContext の systemDatetime の年月日を返却する。
+        * - systemDatetime の設定と妥当性確認は上位層責務とし、本メソッドでは補完を行わない。
+     *
+     * @return DA検索上限日に用いる実日付
+     */
+    private LocalDate resolveCurrentDateForDaRangeTo() {
+<span class="fc" id="L188">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L189">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L190">                .toLocalDate();</span>
+    }
+
+    /**
+     * 概要: 導管通知確定使用量の取得結果から検針年月日を取得する.
+     * 主な仕様:
+     * - DA-089-R005 を固定事由で呼び出す。
+     * - 取得結果が存在する場合は knsYmd を返却し、未取得時は null を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmdFrom 検針年月日（開始）
+     * @param knsYmdTo 検針年月日（終了）
+     * @return 取得した検針年月日
+     */
+    private LocalDate findDktksryDate(
+            final Long gasMtstNo,
+            final LocalDate knsYmdFrom,
+            final LocalDate knsYmdTo) {
+<span class="fc" id="L208">        Optional&lt;DktksryRecord&gt; result =</span>
+<span class="fc" id="L209">                dktksryDataAccess.findByGasMtstNoAndKnsYmdRangeAndKnkkSksiJysb(</span>
+                        gasMtstNo,
+                        knsYmdFrom,
+                        knsYmdTo,
+                        reasonMeterReadingWithoutTransferAcceptance);
+<span class="fc" id="L214">        return result.map(DktksryRecord::knsYmd).orElse(null);</span>
+    }
+
+    /**
+     * 概要: 検針結果作成事由種別に応じて該当年月日を算出する.
+     * 主な仕様:
+     * - 定例または臨時の SW 開始は基準日の翌日を返却する。
+     * - 上記以外は null を返却する。
+     *
+     * @param baseDate 基準日
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @return 該当年月日
+     */
+    private LocalDate resolveApplicableDate(
+            final LocalDate baseDate,
+            final String knkkSsjyShbt) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (reasonRegularSwStart.equals(knkkSsjyShbt)</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                || reasonTemporarySwStart.equals(knkkSsjyShbt)) {</span>
+<span class="fc" id="L232">            return baseDate.plusDays(1);</span>
+        }
+<span class="fc" id="L234">        return null;</span>
+    }
+
+    /**
+     * 概要: 確定前ガスメーター検針結果から検針年月日を取得する.
+     * 主な仕様:
+     * - DA-052-R005 を災害時閉栓事由一覧で呼び出す。
+     * - 取得結果が存在する場合は knsYmd を返却し、未取得時は null を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmdFrom 検針年月日（開始）
+     * @param knsYmdTo 検針年月日（終了）
+     * @return 取得した検針年月日
+     */
+    private LocalDate findKtmgmkkDate(
+            final Long gasMtstNo,
+            final LocalDate knsYmdFrom,
+            final LocalDate knsYmdTo) {
+<span class="fc" id="L252">        Optional&lt;KtmgmkkRecord&gt; result =</span>
+<span class="fc" id="L253">                ktmgmkkDataAccess.findByGasMtstNoAndKnsYmdRangeAndKnkkSksiJysb(</span>
+                        gasMtstNo,
+                        knsYmdFrom,
+                        knsYmdTo,
+                        disasterClosingReasons);
+<span class="fc" id="L258">        return result.map(KtmgmkkRecord::knsYmd).orElse(null);</span>
+    }
+
+    /**
+     * 概要: ガスメーター検針結果＜導管＞から検針年月日を取得する.
+     * 主な仕様:
+     * - DA-027-R006 を災害時閉栓事由一覧で呼び出す。
+     * - 取得結果が存在する場合は knsYmd を返却し、未取得時は null を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmdFrom 検針年月日（開始）
+     * @param knsYmdTo 検針年月日（終了）
+     * @return 取得した検針年月日
+     */
+    private LocalDate findGmkskkdDate(
+            final Long gasMtstNo,
+            final LocalDate knsYmdFrom,
+            final LocalDate knsYmdTo) {
+<span class="fc" id="L276">        Optional&lt;GmkskkdRecord&gt; result =</span>
+<span class="fc" id="L277">                gmkskkdDataAccess.findByGasMtstNoAndKnsYmdAndKnkkSksiJysb(</span>
+                        gasMtstNo,
+                        knsYmdFrom,
+                        knsYmdTo,
+                        disasterClosingReasons);
+<span class="fc" id="L282">        return result.map(GmkskkdRecord::knsYmd).orElse(null);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

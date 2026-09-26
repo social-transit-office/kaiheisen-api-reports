@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompanyUseCheckAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-companyusecheckatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">CompanyUseCheckAtOpeningImpl.java</span></div><h1>CompanyUseCheckAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CompanyUseCheckAtOpening;
+
+/**
+ * 概要: 開栓時社用チェックサービス実装。
+ * 主な仕様:
+ * - 契約終了時からの継続使用で社用に該当する場合は開栓共通エラー 020100046 を送出する。
+ * - 判定で使用する CIRIUS 定数はコンストラクタで fail-fast に解決する。
+ * 既知の制約:
+ * - RequestContext 値は本 SV の public 引数へ含めず、処理でも参照しない。
+ */
+public class CompanyUseCheckAtOpeningImpl implements CompanyUseCheckAtOpening {
+
+    private final String tokyoGasRetailerCode;
+
+    private final String continuedUseReason;
+
+    private final String relocationClosureReason;
+
+    private final String unusedClosureReason;
+
+    private final String supplyOutageReason;
+
+    private final String securityClosureReason;
+
+    private final String companyUseDivision;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を初期化する。
+     * 主な仕様:
+     * - 判定に必要な小売事業者コード、開栓事由、閉栓事由、社用区分を解決する。
+     * 既知の制約:
+     * - 必須定数不足時はコンストラクタ初期化時点で失敗する。
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+<span class="fc" id="L43">    public CompanyUseCheckAtOpeningImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L44">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L45">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L46">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L50">        this.continuedUseReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L54">        this.relocationClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE);
+<span class="fc" id="L58">        this.unusedClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE);
+<span class="fc" id="L62">        this.supplyOutageReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L66">        this.securityClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE);
+<span class="fc" id="L70">        this.companyUseDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.FOR_COMPANY_USE);
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * 概要: 契約終了時からの継続使用で社用に該当するかを判定する。
+     * 主な仕様:
+     * - 社用確認フラグが false、東京ガス、契約終了、継続使用、対象閉栓事由、社用区分の全条件成立時に開栓共通エラーを送出する。
+        * - 条件不成立時は何も返さずに正常終了する。
+     * 既知の制約:
+     * - Boolean 引数が null の場合は Java の unboxing により NullPointerException となる。
+     * @param syayoKknFlg 社用確認フラグ
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param kiyUmFlg 契約有無フラグ
+     * @param hkkKasJysb 報告開栓事由種別
+     * @param hesnJysb 閉栓事由種別
+     * @param syaKbn 社用区分
+     * @throws KaisenRuleException 社用継続不可条件に該当する場合
+     */
+    @Override
+        public void execute(
+            Boolean syayoKknFlg,
+            String tksuKijsCd,
+            Boolean kiyUmFlg,
+            String hkkKasJysb,
+            String hesnJysb,
+            String syaKbn) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        boolean isUnconfirmedCompanyUse = !syayoKknFlg;</span>
+<span class="fc" id="L100">        boolean isTokyoGasRetailer = tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        boolean isNoContract = !kiyUmFlg;</span>
+<span class="fc" id="L102">        boolean isContinuedUse = continuedUseReason.equals(hkkKasJysb);</span>
+<span class="fc" id="L103">        boolean isTargetClosureReason = isTargetClosureReason(hesnJysb);</span>
+<span class="fc" id="L104">        boolean isCompanyUse = companyUseDivision.equals(syaKbn);</span>
+
+<span class="fc bfc" id="L106" title="All 12 branches covered.">        if (isUnconfirmedCompanyUse</span>
+                &amp;&amp; isTokyoGasRetailer
+                &amp;&amp; isNoContract
+                &amp;&amp; isContinuedUse
+                &amp;&amp; isTargetClosureReason
+                &amp;&amp; isCompanyUse) {
+<span class="fc" id="L112">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100046);</span>
+        }
+
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * 概要: 開栓共通エラー対象となる閉栓事由かを判定する。
+     * 主な仕様:
+     * - 移転閉栓、不使用閉栓、供給停止、保安閉栓を対象とする。
+     * 既知の制約:
+     * - 入力が null の場合は false として扱う。
+     * @param hesnJysb 閉栓事由種別
+     * @return 対象閉栓事由であれば true
+     */
+    private boolean isTargetClosureReason(String hesnJysb) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        return relocationClosureReason.equals(hesnJysb)</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                || unusedClosureReason.equals(hesnJysb)</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                || supplyOutageReason.equals(hesnJysb)</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                || securityClosureReason.equals(hesnJysb);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

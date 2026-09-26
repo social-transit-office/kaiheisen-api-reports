@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransportServiceContractMeterLocationUpdateForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-transportservicecontractmeterlocationupdatefortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">TransportServiceContractMeterLocationUpdateForTerminationImpl.java</span></div><h1>TransportServiceContractMeterLocationUpdateForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyJtkbUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractMeterLocationUpdateForTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TskgmstInf;
+
+/**
+ * 概要: 契約終了時に託送サービス契約と託送サービス契約関連を終了更新する SV 実装。
+ * 主な仕様:
+ * - 初期入力で指定された託送サービス契約と関連情報を契約終了状態へ更新する。
+ * - 専用メーター情報リストごとに適用中の関連情報を取得し、取得結果があれば追加の契約終了更新を行う。
+ * - ループ内の契約更新件数が 0 件の場合は DataInconsistencyException を送出する。
+ * 既知の制約:
+ * - hukkSysShbt、correlationId、systemDatetime は RequestContext から参照する。
+ */
+public final class TransportServiceContractMeterLocationUpdateForTerminationImpl
+        implements TransportServiceContractMeterLocationUpdateForTermination {
+
+    /** 監査項目に設定する更新ユーザー ID。 */
+    static final String SERVICE_USER_ID = &quot;KHSS043&quot;;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String applyingRelationStatus;
+
+    private final String applicableEndsRelationStatus;
+
+    private final String underContractStatus;
+
+    private final String endOfContractStatus;
+
+    /**
+     * 必須依存と定数を初期化する。
+     *
+     * @param tkssvkyDataAccess 託送サービス契約 DA
+     * @param tskgmstDataAccess 託送サービス契約・ガスメーター設置場所関連 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public TransportServiceContractMeterLocationUpdateForTerminationImpl(
+            final TkssvkyDataAccess tkssvkyDataAccess,
+            final TskgmstDataAccess tskgmstDataAccess,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L77">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L78">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L79">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L80">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L81">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L84">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L87">        this.applyingRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L91">        this.applicableEndsRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLICABLE_ENDS);
+<span class="fc" id="L95">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L99">        this.endOfContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.END_OF_CONTRACT);
+<span class="fc" id="L103">    }</span>
+
+    @Override
+    public void execute(
+            final Long gasMtstNo,
+            final LocalDate tyenYmd,
+            final String tksuSvkeJysb,
+            final TskgmstInf tskgmstInf,
+            final TkssvkyInf tkssvkyInf,
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="fc" id="L113">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L114">        AuditContext auditContext = AuditContext.of(</span>
+                SERVICE_USER_ID,
+                decodedOriginFunctionId);
+
+<span class="fc" id="L118">        updateInitialTransportContract(</span>
+                tkssvkyInf,
+                tyenYmd,
+                tksuSvkeJysb,
+                auditContext);
+<span class="fc" id="L123">        updateInitialRelation(</span>
+                gasMtstNo,
+                tskgmstInf,
+                tyenYmd,
+                auditContext);
+
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (SnyInf snyInf : snyInfList) {</span>
+<span class="fc" id="L130">            updateDedicatedMeterRelations(</span>
+                    snyInf,
+                    tyenYmd,
+                    tksuSvkeJysb,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * 概要: 初期入力の託送サービス契約を契約終了状態へ更新する。
+     */
+    private void updateInitialTransportContract(
+            final TkssvkyInf tkssvkyInf,
+            final LocalDate tyenYmd,
+            final String tksuSvkeJysb,
+            final AuditContext auditContext) {
+<span class="fc" id="L147">        tkssvkyDataAccess.updateByTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                new TkssvkyWriteRecord(
+<span class="fc" id="L149">                        tkssvkyInf.tksuSvkyNo(),</span>
+                        null,
+                        endOfContractStatus,
+                        null,
+                        tksuSvkeJysb,
+                        null,
+                        tyenYmd,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L161">                EnumSet.of(</span>
+                        TkssvkyColumn.TKSU_SVKY_JTKB,
+                        TkssvkyColumn.TKSU_SVKE_JYSB,
+                        TkssvkyColumn.TYEN_YMD),
+                new TkssvkySknoJnjUpdateKey(
+<span class="fc" id="L166">                        tkssvkyInf.tksuSvkyNo(),</span>
+<span class="fc" id="L167">                        toIntegerSkno(tkssvkyInf.skno()),</span>
+<span class="fc" id="L168">                        tkssvkyInf.recUpdJnjNo()),</span>
+                auditContext);
+<span class="fc" id="L170">    }</span>
+
+    /**
+     * 概要: 初期入力の託送サービス契約関連を適用終了状態へ更新する。
+     */
+    private void updateInitialRelation(
+            final Long gasMtstNo,
+            final TskgmstInf tskgmstInf,
+            final LocalDate tyenYmd,
+            final AuditContext auditContext) {
+<span class="fc" id="L180">        tskgmstDataAccess.updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                new TskgmstWriteRecord(
+                        gasMtstNo,
+<span class="fc" id="L183">                        tskgmstInf.tksuSvkyNo(),</span>
+<span class="fc" id="L184">                        tskgmstInf.skno(),</span>
+                        applicableEndsRelationStatus,
+                        null,
+                        tyenYmd),
+<span class="fc" id="L188">                EnumSet.of(</span>
+                        TskgmstColumn.TKSU_SVKK_JTKB,
+                        TskgmstColumn.TYEN_YMD),
+                new TskgmstUpdateKey(
+                        gasMtstNo,
+<span class="fc" id="L193">                        tskgmstInf.tksuSvkyNo(),</span>
+<span class="fc" id="L194">                        tskgmstInf.skno(),</span>
+<span class="fc" id="L195">                        tskgmstInf.recUpdJnjNo()),</span>
+                auditContext);
+<span class="fc" id="L197">    }</span>
+
+    /**
+     * 概要: 専用メーター情報に紐づく適用中関連を追加で終了更新する。
+     */
+    private void updateDedicatedMeterRelations(
+            final SnyInf snyInf,
+            final LocalDate tyenYmd,
+            final String tksuSvkeJysb,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L208">        Optional&lt;TskgmstRecord&gt; applyingRelation = tskgmstDataAccess</span>
+<span class="fc" id="L209">                .findByGasMtstNoAndTksuSvkkJtkb(</span>
+<span class="fc" id="L210">                        snyInf.gmtsetdInf().gasMtstNo(),</span>
+                        applyingRelationStatus);
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (applyingRelation.isPresent()) {</span>
+<span class="fc" id="L213">            updateDedicatedTransportContract(</span>
+<span class="fc" id="L214">                    applyingRelation.get(),</span>
+                    tyenYmd,
+                    tksuSvkeJysb,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L219">            updateDedicatedRelation(</span>
+<span class="fc" id="L220">                    applyingRelation.get(),</span>
+                    tyenYmd,
+                    auditContext);
+        }
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * 概要: ループ内で取得した託送サービス契約を契約終了状態へ更新する。
+     */
+    private void updateDedicatedTransportContract(
+            final TskgmstRecord applyingRelation,
+            final LocalDate tyenYmd,
+            final String tksuSvkeJysb,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L235">        int updatedCount = tkssvkyDataAccess.updateByTksuSvkyNoAndTksuSvkyJtkb(</span>
+                new TkssvkyWriteRecord(
+<span class="fc" id="L237">                        applyingRelation.tksuSvkyNo(),</span>
+                        null,
+                        endOfContractStatus,
+                        null,
+                        tksuSvkeJysb,
+                        null,
+                        tyenYmd,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L249">                EnumSet.of(</span>
+                        TkssvkyColumn.TKSU_SVKY_JTKB,
+                        TkssvkyColumn.TKSU_SVKE_JYSB,
+                        TkssvkyColumn.TYEN_YMD),
+                new TkssvkyJtkbUpdateKey(
+<span class="fc" id="L254">                        applyingRelation.tksuSvkyNo(),</span>
+                        underContractStatus),
+                auditContext);
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L258">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L259">                    tkssvkyDataAccess.tableName(),</span>
+                    TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB
+<span class="fc" id="L261">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L263">                            .put(&quot;tksuSvkyNo&quot;, applyingRelation.tksuSvkyNo())</span>
+<span class="fc" id="L264">                            .put(&quot;tksuSvkyJtkb&quot;, underContractStatus)</span>
+<span class="fc" id="L265">                            .put(&quot;newTksuSvkyJtkb&quot;, endOfContractStatus)</span>
+<span class="fc" id="L266">                            .put(&quot;tksuSvkeJysb&quot;, tksuSvkeJysb)</span>
+<span class="fc" id="L267">                            .put(&quot;tyenYmd&quot;, tyenYmd)</span>
+<span class="fc" id="L268">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L269">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L271">    }</span>
+
+    /**
+     * 概要: ループ内で取得した託送サービス契約関連を適用終了状態へ更新する。
+     */
+    private void updateDedicatedRelation(
+            final TskgmstRecord applyingRelation,
+            final LocalDate tyenYmd,
+            final AuditContext auditContext) {
+<span class="fc" id="L280">        tskgmstDataAccess.updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                new TskgmstWriteRecord(
+<span class="fc" id="L282">                        applyingRelation.gasMtstNo(),</span>
+<span class="fc" id="L283">                        applyingRelation.tksuSvkyNo(),</span>
+<span class="fc" id="L284">                        applyingRelation.skno(),</span>
+                        applicableEndsRelationStatus,
+<span class="fc" id="L286">                        applyingRelation.tkysYmd(),</span>
+                        tyenYmd),
+<span class="fc" id="L288">                EnumSet.of(</span>
+                        TskgmstColumn.TKSU_SVKK_JTKB,
+                        TskgmstColumn.TYEN_YMD),
+                new TskgmstUpdateKey(
+<span class="fc" id="L292">                        applyingRelation.gasMtstNo(),</span>
+<span class="fc" id="L293">                        applyingRelation.tksuSvkyNo(),</span>
+<span class="fc" id="L294">                        applyingRelation.skno(),</span>
+<span class="fc" id="L295">                        applyingRelation.recUpdJnjNo()),</span>
+                auditContext);
+<span class="fc" id="L297">    }</span>
+
+    /**
+     * 概要: RequestContext から起点機能 ID を解決する。
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L303">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L305">                requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L306">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.hukkSysShbt is required&quot;)));
+    }
+
+    /**
+     * 概要: Long の世代管理番号を DA update key 用の Integer へ変換する。
+     */
+    private Integer toIntegerSkno(final Long skno) {
+<span class="fc" id="L314">        return Math.toIntExact(skno);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TkssvkyDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-tkssvky</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.tkssvky</a> &gt; <span class="el_source">TkssvkyDataAccessImpl.java</span></div><h1>TkssvkyDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.tkssvky;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyJtkbUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** TKSSVKY の SQL 挙動を模したインメモリ実装。 */
+public class TkssvkyDataAccessImpl extends DataAccessBase implements TkssvkyDataAccess {
+
+    private static final String INVALID_STATUS = &quot;00&quot;;
+
+<span class="fc" id="L38">    private static final LocalDate COMPLEMENT_YMD = LocalDate.of(1, 1, 1);</span>
+
+<span class="fc" id="L40">    private static final ReflectiveInMemoryRowMapper&lt;TkssvkyColumn, TkssvkyRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L41">            ReflectiveInMemoryRowMapper.create(TkssvkyColumn.class, TkssvkyRecord.class);</span>
+
+<span class="fc" id="L43">    private static final AutoNeutralValueResolver&lt;TkssvkyColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L44">            AutoNeutralValueResolver.create(TkssvkyColumn.class, TkssvkyRecord.class);</span>
+
+<span class="fc" id="L46">    private final List&lt;EnumMap&lt;TkssvkyColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;TkssvkyWriteRecord, TkssvkyColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;TkssvkyWriteRecord, TkssvkyColumn&gt;
+            updateSupport;
+
+    /** デフォルト設定で初期化する。 */
+    public TkssvkyDataAccessImpl() {
+<span class="fc" id="L59">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L60">    }</span>
+
+    TkssvkyDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="fc" id="L63">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L64">    }</span>
+
+    TkssvkyDataAccessImpl(
+<span class="fc" id="L67">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L68">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L69">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L70">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L71">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(TkssvkyWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L73">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        TkssvkyWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * テストデータを追加する。
+     *
+     * @param row 行データ
+     * @return このインスタンス
+     */
+    public TkssvkyDataAccessImpl addRow(InternalRow row) {
+<span class="fc" id="L85">        Objects.requireNonNull(row, &quot;row&quot;);</span>
+<span class="fc" id="L86">        return addRecord(</span>
+                new TkssvkyRecord(
+<span class="fc" id="L88">                        row.tksuSvkyNo(),</span>
+<span class="fc" id="L89">                        row.skno(),</span>
+<span class="fc" id="L90">                        row.status(),</span>
+<span class="fc" id="L91">                        row.startReason(),</span>
+<span class="fc" id="L92">                        row.endReason(),</span>
+<span class="fc" id="L93">                        toLocalDate(row.tkysYmd()),</span>
+<span class="fc" id="L94">                        toLocalDate(row.tyenYmd()),</span>
+<span class="fc" id="L95">                        toLocalDate(row.hesnYtiYmd()),</span>
+<span class="fc" id="L96">                        row.contractType(),</span>
+<span class="fc" id="L97">                        row.supplierCode(),</span>
+<span class="fc" id="L98">                        toBooleanFlag(row.estimationFlag()),</span>
+<span class="fc" id="L99">                        row.customerId(),</span>
+<span class="fc" id="L100">                        row.regTsmp(),</span>
+<span class="fc" id="L101">                        row.regUsrId(),</span>
+<span class="fc" id="L102">                        row.updTsmp(),</span>
+<span class="fc" id="L103">                        row.updUsrId(),</span>
+<span class="fc" id="L104">                        row.updKtnKinoId(),</span>
+<span class="fc" id="L105">                        row.recUpdJnjNo()));</span>
+    }
+
+    private TkssvkyDataAccessImpl addRecord(TkssvkyRecord row) {
+<span class="fc" id="L109">        TkssvkyRecord safeRow = Objects.requireNonNull(row, &quot;row&quot;);</span>
+<span class="fc" id="L110">        EnumMap&lt;TkssvkyColumn, Object&gt; values = ROW_MAPPER.toRawValueMap(safeRow);</span>
+<span class="fc" id="L111">        NEUTRAL_VALUE_RESOLVER.complement(values, TkssvkyWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L112">        rows.add(values);</span>
+<span class="fc" id="L113">        return this;</span>
+    }
+
+    /**
+     * 保持している行を read record で返す。
+     *
+     * @return 行一覧
+     */
+    public List&lt;TkssvkyRecord&gt; getRows() {
+<span class="nc" id="L122">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int insert(TkssvkyWriteRecord record, AuditContext context) {
+<span class="fc" id="L127">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L128">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L129">        rows.add(</span>
+<span class="fc" id="L130">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L133">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                TkssvkyColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L138">        return 1;</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findAtBaseDateExcludeInvalid(
+            Long tksuSvkyNo, LocalDate baseDate) {
+<span class="fc" id="L144">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L145">        LocalDate safeBaseDate = safeYmd(baseDate, &quot;baseDate&quot;);</span>
+<span class="fc" id="L146">        return rows.stream()</span>
+<span class="fc" id="L147">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L148">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TYEN_YMD), safeBaseDate))</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                .filter(row -&gt; !INVALID_STATUS.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB)))</span>
+<span class="fc" id="L150">                .sorted(descComparator(TkssvkyColumn.TYEN_YMD))</span>
+<span class="fc" id="L151">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L152">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TkssvkyRecord&gt; findAllByTksuSvkyNoAndTksuSvkyJtkb(
+            Long tksuSvkyNo, String tksuSvkyJtkb) {
+<span class="fc" id="L158">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L159">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L160">        return rows.stream()</span>
+<span class="fc" id="L161">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L162">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L163">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L164">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndTksuSvkyJtkb(
+            Long tksuSvkyNo, String tksuSvkyJtkb) {
+<span class="fc" id="L170">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L171">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L172">        return rows.stream()</span>
+<span class="fc" id="L173">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">                .filter(row -&gt; !Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L175">                .sorted(descComparator(TkssvkyColumn.SKNO))</span>
+<span class="fc" id="L176">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L177">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndTksuSvkyJtkbList(
+            Long tksuSvkyNo, List&lt;String&gt; tksuSvkyJtkbList) {
+<span class="fc" id="L183">        Objects.requireNonNull(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        if (tksuSvkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L185">            return Optional.empty();</span>
+        }
+<span class="fc" id="L187">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L188">        List&lt;String&gt; safeStatuses = safeTksuSvkyJtkbList(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="fc" id="L189">        return rows.stream()</span>
+<span class="fc" id="L190">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L191">                .filter(row -&gt; safeStatuses.contains(row.get(TkssvkyColumn.TKSU_SVKY_JTKB)))</span>
+<span class="fc" id="L192">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L193">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L194">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TkssvkyRecord&gt; findAllByTksuSvkyNoAndTyenYmdAndTksuSvkyJtkb(
+            Long tksuSvkyNo, LocalDate tyenYmd, String tksuSvkyJtkb) {
+<span class="fc" id="L200">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L201">        LocalDate safeTyenYmd = safeYmd(tyenYmd, &quot;tyenYmd&quot;);</span>
+<span class="fc" id="L202">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L203">        return rows.stream()</span>
+<span class="fc" id="L204">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L205">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TYEN_YMD), safeTyenYmd))</span>
+<span class="fc" id="L206">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L207">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L208">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndTkysYmdAndTksuSvkyJtkb(
+            Long tksuSvkyNo, LocalDate tkysYmd, String tksuSvkyJtkb) {
+<span class="fc" id="L214">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L215">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L216">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L217">        return rows.stream()</span>
+<span class="fc" id="L218">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L219">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TKYS_YMD), safeTkysYmd))</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">                .filter(row -&gt; !Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L221">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L222">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L223">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TkssvkyRecord&gt; findAllByTksuSvkyNoAndTkysYmdAndTksuSvkyJtkbList(
+            Long tksuSvkyNo, LocalDate tkysYmd, List&lt;String&gt; tksuSvkyJtkbList) {
+<span class="fc" id="L229">        Objects.requireNonNull(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (tksuSvkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L231">            return List.of();</span>
+        }
+<span class="fc" id="L233">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L234">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L235">        List&lt;String&gt; safeStatuses = safeTksuSvkyJtkbList(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="fc" id="L236">        return rows.stream()</span>
+<span class="fc" id="L237">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L238">                .filter(row -&gt; isBefore(row.get(TkssvkyColumn.TKYS_YMD), safeTkysYmd))</span>
+<span class="fc" id="L239">                .filter(row -&gt; safeStatuses.contains(row.get(TkssvkyColumn.TKSU_SVKY_JTKB)))</span>
+<span class="fc" id="L240">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L241">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L242">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndTkysYmdAndTksuSvkyJtkbList(
+            Long tksuSvkyNo, LocalDate tkysYmd, List&lt;String&gt; tksuSvkyJtkbList) {
+<span class="fc" id="L248">        Objects.requireNonNull(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (tksuSvkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L250">            return Optional.empty();</span>
+        }
+<span class="fc" id="L252">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L253">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L254">        List&lt;String&gt; safeStatuses = safeTksuSvkyJtkbList(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="fc" id="L255">        return rows.stream()</span>
+<span class="fc" id="L256">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L257">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TKYS_YMD), safeTkysYmd))</span>
+<span class="fc" id="L258">                .filter(row -&gt; safeStatuses.contains(row.get(TkssvkyColumn.TKSU_SVKY_JTKB)))</span>
+<span class="fc" id="L259">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L260">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L261">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TkssvkyRecord&gt; findAllByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(
+            Long tksuSvkyNo, LocalDate knskKjnYmd, String tksuSvkyJtkb) {
+<span class="fc" id="L267">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L268">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L269">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L270">        return rows.stream()</span>
+<span class="fc" id="L271">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L272">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TKYS_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L273">                .filter(row -&gt; notBefore(row.get(TkssvkyColumn.TYEN_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L274">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L275">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L276">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(
+            Long tksuSvkyNo, LocalDate knskKjnYmd, String tksuSvkyJtkb) {
+<span class="fc" id="L282">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L283">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L284">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L285">        return rows.stream()</span>
+<span class="fc" id="L286">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L287">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TKYS_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L288">                .filter(row -&gt; notBefore(row.get(TkssvkyColumn.TYEN_YMD), safeKnskKjnYmd))</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                .filter(row -&gt; !Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L290">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L291">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L292">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkbList(
+            Long tksuSvkyNo, LocalDate knskKjnYmd, List&lt;String&gt; tksuSvkyJtkbList) {
+<span class="fc" id="L298">        Objects.requireNonNull(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        if (tksuSvkyJtkbList.isEmpty()) {</span>
+<span class="nc" id="L300">            return Optional.empty();</span>
+        }
+<span class="fc" id="L302">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L303">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L304">        List&lt;String&gt; safeStatuses = safeTksuSvkyJtkbList(tksuSvkyJtkbList, &quot;tksuSvkyJtkbList&quot;);</span>
+<span class="fc" id="L305">        return rows.stream()</span>
+<span class="fc" id="L306">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L307">                .filter(row -&gt; notAfter(row.get(TkssvkyColumn.TKYS_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L308">                .filter(row -&gt; notBefore(row.get(TkssvkyColumn.TYEN_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L309">                .filter(row -&gt; safeStatuses.contains(row.get(TkssvkyColumn.TKSU_SVKY_JTKB)))</span>
+<span class="fc" id="L310">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L311">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L312">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findBySyoKyoTrnoAndTksuSvkyJtkb(
+            Long syoKyoTrno, String tksuSvkyJtkb) {
+<span class="fc" id="L318">        Long safeSyoKyoTrno = safeLong(syoKyoTrno, &quot;syoKyoTrno&quot;);</span>
+<span class="fc" id="L319">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(tksuSvkyJtkb, &quot;tksuSvkyJtkb&quot;);</span>
+<span class="fc" id="L320">        return rows.stream()</span>
+<span class="fc" id="L321">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.SYO_KYO_TRNO), safeSyoKyoTrno))</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">                .filter(row -&gt; !Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb))</span>
+<span class="fc" id="L323">                .sorted(descComparator(TkssvkyColumn.TKYS_YMD))</span>
+<span class="fc" id="L324">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L325">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByTksuSvkyNoAndSknoAndRecUpdJnjNo(
+            TkssvkyWriteRecord record,
+            Set&lt;TkssvkyColumn&gt; targetColumns,
+            TkssvkySknoJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L334">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L335">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L336">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L337">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L338">        Long safeTksuSvkyNo = safeLong(updateKey.tksuSvkyNo(), &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L339">        Integer safeSkno = safeInt(updateKey.skno(), &quot;skno&quot;);</span>
+
+<span class="fc" id="L341">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc bfc" id="L343" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo)</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(row.get(TkssvkyColumn.SKNO), safeSkno),</span>
+                row -&gt;
+<span class="fc" id="L346">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L350">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        TkssvkyColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc" id="L355">                                                toInteger(row.get(TkssvkyColumn.REC_UPD_JNJ_NO)))),</span>
+<span class="fc" id="L356">                updateSupport::apply,</span>
+                TkssvkyColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L358">                updateKey.recUpdJnjNo(),</span>
+                TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L360">                        .identifier(),</span>
+                () -&gt;
+<span class="fc" id="L362">                        new DataInconsistencyException(</span>
+                                &quot;TKSSVKY&quot;,
+                                TkssvkyDataAccess.CallSpecs
+                                        .UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L366">                                        .identifier(),</span>
+                                &quot;{}&quot;),
+                safeTksuSvkyNo,
+                safeSkno);
+    }
+
+    @Override
+    public int updateByTksuSvkyNoAndTksuSvkyJtkb(
+            TkssvkyWriteRecord record,
+            Set&lt;TkssvkyColumn&gt; targetColumns,
+            TkssvkyJtkbUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L378">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L379">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L380">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L381">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L382">        Long safeTksuSvkyNo = safeLong(updateKey.tksuSvkyNo(), &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L383">        String safeTksuSvkyJtkb = safeTksuSvkyJtkb(updateKey.tksuSvkyJtkb(), &quot;tksuSvkyJtkb&quot;);</span>
+
+<span class="fc" id="L385">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">                row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo)</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">                        &amp;&amp; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_JTKB), safeTksuSvkyJtkb),</span>
+                row -&gt;
+<span class="fc" id="L390">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L394">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        TkssvkyColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc" id="L399">                                                toInteger(row.get(TkssvkyColumn.REC_UPD_JNJ_NO)))),</span>
+<span class="fc" id="L400">                updateSupport::apply,</span>
+                TkssvkyColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L402">                updateKey.recUpdJnjNo(),</span>
+                TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB
+<span class="fc" id="L404">                        .identifier(),</span>
+                () -&gt;
+<span class="fc" id="L406">                        new DataInconsistencyException(</span>
+                                &quot;TKSSVKY&quot;,
+                                TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB
+<span class="fc" id="L409">                                        .identifier(),</span>
+                                &quot;{}&quot;),
+                safeTksuSvkyNo,
+                safeTksuSvkyJtkb);
+    }
+
+    @Override
+    public Optional&lt;TkssvkyRecord&gt; findByPK(Long tksuSvkyNo, Integer skno) {
+<span class="fc" id="L417">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L418">        Integer safeSkno = safeInt(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L419">        return rows.stream()</span>
+<span class="fc" id="L420">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L421">                .filter(row -&gt; Objects.equals(row.get(TkssvkyColumn.SKNO), safeSkno))</span>
+<span class="fc" id="L422">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L423">                .findFirst();</span>
+    }
+
+    private static Comparator&lt;EnumMap&lt;TkssvkyColumn, Object&gt;&gt; descComparator(TkssvkyColumn column) {
+<span class="fc" id="L427">        return (left, right) -&gt; compareDesc(left.get(column), right.get(column));</span>
+    }
+
+    @SuppressWarnings({&quot;rawtypes&quot;, &quot;unchecked&quot;})
+    private static int compareDesc(Object left, Object right) {
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (left == right) {</span>
+<span class="nc" id="L433">            return 0;</span>
+        }
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">        if (left == null) {</span>
+<span class="nc" id="L436">            return 1;</span>
+        }
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">        if (right == null) {</span>
+<span class="nc" id="L439">            return -1;</span>
+        }
+<span class="fc" id="L441">        return ((Comparable) right).compareTo(left);</span>
+    }
+
+    private static boolean notAfter(Object value, LocalDate baseDate) {
+<span class="fc" id="L445">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L446" title="1 of 4 branches missed.">        return localDate != null &amp;&amp; !localDate.isAfter(baseDate);</span>
+    }
+
+    private static boolean notBefore(Object value, LocalDate baseDate) {
+<span class="fc" id="L450">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L451" title="1 of 4 branches missed.">        return localDate != null &amp;&amp; !localDate.isBefore(baseDate);</span>
+    }
+
+    private static boolean isBefore(Object value, LocalDate baseDate) {
+<span class="fc" id="L455">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L456" title="1 of 4 branches missed.">        return localDate != null &amp;&amp; localDate.isBefore(baseDate);</span>
+    }
+
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L460">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeInt(Integer value, String paramName) {
+<span class="fc" id="L464">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L468">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String safeTksuSvkyJtkb(String value, String paramName) {
+<span class="fc" id="L472">        return WhereParamGuard.fixedLengthNotNull(value, paramName, 2);</span>
+    }
+
+    private static List&lt;String&gt; safeTksuSvkyJtkbList(List&lt;String&gt; values, String paramName) {
+<span class="fc" id="L476">        return values.stream().map(value -&gt; normalizeInTksuSvkyJtkb(value, paramName)).toList();</span>
+    }
+
+    private static String normalizeInTksuSvkyJtkb(String value, String paramName) {
+<span class="fc bfc" id="L480" title="All 4 branches covered.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L481">            throw new IllegalArgumentException(paramName + &quot; must not contain null or blank-only&quot;);</span>
+        }
+<span class="fc" id="L483">        return safeTksuSvkyJtkb(value, paramName);</span>
+    }
+
+    private static Integer toInteger(Object value) {
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L488">            return number.intValue();</span>
+        }
+<span class="nc bnc" id="L490" title="All 2 branches missed.">        return value == null ? null : Integer.valueOf(value.toString());</span>
+    }
+
+    private static LocalDate toLocalDate(int ymd) {
+<span class="fc bfc" id="L494" title="All 2 branches covered.">        if (ymd &lt;= 0) {</span>
+<span class="fc" id="L495">            return null;</span>
+        }
+<span class="fc" id="L497">        return LocalDate.of(ymd / 10000, (ymd / 100) % 100, ymd % 100);</span>
+    }
+
+    private static Boolean toBooleanFlag(String value) {
+<span class="pc bpc" id="L501" title="1 of 4 branches missed.">        if (&quot;1&quot;.equals(value) || &quot;Y&quot;.equalsIgnoreCase(value)) {</span>
+<span class="fc" id="L502">            return Boolean.TRUE;</span>
+        }
+<span class="pc bpc" id="L504" title="2 of 4 branches missed.">        if (&quot;0&quot;.equals(value) || &quot;N&quot;.equalsIgnoreCase(value)) {</span>
+<span class="fc" id="L505">            return Boolean.FALSE;</span>
+        }
+<span class="nc" id="L507">        return null;</span>
+    }
+
+    /** TKSSVKY のテストデータ行。 */
+    public static record InternalRow(
+            long tksuSvkyNo,
+            int skno,
+            String status,
+            String startReason,
+            String endReason,
+            int tkysYmd,
+            int tyenYmd,
+            int hesnYtiYmd,
+            String contractType,
+            String supplierCode,
+            String estimationFlag,
+            long customerId,
+            LocalDateTime regTsmp,
+            String regUsrId,
+            LocalDateTime updTsmp,
+            String updUsrId,
+            String updKtnKinoId,
+            int recUpdJnjNo) {
+        /** コンパクトコンストラクタ。 */
+<span class="fc" id="L531">        public InternalRow {</span>
+<span class="fc" id="L532">            Objects.requireNonNull(status, &quot;status&quot;);</span>
+<span class="fc" id="L533">            Objects.requireNonNull(startReason, &quot;startReason&quot;);</span>
+<span class="fc" id="L534">            Objects.requireNonNull(endReason, &quot;endReason&quot;);</span>
+<span class="fc" id="L535">            Objects.requireNonNull(contractType, &quot;contractType&quot;);</span>
+<span class="fc" id="L536">            Objects.requireNonNull(supplierCode, &quot;supplierCode&quot;);</span>
+<span class="fc" id="L537">            Objects.requireNonNull(estimationFlag, &quot;estimationFlag&quot;);</span>
+<span class="fc" id="L538">            Objects.requireNonNull(regTsmp, &quot;regTsmp&quot;);</span>
+<span class="fc" id="L539">            Objects.requireNonNull(regUsrId, &quot;regUsrId&quot;);</span>
+<span class="fc" id="L540">            Objects.requireNonNull(updTsmp, &quot;updTsmp&quot;);</span>
+<span class="fc" id="L541">            Objects.requireNonNull(updUsrId, &quot;updUsrId&quot;);</span>
+<span class="fc" id="L542">            Objects.requireNonNull(updKtnKinoId, &quot;updKtnKinoId&quot;);</span>
+<span class="fc" id="L543">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

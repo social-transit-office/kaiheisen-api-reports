@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCancelFeasibilityJudgmentPaymentContractImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-openingcancelfeasibilityjudgmentpaymentcontract</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">OpeningCancelFeasibilityJudgmentPaymentContractImpl.java</span></div><h1>OpeningCancelFeasibilityJudgmentPaymentContractImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelFeasibilityJudgmentPaymentContract;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelFeasibilityJudgmentPaymentContractOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SihakyKaTrksInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvsihkrInf;
+
+/**
+ * 概要: SV-046 開栓取消実施可否判定: 支払契約サービスの実装です。
+ *
+ * 主な仕様:
+ * サービス契約番号から適用中のサービス契約・支払契約関連と支払契約を取得し、
+ * 請求サービス種別が設定されている場合は業務エラーを返します。
+ * 請求サービス種別が未設定の場合は取消対象検針年月日の支払契約を取得し、
+ * 戻り値へ支払契約情報と取消時点の適用開始年月日を設定します。
+ *
+ * 既知の制約:
+ * DA-044-R002 が複数件返る場合は source TSV の記載に従い先頭 1 件を採用します。
+ */
+public final class OpeningCancelFeasibilityJudgmentPaymentContractImpl
+        implements OpeningCancelFeasibilityJudgmentPaymentContract {
+
+    /** サービス契約・支払契約関連を参照するデータアクセスです。 */
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    /** 支払契約を参照するデータアクセスです。 */
+    private final SihakyDataAccess sihakyDataAccess;
+
+    /** 支払契約状態区分の「適用中」を表す CIRIUS 定数値です。 */
+    private final String applyingStatus;
+
+    /** 支払契約状態区分の「無効」を表す CIRIUS 定数値です。 */
+    private final String invalidStatus;
+
+    /**
+     * 概要: 依存コンポーネントを受け取ってサービス実装を初期化します。
+     *
+     * 主な仕様:
+     * サービス契約・支払契約関連 DA、支払契約 DA、CIRIUS 定数サービスは必須依存とし、
+     * 生成時に null を禁止します。
+     * 支払契約状態区分の必須定数は初期化時点で解決し、未登録なら fail-fast します。
+     *
+     * 既知の制約:
+     * @param svsihkrDataAccessParam サービス契約・支払契約関連 DA
+     * @param sihakyDataAccessParam 支払契約 DA
+     * @param ciriusConstantServiceParam CIRIUS 定数サービス
+     */
+    public OpeningCancelFeasibilityJudgmentPaymentContractImpl(
+            final SvsihkrDataAccess svsihkrDataAccessParam,
+            final SihakyDataAccess sihakyDataAccessParam,
+<span class="fc" id="L66">            final CiriusConstantService ciriusConstantServiceParam) {</span>
+<span class="fc" id="L67">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccessParam, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L68">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccessParam, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L69">        CiriusConstantService ciriusConstantService =</span>
+<span class="fc" id="L70">                Objects.requireNonNull(ciriusConstantServiceParam, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L71">        this.applyingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L75">        this.invalidStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID);
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * 概要: 開栓取消可否を支払契約観点で判定します。
+     *
+     * 主な仕様:
+     * 適用中のサービス契約・支払契約関連と支払契約を順に取得し、
+     * 請求サービス種別が設定されている場合は業務エラー 020000049 を送出します。
+     * 請求サービス種別が未設定の場合は取消対象検針年月日の支払契約を取得し、
+     * 支払契約情報と取消時点の適用開始年月日を戻り値へ設定します。
+     *
+     * 既知の制約:
+     * 入力値の null / blank 補正や妥当性検証は行わず、呼び出し元から渡された値をそのまま判定します。
+     *
+     * @param svkyNo サービス契約番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 支払契約観点の判定結果
+     */
+    @Override
+    public OpeningCancelFeasibilityJudgmentPaymentContractOutput execute(
+            final Long svkyNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L101">        SvsihkrRecord svsihkrRecord = requireServicePaymentRelation(svkyNo);</span>
+<span class="fc" id="L102">        SihakyRecord sihakyRecord = requireActivePaymentContract(svsihkrRecord.sihKiyNo());</span>
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (hasBillingServiceType(sihakyRecord.sikSvcShbt())) {</span>
+<span class="fc" id="L105">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000049);</span>
+        }
+
+<span class="fc" id="L108">        SihakyRecord canceledPointRecord = requirePaymentContractAtCancelPoint(</span>
+<span class="fc" id="L109">                svsihkrRecord.sihKiyNo(),</span>
+                trkKnsYmd);
+
+<span class="fc" id="L112">        return new OpeningCancelFeasibilityJudgmentPaymentContractOutput(</span>
+<span class="fc" id="L113">                mapSihaky(sihakyRecord),</span>
+<span class="fc" id="L114">                mapSvsihkr(svsihkrRecord),</span>
+<span class="fc" id="L115">                new SihakyKaTrksInf(canceledPointRecord.tkysYmd()));</span>
+    }
+
+    /**
+     * 概要: サービス契約番号に対応する適用中のサービス契約・支払契約関連を取得します。
+     *
+     * 主な仕様:
+     * DA-044-R002 を呼び出し、取得結果が空の場合はデータ不整合例外を送出します。
+     * 複数件取得時は先頭レコードを採用します。
+     *
+     * 既知の制約:
+     * 先頭 1 件の採用順は DA の返却順に依存し、業務上の優先順位はこのメソッドでは補正しません。
+     *
+     * @param svkyNo サービス契約番号
+     * @return 適用中のサービス契約・支払契約関連レコード
+     */
+    private SvsihkrRecord requireServicePaymentRelation(final Long svkyNo) {
+<span class="fc" id="L132">        List&lt;SvsihkrRecord&gt; records = svsihkrDataAccess.findAllBySvkyNoAndSihKiyJtkb(svkyNo, applyingStatus);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (records.isEmpty()) {</span>
+<span class="fc" id="L134">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L135">                    svsihkrDataAccess.tableName(),</span>
+<span class="fc" id="L136">                    SvsihkrDataAccess.CallSpecs.FIND_ALL_BY_SVKY_NO_AND_SIH_KIY_JTKB.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L138">                            .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L139">                            .put(&quot;sihKiyJtkb&quot;, applyingStatus));</span>
+        }
+<span class="fc" id="L141">        return records.get(0);</span>
+    }
+
+    /**
+     * 概要: 支払契約番号に対応する適用中の支払契約を取得します。
+     *
+     * 主な仕様:
+     * DA-075-R001 を呼び出し、取得できない場合はデータ不整合例外を送出します。
+     *
+     * 既知の制約:
+     * 取得条件は適用中の固定値のみで、呼出元から状態区分を変更することはできません。
+     *
+     * @param sihKiyNo 支払契約番号
+     * @return 適用中の支払契約レコード
+     */
+    private SihakyRecord requireActivePaymentContract(final Long sihKiyNo) {
+<span class="fc" id="L157">        return sihakyDataAccess.findBySihKiyNoAndSihKiyJtkb(sihKiyNo, applyingStatus)</span>
+<span class="fc" id="L158">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L159">                        sihakyDataAccess.tableName(),</span>
+<span class="fc" id="L160">                        SihakyDataAccess.CallSpecs.FIND_BY_SIH_KIY_NO_AND_SIH_KIY_JTKB.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L162">                                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L163">                                .put(&quot;sihKiyJtkb&quot;, applyingStatus)));</span>
+    }
+
+    /**
+     * 概要: 取消対象検針年月日を基準に有効な支払契約を取得します。
+     *
+     * 主な仕様:
+     * DA-075-R006 を呼び出し、適用開始年月日降順・世代管理番号降順で選ばれた
+     * 1 件を取得します。取得できない場合はデータ不整合例外を送出します。
+     *
+     * 既知の制約:
+     * 現行の戻り値利用は適用開始年月日のみで、他項目はこのサービスでは参照しません。
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 取消対象検針年月日に対応する支払契約レコード
+     */
+    private SihakyRecord requirePaymentContractAtCancelPoint(
+            final Long sihKiyNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L183">        return sihakyDataAccess</span>
+<span class="fc" id="L184">                .findBySihKiyNoAndKnskKjnYmdAndNotSihKiyJtkbOrderByTkysYmdDescAndSknoDesc(</span>
+                        sihKiyNo,
+                        trkKnsYmd,
+                        invalidStatus)
+<span class="fc" id="L188">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L189">                        sihakyDataAccess.tableName(),</span>
+                        SihakyDataAccess.CallSpecs
+                                .FIND_BY_SIH_KIY_NO_AND_KNSK_KJN_YMD_AND_NOT_SIH_KIY_JTKB_ORDER_BY_TKYS_YMD_DESC_AND_SKNO_DESC
+<span class="fc" id="L192">                                .identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L194">                                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L195">                                .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L196">                                .put(&quot;sihKiyJtkb&quot;, invalidStatus)));</span>
+    }
+
+    /**
+     * 概要: 請求サービス種別が設定済みかどうかを判定します。
+     *
+     * 主な仕様:
+     * null でも空文字でもない値を「設定あり」とみなします。
+     *
+     * 既知の制約:
+     * source TSV の条件記述は曖昧なため、この実装では best-effort として空白文字列も未設定扱いにしています。
+     *
+     * @param billingServiceType 請求サービス種別
+     * @return 請求サービス種別が設定されている場合は true
+     */
+    private boolean hasBillingServiceType(final String billingServiceType) {
+<span class="fc bfc" id="L212" title="All 4 branches covered.">        return billingServiceType != null &amp;&amp; !billingServiceType.isBlank();</span>
+    }
+
+    /**
+     * 概要: 支払契約レコードを出力モデルへ変換します。
+     *
+     * 主な仕様:
+     * SV-046 の output.tsv で定義された支払契約情報の項目へ必要な値を写像します。
+     *
+     * 既知の制約:
+     * DA レコードに存在する監査系項目のうち、SV-046 出力で未定義の項目は変換対象に含めません。
+     *
+     * @param record 支払契約レコード
+     * @return 支払契約情報モデル
+     */
+    private SihakyInf mapSihaky(final SihakyRecord record) {
+<span class="fc" id="L228">        return new SihakyInf(</span>
+<span class="fc" id="L229">                record.sihKiyNo(),</span>
+<span class="fc" id="L230">                record.skno(),</span>
+<span class="fc" id="L231">                record.tkysYmd(),</span>
+<span class="fc" id="L232">                record.tyenYmd(),</span>
+<span class="fc" id="L233">                record.sihKiyJtkb(),</span>
+<span class="fc" id="L234">                record.sihHuhuShbt(),</span>
+<span class="fc" id="L235">                record.sikSvcShbt(),</span>
+<span class="fc" id="L236">                record.sikKibNo(),</span>
+<span class="fc" id="L237">                record.yggsTkyShbt(),</span>
+<span class="fc" id="L238">                record.thsCdNo(),</span>
+<span class="fc" id="L239">                record.sikCycsNo(),</span>
+<span class="fc" id="L240">                record.sikKrno(),</span>
+<span class="fc" id="L241">                record.shtiSqddKbn(),</span>
+<span class="fc" id="L242">                record.jduKykShbt(),</span>
+<span class="fc" id="L243">                record.jduKykYmd(),</span>
+<span class="fc" id="L244">                record.shsyKyoTrno(),</span>
+<span class="fc" id="L245">                record.byssUmFlg(),</span>
+<span class="fc" id="L246">                record.skshHyjsKrno(),</span>
+<span class="fc" id="L247">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: サービス契約・支払契約関連レコードを出力モデルへ変換します。
+     *
+     * 主な仕様:
+     * SV-046 の output.tsv で必要な最小項目のみをサービス出力向けモデルへ写像します。
+     *
+     * 既知の制約:
+     * 元レコードの請求開始年月や商材区分など、SV-046 の出力定義にない項目は返却しません。
+     *
+     * @param record サービス契約・支払契約関連レコード
+     * @return サービス契約・支払契約関連情報モデル
+     */
+    private SvsihkrInf mapSvsihkr(final SvsihkrRecord record) {
+<span class="fc" id="L263">        return new SvsihkrInf(</span>
+<span class="fc" id="L264">                record.svkyNo(),</span>
+<span class="fc" id="L265">                record.sihKiyNo(),</span>
+<span class="fc" id="L266">                record.skno(),</span>
+<span class="fc" id="L267">                record.tkysYmd());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

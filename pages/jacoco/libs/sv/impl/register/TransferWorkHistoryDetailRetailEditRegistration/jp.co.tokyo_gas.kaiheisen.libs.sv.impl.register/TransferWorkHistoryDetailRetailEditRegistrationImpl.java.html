@@ -1,0 +1,600 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryDetailRetailEditRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-transferworkhistorydetailretaileditregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TransferWorkHistoryDetailRetailEditRegistrationImpl.java</span></div><h1>TransferWorkHistoryDetailRetailEditRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryDetailRetailEditRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrShsiTrkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transferconfig.CustomerNameEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transferconfig.CustomerNameEditOutput;
+
+/**
+ * 概要: SV-159（異動作業履歴詳細＜小売＞編集登録）の実装。
+ * 主な仕様:
+ * - 設計書に従い、入力値と RequestContext、下位 SV の結果から 29 行固定の異動・作業履歴詳細を編集する。
+ * - 固定値比較に必要な CIRIUS / 開閉栓定数はコンストラクタ初期化時に fail-fast で解決する。
+ * - 編集した共通情報と明細情報は登録ゲートウェイへ委譲する。
+ * 既知の制約:
+ * - public メソッド引数の null / blank 判定は追加せず、設計どおり下位処理へ委ねる。
+ * - 登録ゲートウェイの具象実装は本モジュールでは提供せず、呼び出し契約のみ定義する。
+ */
+public final class TransferWorkHistoryDetailRetailEditRegistrationImpl
+        implements TransferWorkHistoryDetailRetailEditRegistration {
+
+    static final String TRANSFER_WORK_HISTORY_DETAIL_SCREEN_ID = &quot;CXXG0014&quot;;
+
+    static final int TOTAL_DETAIL_ROWS = 29;
+
+    static final int RESERVED_PERIOD_DAYS = 5;
+
+<span class="fc" id="L40">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern(&quot;yyyy/MM/dd&quot;);</span>
+
+<span class="fc" id="L42">    private static final DateTimeFormatter HMS_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private static final String COMPANY_USE_LABEL = &quot;社用&quot;;
+
+    private static final String COMPREHENSIVE_LABEL = &quot;総合&quot;;
+
+<span class="fc" id="L48">    private static final IsrrShsiTrkInf EMPTY_DETAIL_SOURCE = new IsrrShsiTrkInf(null, null, null);</span>
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    private final CustomerNameEdit customerNameEdit;
+
+    private final RequestContext requestContext;
+
+    private final TransferWorkHistoryDetailRetailEditRegistrationGateway registrationGateway;
+
+    private final String caseHistoryResultTransfer;
+
+    private final String itemHistoryRegistrationDestinationCustomer;
+
+    private final String transferWorkHistoryInquiryCodeSubject;
+
+    private final String customerInfoAcquisitionPossible;
+
+    private final String tokyoGasRetailerCode;
+
+    private final String supplyOutageRetailWorkCodeConduit;
+
+    private final String supplyOutageRetailBusinessCode;
+
+    private final String companyUseDivision;
+
+    private final String dutyFreeConsumptionTax;
+
+    private final String nameEditingProcessName1;
+
+    /**
+     * 概要: SV-159 実行に必要な依存と固定定数を初期化する。
+     * 主な仕様:
+     * - 下位 SV、RequestContext、登録ゲートウェイを保持する。
+     * - 設計書の固定値比較に用いる CIRIUS / 開閉栓定数をコンストラクタ初期化時に解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須定数が未定義の場合はコンストラクタ初期化時点で失敗する。
+     *
+     * @param constantMasterInfoAcquisition 定数マスタ情報取得 SV
+     * @param customerNameEdit おなまえ編集 SV
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param registrationGateway 登録ゲートウェイ
+     */
+    public TransferWorkHistoryDetailRetailEditRegistrationImpl(
+            ConstantMasterInfoAcquisition constantMasterInfoAcquisition,
+            CustomerNameEdit customerNameEdit,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L100">            TransferWorkHistoryDetailRetailEditRegistrationGateway registrationGateway) {</span>
+<span class="fc" id="L101">        this.constantMasterInfoAcquisition = Objects.requireNonNull(</span>
+                constantMasterInfoAcquisition,
+                &quot;constantMasterInfoAcquisition&quot;);
+<span class="fc" id="L104">        this.customerNameEdit = Objects.requireNonNull(customerNameEdit, &quot;customerNameEdit&quot;);</span>
+<span class="fc" id="L105">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L106">        this.registrationGateway = Objects.requireNonNull(registrationGateway, &quot;registrationGateway&quot;);</span>
+<span class="fc" id="L107">        CiriusConstantService nonNullCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L110">        KaiheisenConstantService nonNullKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L113">        this.caseHistoryResultTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.CaseHistory.TYPE,
+                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER);
+<span class="fc" id="L117">        this.itemHistoryRegistrationDestinationCustomer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.CUSTOMER);
+<span class="fc" id="L121">        this.transferWorkHistoryInquiryCodeSubject = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT);
+<span class="fc" id="L125">        this.customerInfoAcquisitionPossible = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L129">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L133">        this.supplyOutageRetailWorkCodeConduit = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L137">        this.supplyOutageRetailBusinessCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L141">        this.companyUseDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.FOR_COMPANY_USE);
+<span class="fc" id="L145">        this.dutyFreeConsumptionTax = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsumptionTax.TYPE,
+                ConstantLookupKeys.Cirius.ConsumptionTax.DUTY_FREE);
+<span class="fc" id="L149">        this.nameEditingProcessName1 = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.NameEditingProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.NameEditingProcessing.EDIT_NAME_1);
+<span class="fc" id="L153">    }</span>
+
+    /**
+     * 概要: 異動・作業履歴詳細＜小売＞を編集して登録ゲートウェイへ引き渡す。
+     * 主な仕様:
+     * - RequestContext の必須値を検証したうえで共通情報と 29 行明細を組み立てる。
+     * - 東京ガス判定や業務コード判定に応じて下位 SV を呼び分け、変更前後情報を補完する。
+     * - 編集結果は戻り値にせず、登録ゲートウェイへそのまま委譲する。
+     * 既知の制約:
+     * - 引数値の null / blank 妥当性は追加検証しない。
+     * - 下位 SV や登録ゲートウェイの例外は変換せずに上位へ伝播する。
+     */
+    @Override
+    public void execute(
+            List&lt;IsrrShsiTrkInf&gt; isrrShsiTrkInfList,
+            String tksuKijsCd,
+            String rshhShjKbn,
+            String gymCd,
+            String hesnSdnShbt,
+            LocalDate hssgYmd,
+            String kkysRyuShbt,
+            Long mejsGmsbNo,
+            String sihHuhuShbt,
+            String ctnmKn1,
+            String ctnmKj1,
+            String ctnm1HujnShbt,
+            String ctnm1HshiShbt,
+            Boolean ctnmKjhkFlg,
+            String kiyShbt,
+            String syaKbn,
+            Integer suguGmtKnsu,
+            String sziKziKbn,
+            String sikSvcShbt,
+            Long artyCstNo,
+            LocalDate isrrTriYmd,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            String hukkUsrId,
+            String hukkUnmKj) {
+<span class="fc" id="L193">        RequestContextValues requestContextValues = requireRequestContext();</span>
+
+<span class="fc" id="L195">        boolean tokyoGas = tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+<span class="fc" id="L196">        boolean supplyOutageWorkCode = supplyOutageRetailWorkCodeConduit.equals(gymCd);</span>
+<span class="fc" id="L197">        boolean supplyOutageBusinessCode = supplyOutageRetailBusinessCode.equals(isrrGymCd);</span>
+<span class="fc bfc" id="L198" title="All 6 branches covered.">        LocalDate reservedPeriodDate = tokyoGas &amp;&amp; supplyOutageBusinessCode &amp;&amp; hssgYmd != null</span>
+<span class="fc" id="L199">                ? hssgYmd.plusDays(RESERVED_PERIOD_DAYS)</span>
+<span class="fc" id="L200">                : null;</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        CustomerNameEditOutput editedCustomerName = tokyoGas</span>
+<span class="fc" id="L202">                ? customerNameEdit.execute(</span>
+                        ctnmKn1,
+                        ctnmKj1,
+                        ctnm1HujnShbt,
+                        ctnm1HshiShbt,
+                        ctnmKjhkFlg,
+                        nameEditingProcessName1)
+<span class="fc" id="L209">                : null;</span>
+        String settlementPaymentMethodName = tokyoGas
+                        &amp;&amp; rshhShjKbn != null
+<span class="pc bpc" id="L212" title="1 of 6 branches missed.">                        &amp;&amp; !ConstantLookupKeys.Cirius.FeePaymentMethodInstructionCategory.NO_CONCEPT.equals(</span>
+                                rshhShjKbn)
+<span class="fc" id="L214">                ? resolveConstantContent(</span>
+                        ConstantLookupKeys.Cirius.FeePaymentMethodInstructionCategory.TYPE,
+                        rshhShjKbn)
+<span class="fc" id="L217">                : null;</span>
+<span class="fc bfc" id="L218" title="All 4 branches covered.">        String closingMeansName = tokyoGas &amp;&amp; supplyOutageWorkCode</span>
+<span class="fc" id="L219">                ? resolveConstantContent(ConstantLookupKeys.Cirius.ClosingMeansType.TYPE, hesnSdnShbt)</span>
+<span class="fc" id="L220">                : null;</span>
+<span class="fc bfc" id="L221" title="All 4 branches covered.">        String supplyOutageReasonName = tokyoGas &amp;&amp; supplyOutageBusinessCode</span>
+<span class="fc" id="L222">                ? resolveConstantContent(ConstantLookupKeys.Cirius.SupplySuspensionReasonType.TYPE, kkysRyuShbt)</span>
+<span class="fc" id="L223">                : null;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        String paymentMethodName = tokyoGas</span>
+<span class="fc" id="L225">                ? resolveConstantContent(ConstantLookupKeys.Cirius.PaymentMethodType.TYPE, sihHuhuShbt)</span>
+<span class="fc" id="L226">                : null;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        String contractTypeName = tokyoGas</span>
+<span class="fc" id="L228">                ? resolveConstantContent(ConstantLookupKeys.Cirius.ContractType.TYPE, kiyShbt)</span>
+<span class="fc" id="L229">                : null;</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        String billingServiceName = tokyoGas</span>
+<span class="fc" id="L231">                ? resolveConstantContent(ConstantLookupKeys.Cirius.BillingServiceType.TYPE, sikSvcShbt)</span>
+<span class="fc" id="L232">                : null;</span>
+<span class="fc bfc" id="L233" title="All 4 branches covered.">        String dutyFreeName = tokyoGas &amp;&amp; dutyFreeConsumptionTax.equals(sziKziKbn) ? &quot;免税&quot; : null;</span>
+
+<span class="fc" id="L235">        List&lt;TransferWorkHistoryRetailDetailInfo&gt; detailInfoList = buildDetailInfoList(</span>
+                isrrShsiTrkInfList,
+                tokyoGas,
+                supplyOutageWorkCode,
+                supplyOutageBusinessCode,
+                settlementPaymentMethodName,
+                closingMeansName,
+                hssgYmd,
+<span class="fc" id="L243">                requestContextValues.systemDatetime().toLocalDate(),</span>
+                reservedPeriodDate,
+                supplyOutageReasonName,
+                mejsGmsbNo,
+                paymentMethodName,
+                editedCustomerName,
+                contractTypeName,
+                syaKbn,
+                suguGmtKnsu,
+                dutyFreeName,
+                billingServiceName);
+
+<span class="fc" id="L255">        TransferWorkHistoryRetailCommonInfo commonInfo = new TransferWorkHistoryRetailCommonInfo(</span>
+                artyCstNo,
+                isrrTriYmd,
+                caseHistoryResultTransfer,
+                itemHistoryRegistrationDestinationCustomer,
+                isrrGymCd,
+                isrrGmssCd,
+                isrrHkkrKbn,
+                transferWorkHistoryInquiryCodeSubject,
+<span class="fc" id="L264">                toHms(requestContextValues.systemDatetime()),</span>
+                hssgYmd,
+                hukkUsrId,
+                hukkUnmKj,
+                TRANSFER_WORK_HISTORY_DETAIL_SCREEN_ID,
+                customerInfoAcquisitionPossible,
+                &quot;&quot;,
+                hssgYmd);
+
+<span class="fc" id="L273">        registrationGateway.register(new TransferWorkHistoryDetailRetailRegistrationRequest(</span>
+                commonInfo,
+                detailInfoList,
+<span class="fc" id="L276">                requestContextValues.correlationId(),</span>
+<span class="fc" id="L277">                requestContextValues.hukkSysShbt(),</span>
+<span class="fc" id="L278">                requestContextValues.systemDatetime()));</span>
+<span class="fc" id="L279">    }</span>
+
+    /**
+     * 概要: 明細 29 行分の登録内容を編集する。
+     * 主な仕様:
+     * - 設計書の行番号に従って固定 29 行の明細レコードを生成する。
+     * - 条件を満たす行のみ変更項目名や変更前後情報を設定し、それ以外は空欄のままとする。
+     * - 入力一覧の不足分は空行扱いとし、追加の例外は送出しない。
+     * 既知の制約:
+     * - 29 行目は請求サービス内容を設定し、条件不成立時は空欄のまま出力する。
+     * - 条件分岐に必要な下位 SV 実行結果は呼び出し元で事前解決した値を利用する。
+     *
+     * @return 編集済み明細一覧
+     */
+    private List&lt;TransferWorkHistoryRetailDetailInfo&gt; buildDetailInfoList(
+            List&lt;IsrrShsiTrkInf&gt; isrrShsiTrkInfList,
+            boolean tokyoGas,
+            boolean supplyOutageWorkCode,
+            boolean supplyOutageBusinessCode,
+            String settlementPaymentMethodName,
+            String closingMeansName,
+            LocalDate hssgYmd,
+            LocalDate systemDate,
+            LocalDate reservedPeriodDate,
+            String supplyOutageReasonName,
+            Long mejsGmsbNo,
+            String paymentMethodName,
+            CustomerNameEditOutput editedCustomerName,
+            String contractTypeName,
+            String syaKbn,
+            Integer suguGmtKnsu,
+            String dutyFreeName,
+            String billingServiceName) {
+<span class="fc" id="L312">        List&lt;TransferWorkHistoryRetailDetailInfo&gt; detailInfoList = new ArrayList&lt;&gt;(TOTAL_DETAIL_ROWS);</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        for (int detailNumber = 1; detailNumber &lt;= TOTAL_DETAIL_ROWS; detailNumber++) {</span>
+<span class="fc" id="L314">            detailInfoList.add(buildDetailInfo(</span>
+                    detailNumber,
+                    isrrShsiTrkInfList,
+                    tokyoGas,
+                    supplyOutageWorkCode,
+                    supplyOutageBusinessCode,
+                    settlementPaymentMethodName,
+                    closingMeansName,
+                    hssgYmd,
+                    systemDate,
+                    reservedPeriodDate,
+                    supplyOutageReasonName,
+                    mejsGmsbNo,
+                    paymentMethodName,
+                    editedCustomerName,
+                    contractTypeName,
+                    syaKbn,
+                    suguGmtKnsu,
+                    dutyFreeName,
+                    billingServiceName));
+        }
+<span class="fc" id="L335">        return detailInfoList;</span>
+    }
+
+    /**
+     * 概要: 明細 1 行分の登録内容を編集する。
+     * 主な仕様:
+     * - 行番号ごとに設計書の条件分岐を適用する。
+     * - 通常移送行は入力一覧の同じ行または指定オフセット行をそのままコピーする。
+     * - 特殊編集行は定数名やおなまえ編集結果、予定期間計算結果を反映する。
+     * 既知の制約:
+     * - 明細番号は 1 始まりで固定とし、入力一覧側は不足分を空行扱いとする。
+     */
+    private TransferWorkHistoryRetailDetailInfo buildDetailInfo(
+            int detailNumber,
+            List&lt;IsrrShsiTrkInf&gt; isrrShsiTrkInfList,
+            boolean tokyoGas,
+            boolean supplyOutageWorkCode,
+            boolean supplyOutageBusinessCode,
+            String settlementPaymentMethodName,
+            String closingMeansName,
+            LocalDate hssgYmd,
+            LocalDate systemDate,
+            LocalDate reservedPeriodDate,
+            String supplyOutageReasonName,
+            Long mejsGmsbNo,
+            String paymentMethodName,
+            CustomerNameEditOutput editedCustomerName,
+            String contractTypeName,
+            String syaKbn,
+            Integer suguGmtKnsu,
+            String dutyFreeName,
+            String billingServiceName) {
+<span class="fc bfc" id="L367" title="All 2 branches covered.">        if (detailNumber &lt;= 10) {</span>
+<span class="fc" id="L368">            return copyDetailInfo(detailNumber, detailAt(isrrShsiTrkInfList, detailNumber));</span>
+        }
+<span class="pc bpc" id="L370" title="1 of 16 branches missed.">        return switch (detailNumber) {</span>
+<span class="fc" id="L371">            case 11 -&gt; buildDetailInfo(detailNumber, &quot;精算料金支払方法&quot;, null, settlementPaymentMethodName);</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            case 12 -&gt; buildDetailInfo(detailNumber, &quot;供給停止方法&quot;, null, supplyOutageWorkCode ? closingMeansName : null);</span>
+<span class="fc" id="L373">            case 13 -&gt; buildDetailInfo(</span>
+                    detailNumber,
+                    &quot;供給停止計算保留予定期間（開始）&quot;,
+                    null,
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                    shouldSetReservedPeriodDates(systemDate, reservedPeriodDate) ? formatDate(hssgYmd) : null);</span>
+<span class="fc" id="L378">            case 14 -&gt; buildDetailInfo(</span>
+                    detailNumber,
+                    &quot;供給停止計算保留予定期間（終了）&quot;,
+                    null,
+<span class="fc bfc" id="L382" title="All 2 branches covered.">                    shouldSetReservedPeriodDates(systemDate, reservedPeriodDate)</span>
+<span class="fc" id="L383">                            ? formatDate(reservedPeriodDate)</span>
+<span class="fc" id="L384">                            : null);</span>
+<span class="fc" id="L385">            case 15 -&gt; buildDetailInfo(detailNumber, &quot;供給停止理由&quot;, null, supplyOutageReasonName);</span>
+<span class="fc" id="L386">            case 16 -&gt; buildDetailInfo(</span>
+                    detailNumber,
+                    &quot;前住所ガスメータ設置場所番号&quot;,
+                    null,
+<span class="fc bfc" id="L390" title="All 2 branches covered.">                    shouldFormatPreviousMeterLocationNumber(tokyoGas, supplyOutageBusinessCode, mejsGmsbNo)</span>
+<span class="fc" id="L391">                            ? formatMeterLocationNumber(mejsGmsbNo)</span>
+<span class="fc" id="L392">                            : null);</span>
+<span class="fc" id="L393">            case 17, 18 -&gt; copyDetailInfo(detailNumber, detailAt(isrrShsiTrkInfList, detailNumber - 6));</span>
+            case 19, 20 -&gt; {
+<span class="fc" id="L395">                IsrrShsiTrkInf sourceDetail = detailAt(isrrShsiTrkInfList, detailNumber - 6);</span>
+<span class="fc" id="L396">                yield buildDetailInfo(</span>
+                        detailNumber,
+<span class="fc" id="L398">                        sourceDetail.hukkKmnm(),</span>
+<span class="fc bfc" id="L399" title="All 2 branches covered.">                        tokyoGas ? sourceDetail.hukmJhu() : null,</span>
+<span class="fc" id="L400">                        sourceDetail.hkkgJhu());</span>
+            }
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            case 21 -&gt; buildDetailInfo(detailNumber, &quot;支払方法&quot;, tokyoGas ? paymentMethodName : null, null);</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">            case 22 -&gt; buildDetailInfo(detailNumber, &quot;支払者名&quot;, tokyoGas ? resolveEditedCustomerName(editedCustomerName) : null, null);</span>
+<span class="fc" id="L404">            case 23, 24, 25 -&gt; copyDetailInfo(detailNumber, detailAt(isrrShsiTrkInfList, detailNumber - 8));</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">            case 26 -&gt; buildDetailInfo(detailNumber, &quot;契約種別&quot;, tokyoGas ? contractTypeName : null, null);</span>
+<span class="fc" id="L406">            case 27 -&gt; buildDetailInfo(</span>
+                    detailNumber,
+                    &quot;社用／総合&quot;,
+<span class="fc bfc" id="L409" title="All 2 branches covered.">                    tokyoGas ? resolveCompanyOrComprehensiveName(syaKbn, suguGmtKnsu) : null,</span>
+                    null);
+<span class="fc bfc" id="L411" title="All 2 branches covered.">            case 28 -&gt; buildDetailInfo(detailNumber, &quot;免税&quot;, tokyoGas ? dutyFreeName : null, null);</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            case 29 -&gt; buildDetailInfo(detailNumber, &quot;請求サービス内容&quot;, tokyoGas ? billingServiceName : null, null);</span>
+<span class="nc" id="L413">            default -&gt; buildDetailInfo(detailNumber, null, null, null);</span>
+        };
+    }
+
+    private boolean shouldSetReservedPeriodDates(LocalDate systemDate, LocalDate reservedPeriodDate) {
+<span class="fc bfc" id="L418" title="All 4 branches covered.">        return reservedPeriodDate != null &amp;&amp; !reservedPeriodDate.isBefore(systemDate);</span>
+    }
+
+    private boolean shouldFormatPreviousMeterLocationNumber(
+            boolean tokyoGas,
+            boolean supplyOutageBusinessCode,
+            Long mejsGmsbNo) {
+<span class="fc bfc" id="L425" title="All 6 branches covered.">        return tokyoGas &amp;&amp; supplyOutageBusinessCode &amp;&amp; mejsGmsbNo != null;</span>
+    }
+
+        /**
+         * 概要: 会社区分 / 総合区分の変更前情報を決定する。
+         * 主な仕様:
+         * - 社用区分が社用の場合は固定文言「社用」を返す。
+         * - 社用でなく、総合ガスメーター個数が 1 以上の場合は「総合」を返す。
+         * - それ以外は null を返す。
+         * 既知の制約:
+         * - 設計書に下位 SV 呼び出し記載がないため、社用文言は定数マスタから解決しない。
+         */
+    private String resolveCompanyOrComprehensiveName(
+            String syaKbn,
+            Integer suguGmtKnsu) {
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        if (companyUseDivision.equals(syaKbn)) {</span>
+<span class="fc" id="L441">            return COMPANY_USE_LABEL;</span>
+        }
+<span class="pc bpc" id="L443" title="1 of 4 branches missed.">        if (suguGmtKnsu != null &amp;&amp; suguGmtKnsu &gt;= 1) {</span>
+<span class="fc" id="L444">            return COMPREHENSIVE_LABEL;</span>
+        }
+<span class="fc" id="L446">        return null;</span>
+    }
+
+    /**
+     * 概要: おなまえ編集結果から変更前情報へ採用する値を決定する。
+     * 主な仕様:
+     * - 漢字編集結果が存在する場合は漢字を優先する。
+     * - 漢字が未設定の場合はカナ編集結果を採用する。
+     * - 編集結果自体が未設定の場合は null を返す。
+     * 既知の制約:
+     * - blank 判定は行わず、CustomerNameEdit の戻り値をそのまま扱う。
+     */
+    private String resolveEditedCustomerName(CustomerNameEditOutput editedCustomerName) {
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">        if (editedCustomerName == null) {</span>
+<span class="nc" id="L460">            return null;</span>
+        }
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        if (editedCustomerName.hnsgCtnmKj1() != null) {</span>
+<span class="fc" id="L463">            return editedCustomerName.hnsgCtnmKj1();</span>
+        }
+<span class="fc" id="L465">        return editedCustomerName.hnsgCtnmKn1();</span>
+    }
+
+    /**
+     * 概要: 定数マスタから内容名を取得する。
+     * 主な仕様:
+     * - SV-089 を呼び出し、内容名 `cntn` をそのまま返却する。
+     * - コードが未設定の場合は SV-089 の仕様に従い null を返す。
+     * 既知の制約:
+     * - 下位 SV の例外は変換せずに上位へ伝播する。
+     */
+    private String resolveConstantContent(String constantType, String constantCode) {
+<span class="fc" id="L477">        return constantMasterInfoAcquisition.execute(constantType, constantCode).cntn();</span>
+    }
+
+    /**
+     * 概要: 明細入力一覧の指定行を取得する。
+     * 主な仕様:
+     * - 入力一覧が null、または指定行が範囲外の場合は空行を返す。
+     * - 行番号は 1 始まりとして扱う。
+     * - 取得した入力モデルは編集せず、そのまま呼び出し元へ返す。
+     * 既知の制約:
+     * - 入力一覧内の null 要素までは防御しない。
+     */
+    private IsrrShsiTrkInf detailAt(List&lt;IsrrShsiTrkInf&gt; isrrShsiTrkInfList, int detailNumber) {
+<span class="pc bpc" id="L490" title="1 of 2 branches missed.">        List&lt;IsrrShsiTrkInf&gt; safeDetailInfoList = isrrShsiTrkInfList == null</span>
+<span class="nc" id="L491">                ? Collections.emptyList()</span>
+<span class="fc" id="L492">                : isrrShsiTrkInfList;</span>
+<span class="pc bpc" id="L493" title="1 of 4 branches missed.">        if (detailNumber &lt; 1 || detailNumber &gt; safeDetailInfoList.size()) {</span>
+<span class="fc" id="L494">            return EMPTY_DETAIL_SOURCE;</span>
+        }
+<span class="fc" id="L496">        return safeDetailInfoList.get(detailNumber - 1);</span>
+    }
+
+    /**
+     * 概要: 入力明細をそのまま登録明細へ複写する。
+     * 主な仕様:
+     * - 変更項目名、変更前情報、変更後情報を入力明細からそのまま転記する。
+     * - 明細番号は呼び出し元で指定された値をそのまま設定する。
+     * - 入力明細が空行の場合は空欄行として扱う。
+     * 既知の制約:
+     * - 入力明細自体が null の場合は NullPointerException となる。
+     */
+    private TransferWorkHistoryRetailDetailInfo copyDetailInfo(int detailNumber, IsrrShsiTrkInf detailInfo) {
+<span class="fc" id="L509">        return buildDetailInfo(detailNumber, detailInfo.hukkKmnm(), detailInfo.hukmJhu(), detailInfo.hkkgJhu());</span>
+    }
+
+    /**
+     * 概要: 登録明細レコードを生成する。
+     * 主な仕様:
+     * - 明細番号、変更項目名、変更前情報、変更後情報をそのまま保持する。
+     * - 呼び出し元で決定済みの値を単純に詰め替えるだけとする。
+     * - 29 行固定編集の共通生成口として利用する。
+     * 既知の制約:
+     * - 値の trim や blank 補正は行わない。
+     */
+    private TransferWorkHistoryRetailDetailInfo buildDetailInfo(
+            int detailNumber,
+            String itemName,
+            String beforeInfo,
+            String afterInfo) {
+<span class="fc" id="L526">        return new TransferWorkHistoryRetailDetailInfo(detailNumber, itemName, beforeInfo, afterInfo);</span>
+    }
+
+    /**
+     * 概要: RequestContext の必須値を検証して取得する。
+     * 主な仕様:
+     * - correlationId、hukkSysShbt、systemDatetime の順で必須チェックを行う。
+     * - いずれかが未設定の場合は IllegalStateException を送出して処理を中断する。
+     * - 検証済みの値をレコードへまとめて返却する。
+     * 既知の制約:
+     * - 値の形式妥当性までは検証しない。
+     */
+    private RequestContextValues requireRequestContext() {
+<span class="fc" id="L539">        String correlationId = requestContext.getCorrelationId()</span>
+<span class="fc" id="L540">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L541">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L542">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L543">        LocalDateTime systemDatetime = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L544">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L545">        return new RequestContextValues(correlationId, hukkSysShbt, systemDatetime);</span>
+    }
+
+        /**
+         * 概要: 日付を `yyyy/MM/dd` 形式へ整形する。
+         * 主な仕様:
+         * - 値が存在する場合のみ書式化した文字列を返す。
+         * - 値が null の場合は null を返す。
+         * - 書式は実装と同じ `yyyy/MM/dd` を使用する。
+         * 既知の制約:
+         * - タイムゾーン変換は行わない。
+         */
+    private String formatDate(LocalDate value) {
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        return value == null ? null : DATE_FORMATTER.format(value);</span>
+    }
+
+    /**
+     * 概要: 前住所ガスメーター設置場所番号へハイフンを挿入する。
+     * 主な仕様:
+     * - 4 桁目と 5 桁目の間、および 7 桁目と 8 桁目の間にハイフンを挿入する。
+     * - 7 桁以下の値は挿入可能な位置までのみハイフンを付与する。
+     * - 値が null の場合は null を返す。
+     * 既知の制約:
+     * - 桁不足時の 0 埋めは行わず、入力値の文字列表現をそのまま編集する。
+     */
+    private String formatMeterLocationNumber(Long mejsGmsbNo) {
+<span class="pc bpc" id="L571" title="1 of 2 branches missed.">        if (mejsGmsbNo == null) {</span>
+<span class="nc" id="L572">            return null;</span>
+        }
+<span class="fc" id="L574">        String rawValue = Long.toString(mejsGmsbNo);</span>
+<span class="fc bfc" id="L575" title="All 2 branches covered.">        if (rawValue.length() &lt;= 4) {</span>
+<span class="fc" id="L576">            return rawValue;</span>
+        }
+<span class="pc bpc" id="L578" title="1 of 2 branches missed.">        if (rawValue.length() &lt;= 7) {</span>
+<span class="nc" id="L579">            return rawValue.substring(0, 4) + &quot;-&quot; + rawValue.substring(4);</span>
+        }
+<span class="fc" id="L581">        return rawValue.substring(0, 4) + &quot;-&quot; + rawValue.substring(4, 7) + &quot;-&quot; + rawValue.substring(7);</span>
+    }
+
+    /**
+     * 概要: システム日時から時分秒整数を生成する。
+     * 主な仕様:
+     * - `HHmmss` 形式で整形した文字列を整数化して返却する。
+     * - 案件履歴共通情報の登録依頼時分秒に利用する。
+     * - タイムゾーン変換は行わない。
+     * 既知の制約:
+     * - 24 時間制 `HH` での整形結果に依存する。
+     */
+    private Integer toHms(LocalDateTime systemDatetime) {
+<span class="fc" id="L594">        return Integer.valueOf(HMS_FORMATTER.format(systemDatetime));</span>
+    }
+
+<span class="fc" id="L597">    private record RequestContextValues(String correlationId, String hukkSysShbt, LocalDateTime systemDatetime) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

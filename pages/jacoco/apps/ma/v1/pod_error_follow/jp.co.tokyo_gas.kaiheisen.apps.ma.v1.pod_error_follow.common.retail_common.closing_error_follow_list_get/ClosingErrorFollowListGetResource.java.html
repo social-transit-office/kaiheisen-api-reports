@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingErrorFollowListGetResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-error-follow</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get</a> &gt; <span class="el_source">ClosingErrorFollowListGetResource.java</span></div><h1>ClosingErrorFollowListGetResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get.qualifier.ClosingErrorFollowListGetConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get.ClosingErrorFollowListGetEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get.ClosingErrorFollowListGetRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get.ClosingErrorFollowListGetResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.closing_error_follow_list_get.model.HseflIrResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.MixFieldEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.MixFieldEditOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-027 閉栓エラーフォロー一覧取得-共通-共通
+ */
+@Path(ClosingErrorFollowListGetEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;閉栓エラーフォロー一覧取得&quot;, description = &quot;MA-027 閉栓エラーフォロー一覧取得 API&quot;)
+public class ClosingErrorFollowListGetResource extends BaseResource&lt;ClosingErrorFollowListGetRequest&gt; {
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private String followStatusCodeNotFollowed;
+
+    private List&lt;String&gt; hesnJysbListIsEmpty;
+
+    private List&lt;String&gt; hesnJysbListSupplyOutage;
+
+    private List&lt;String&gt; hesnJysbListOtherThanSupplyOutage;
+
+    private final MixFieldEdit mixFieldEdit;
+
+    /** 定数：配列用数字 (501) */
+    private static final int GET_LIMIT_NUM = 500;
+
+    /** 定数：CIRIUSメッセージID（CXXM00037:表示上限を超えたため、{0}件のみ表示します。)*/
+    private static final String CIRIUS_MSG_ID_CXXM00037W = &quot;CXXM00037W&quot;;
+
+    /** 定数：CXXM00037用埋め込み文字 */
+    private static final String UMKM_MOJI_500 = &quot;500&quot;;
+
+    /** 定数：フォロー担当拠点コード.支社(&quot;0&quot;) */
+    private static final String SHISHA = &quot;0&quot;;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     */
+    @Inject
+    public ClosingErrorFollowListGetResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            @ClosingErrorFollowListGetConfiguration
+            MixFieldEdit mixFieldEdit,
+            CiriusConstantService ciriusConstantService,
+            HseflDataAccess hseflDataAccess) {
+<span class="fc" id="L89">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L90">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L91">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+
+<span class="fc" id="L95">        this.followStatusCodeNotFollowed = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L99">        this.hesnJysbListIsEmpty = List.of();</span>
+<span class="fc" id="L100">        this.hesnJysbListSupplyOutage = List.of(RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE));
+<span class="fc" id="L104">        this.hesnJysbListOtherThanSupplyOutage = List.of(RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE),
+<span class="fc" id="L108">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE),
+<span class="fc" id="L112">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.FIRED_AND_LOST_CAP),
+<span class="fc" id="L116">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE),
+<span class="fc" id="L120">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER));
+<span class="fc" id="L124">        this.mixFieldEdit = Objects.requireNonNull(</span>
+                mixFieldEdit,
+                &quot;mixFieldEdit&quot;);
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * MA-027 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;閉栓エラーフォロー一覧取得&quot;,
+            description = &quot;閉栓フォロー対象一覧を表示するため閉栓エラーフォロー件名を検索し、情報を取得する&quot;,
+            operationId = &quot;getClosingErrorFollowListGet&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;閉栓エラーフォロー一覧取得結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingErrorFollowListGetResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingErrorFollowListGetResponse endpoint(@BeanParam ClosingErrorFollowListGetRequest request) {
+<span class="fc" id="L160">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L161">            String flttCktkCd = request.flttCktkCd();</span>
+<span class="fc" id="L162">            String flttKtnCd = request.flttKtnCd();</span>
+<span class="fc" id="L163">            String hesnJysbKbn = request.hesnJysbKbn();</span>
+<span class="fc" id="L164">            String ciriusMsgId = &quot;&quot;;</span>
+<span class="fc" id="L165">            List&lt;String&gt; ciriusMsgUmkm = List.of();</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            List&lt;HseflRecord&gt; hseflRecords = SHISHA.equals(flttKtnCd)</span>
+            // リクエストパラメーター.フォロー担当拠点コード=0(支社)の場合
+<span class="fc bfc" id="L168" title="All 4 branches covered.">                ? switch (hesnJysbKbn) {</span>
+                case &quot;1&quot; -&gt;
+<span class="fc" id="L170">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        null,
+                        followStatusCodeNotFollowed,
+                        hesnJysbListIsEmpty);
+                case &quot;2&quot; -&gt;
+<span class="fc" id="L176">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        null,
+                        followStatusCodeNotFollowed,
+                        hesnJysbListSupplyOutage);
+                case &quot;3&quot; -&gt;
+<span class="fc" id="L182">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        null,
+                        followStatusCodeNotFollowed,
+                        hesnJysbListOtherThanSupplyOutage);
+<span class="fc" id="L187">                default -&gt; List.of();</span>
+            }
+                // リクエストパラメーター.フォロー担当拠点コード≠0(支社)の場合
+<span class="fc bfc" id="L190" title="All 4 branches covered.">                : switch (hesnJysbKbn) {</span>
+                case &quot;1&quot; -&gt;
+<span class="fc" id="L192">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        flttKtnCd,
+                        followStatusCodeNotFollowed,
+                            hesnJysbListIsEmpty);
+                case &quot;2&quot; -&gt;
+<span class="fc" id="L198">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        flttKtnCd,
+                        followStatusCodeNotFollowed,
+                        hesnJysbListSupplyOutage);
+                case &quot;3&quot; -&gt;
+<span class="fc" id="L204">                hseflDataAccess.findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(</span>
+                        flttCktkCd,
+                        flttKtnCd,
+                        followStatusCodeNotFollowed,
+                        hesnJysbListOtherThanSupplyOutage);
+<span class="fc" id="L209">                default -&gt; List.of();</span>
+            };
+            //DA-141-R004取得件数分繰返しレスポンスパラメーターを設定する
+<span class="fc" id="L212">            List&lt;HseflIrResponse&gt; hseflIrResponse = loopedRetrieval(hseflRecords);</span>
+
+            // DA-141-R004の取得件数=0の場合
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (0 == hseflRecords.size()) {</span>
+                // BusinessRuleException（該当データなし）
+<span class="fc" id="L217">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000093);</span>
+            }
+            // DA-141-R004の取得件数＞500件の場合
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (GET_LIMIT_NUM &lt; hseflRecords.size()) {</span>
+                // CXXM00037:表示上限を超えたため、{0}件のみ表示します。
+<span class="fc" id="L222">                ciriusMsgId = CIRIUS_MSG_ID_CXXM00037W;</span>
+                // {0}:表示上限件数
+<span class="fc" id="L224">                ciriusMsgUmkm = List.of(UMKM_MOJI_500);</span>
+            }
+<span class="fc" id="L226">            return toResponse(hseflIrResponse, ciriusMsgId, ciriusMsgUmkm);</span>
+        });
+    }
+
+    private List&lt;HseflIrResponse&gt; loopedRetrieval(List&lt;HseflRecord&gt; hseflRecords) {
+<span class="fc" id="L231">        List&lt;HseflIrResponse&gt; hsenflIrResponse = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        if (0 &lt; hseflRecords.size()) {</span>
+<span class="fc bfc" id="L233" title="All 4 branches covered.">            for (int i = 0; i &lt; hseflRecords.size() &amp;&amp; i &lt; GET_LIMIT_NUM; i++) {</span>
+<span class="fc" id="L234">                HseflRecord hseflRecord = hseflRecords.get(i);</span>
+                //SV-017(ミクス項目編集)処理呼出し
+<span class="fc" id="L236">                MixFieldEditOutput mixFieldEditOutput =</span>
+<span class="fc" id="L237">                    mixFieldEdit.execute(</span>
+<span class="fc" id="L238">                        hseflRecord.ctnmKjhkFlg(),</span>
+<span class="fc" id="L239">                        hseflRecord.ctnmKj1(),</span>
+                        null,
+<span class="fc" id="L241">                        hseflRecord.ctnmKn1(),</span>
+                        null,
+                        null,
+                        null,
+                        null);
+<span class="fc" id="L246">                hsenflIrResponse.add(createHseflIrResponse(hseflRecord, mixFieldEditOutput));</span>
+            }
+        } else {
+<span class="fc" id="L249">            return null;</span>
+        }
+<span class="fc" id="L251">        return hsenflIrResponse;</span>
+    }
+
+    /**
+     * レスポンス成型する。
+     *
+     * @param hsenflIr 開栓エラーフォロー件名一覧
+     * @param ciriusMsgId ＣＩＲＩＵＳメッセージＩＤ（ワーニング）
+     * @param ciriusMsgUmkm ＣＩＲＩＵＳメッセージ埋込み文字列リスト（ワーニング）
+     * @return ClosingErrorFollowListGetResponse レスポンス
+     */
+    private ClosingErrorFollowListGetResponse toResponse(
+        List&lt;HseflIrResponse&gt; hsenflIr,
+        String ciriusMsgId,
+        List&lt;String&gt; ciriusMsgUmkm) {
+<span class="fc" id="L266">        return new ClosingErrorFollowListGetResponse(</span>
+                        hsenflIr,
+                        ciriusMsgId,
+                        ciriusMsgUmkm,
+<span class="fc" id="L270">                        requestContext.getCorrelationId()</span>
+<span class="fc" id="L271">                            .orElseThrow(() -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;))</span>
+                );
+    }
+
+    /**
+     * 閉栓エラーフォロー件名一覧情報のレスポンスを生成する
+     *
+     * @param hseflRecord 閉栓エラーフォロー件名record
+     * @param mixFieldEditOutput SV-017取得結果
+     * @return HseflIrResponse 閉栓エラーフォロー件名一覧情報
+     */
+    private HseflIrResponse createHseflIrResponse(HseflRecord hseflRecord, MixFieldEditOutput mixFieldEditOutput) {
+<span class="fc" id="L283">        return new HseflIrResponse(</span>
+<span class="fc" id="L284">            hseflRecord.gasMtstNo(),</span>
+<span class="fc" id="L285">            formatDate(hseflRecord.hssgYmd()),</span>
+<span class="fc" id="L286">            formatDate(hseflRecord.hesnHukkYmd()),</span>
+<span class="fc" id="L287">            Long.valueOf(hseflRecord.regTsno()),</span>
+<span class="fc" id="L288">            hseflRecord.hssgNwkCd(),</span>
+<span class="fc" id="L289">            hseflRecord.hesnErryCd(),</span>
+<span class="fc" id="L290">            hseflRecord.hesnJysb(),</span>
+<span class="fc" id="L291">            mixFieldEditOutput.ctnm1(),</span>
+<span class="fc" id="L292">            hseflRecord.ctnm1HshiShbt(),</span>
+<span class="fc" id="L293">            hseflRecord.ctnm1HujnShbt(),</span>
+<span class="fc" id="L294">            hseflRecord.tkjMem(),</span>
+<span class="fc" id="L295">            hseflRecord.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 日付を ISO-8601 文字列へ変換する。
+     *
+     * @param value 変換対象日付
+     * @return 日付文字列。{@code value} が {@code null} の場合は {@code null}
+     */
+    private String formatDate(LocalDate value) {
+<span class="fc" id="L305">        return Objects.toString(value, null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

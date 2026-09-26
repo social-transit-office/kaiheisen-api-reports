@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComprehensiveMeterJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-comprehensivemeterjudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ComprehensiveMeterJudgmentAtOpeningImpl.java</span></div><h1>ComprehensiveMeterJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ComprehensiveMeterJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ComprehensiveMeterJudgmentAtOpeningOutput;
+
+/**
+ * 概要: 開栓時総合メーター判定サービス実装。
+ * 主な仕様:
+ * - 料金計算関連状態区分が関連有効または関連終了待ちの場合は DA-041-R003 の件数で総合判定を行う。
+ * - それ以外の場合は DA-041-R004 の取得結果から最大料金計算終了年月日を求め、継続使用扱いコードを決定する。
+ * - 判定に必要な CIRIUS / 開閉栓定数はコンストラクタで fail-fast に解決する。
+ * 既知の制約:
+ * - public execute 引数の null / blank 判定は上位層責務とし、本クラスでは追加ガードしない。
+ */
+public final class ComprehensiveMeterJudgmentAtOpeningImpl
+        implements ComprehensiveMeterJudgmentAtOpening {
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final String chargeCalculationRelatedStatusValid;
+
+    private final String chargeCalculationRelatedStatusEndWaiting;
+
+    private final String chargeCalculationRelatedStatusEnded;
+
+    private final String openingReasonContinuedUse;
+
+    private final String continuousUseHandlingCodeComprehensiveWarningTarget;
+
+    private final String continuousUseHandlingCodeAlternativeOpeningTarget;
+
+    private final List&lt;String&gt; activeOrEndWaitingStatuses;
+
+    private final List&lt;String&gt; activeWaitingOrEndedStatuses;
+
+    /**
+     * 概要: 判定に必要な依存と定数値を初期化する。
+     * 主な仕様:
+     * - SVMSTKR 参照 DA を保持する。
+     * - J0611、04900、KH007 の必須定数をコンストラクタで fail-fast 解決する。
+     * 既知の制約:
+     * - DI 依存不足は Objects.requireNonNull によりインスタンス生成時に失敗する。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public ComprehensiveMeterJudgmentAtOpeningImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L63">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L64">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L65">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L66">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L67">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L68">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L69">        this.chargeCalculationRelatedStatusValid = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L73">        this.chargeCalculationRelatedStatusEndWaiting = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L77">        this.chargeCalculationRelatedStatusEnded = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L81">        this.openingReasonContinuedUse = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L85">        this.continuousUseHandlingCodeComprehensiveWarningTarget =</span>
+<span class="fc" id="L86">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode
+                                .COMPREHENSIVE_WARNING_TARGET);
+<span class="fc" id="L91">        this.continuousUseHandlingCodeAlternativeOpeningTarget =</span>
+<span class="fc" id="L92">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode
+                                .ALTERNATIVE_OPENING_TARGET);
+<span class="fc" id="L97">        this.activeOrEndWaitingStatuses = List.of(</span>
+                chargeCalculationRelatedStatusValid,
+                chargeCalculationRelatedStatusEndWaiting);
+<span class="fc" id="L100">        this.activeWaitingOrEndedStatuses = List.of(</span>
+                chargeCalculationRelatedStatusValid,
+                chargeCalculationRelatedStatusEndWaiting,
+                chargeCalculationRelatedStatusEnded);
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * 概要: 開栓前時点で総合メーターだったかを判定する。
+     * 主な仕様:
+     * - 関連有効または関連終了待ちでは DA-041-R003 の件数が 1 件なら false、複数件なら true と判定する。
+     * - それ以外では DA-041-R004 の取得有無で総合判定し、継続使用時は最大料金計算終了年月日との比較で扱いコードを返す。
+     * 既知の制約:
+     * - DA 返却レコードの料金計算終了年月日が null の場合は最大値計算から除外する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param svkyNo サービス契約番号
+     * @param kasJysb 開栓事由種別
+     * @param hkkKsenSaymd 報告開栓作業年月日
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @param rkkiEndYmd 料金計算終了年月日
+     * @return 総合メーター判定結果
+     */
+    @Override
+    public ComprehensiveMeterJudgmentAtOpeningOutput execute(
+            Long gasMtstNo,
+            Long svkyNo,
+            String kasJysb,
+            LocalDate hkkKsenSaymd,
+            String rkkiKnrnJtkb,
+            LocalDate rkkiEndYmd) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (isTargetForCountBranch(rkkiKnrnJtkb)) {</span>
+<span class="fc" id="L131">            List&lt;String&gt; activeOrEndWaitingStatusList = activeOrEndWaitingStatusList();</span>
+<span class="fc" id="L132">            long relationCount = svmstkrDataAccess.findBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(</span>
+                    svkyNo,
+                    hkkKsenSaymd,
+                    activeOrEndWaitingStatusList);
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (relationCount == 0) {</span>
+<span class="fc" id="L137">                throw createZeroCountException(svkyNo, hkkKsenSaymd, activeOrEndWaitingStatusList);</span>
+            }
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            return new ComprehensiveMeterJudgmentAtOpeningOutput(relationCount &gt; 1, null);</span>
+        }
+
+<span class="fc" id="L142">        List&lt;String&gt; activeWaitingOrEndedStatusList = activeWaitingOrEndedStatusList();</span>
+<span class="fc" id="L143">        List&lt;SvmstkrRecord&gt; relatedRecords =</span>
+<span class="fc" id="L144">                svmstkrDataAccess.findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNo(</span>
+                        svkyNo,
+                        activeWaitingOrEndedStatusList,
+                        hkkKsenSaymd,
+                        gasMtstNo);
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        boolean suguHtkFlg = !relatedRecords.isEmpty();</span>
+<span class="fc" id="L150">        LocalDate maximumChargeCalculationEndDate =</span>
+<span class="fc" id="L151">                findMaximumChargeCalculationEndDate(relatedRecords);</span>
+
+<span class="fc" id="L153">        return new ComprehensiveMeterJudgmentAtOpeningOutput(</span>
+<span class="fc" id="L154">                suguHtkFlg,</span>
+<span class="fc" id="L155">                resolveContinuousUseHandlingCode(</span>
+                        kasJysb,
+                        suguHtkFlg,
+                        rkkiEndYmd,
+                        maximumChargeCalculationEndDate));
+    }
+
+    /**
+     * 概要: DA-041-R003 件数分岐の対象状態かを判定する。
+     * 主な仕様:
+     * - 関連有効または関連終了待ちに一致する場合に true を返す。
+     *
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @return 件数分岐の対象であれば true
+     */
+    private boolean isTargetForCountBranch(String rkkiKnrnJtkb) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        return rkkiKnrnJtkb.equals(chargeCalculationRelatedStatusValid)</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                || rkkiKnrnJtkb.equals(chargeCalculationRelatedStatusEndWaiting);</span>
+    }
+
+    /**
+     * 概要: DA-041-R003 へ渡す料金計算関連状態区分一覧を返す。
+     * 主な仕様:
+     * - J0611 の関連有効、関連終了待ちを設計順で返す。
+     *
+     * @return 判定対象の状態区分一覧
+     */
+    private List&lt;String&gt; activeOrEndWaitingStatusList() {
+<span class="fc" id="L183">        return activeOrEndWaitingStatuses;</span>
+    }
+
+    /**
+     * 概要: DA-041-R004 へ渡す料金計算関連状態区分一覧を返す。
+     * 主な仕様:
+     * - J0611 の関連有効、関連終了待ち、関連終了を設計順で返す。
+     *
+     * @return 判定対象の状態区分一覧
+     */
+    private List&lt;String&gt; activeWaitingOrEndedStatusList() {
+<span class="fc" id="L194">        return activeWaitingOrEndedStatuses;</span>
+    }
+
+    /**
+     * 概要: DA-041-R003 が 0 件だった場合のデータ不整合エラーを生成する。
+     * 主な仕様:
+     * - daIdentifier は CallSpecs.COUNT_BY... の identifier を利用する。
+     * - parameterJsonString には DA 呼出しパラメータ（サービス契約番号・検索基準年月日・状態区分リスト）を保持する。
+     * - tableName は SVMSTKR を設定する。
+     *
+     * @param svkyNo サービス契約番号
+     * @param hkkKsenSaymd 報告開栓作業年月日
+     * @param rkkiKnrnJtkbList 料金計算関連状態区分一覧
+     * @return DataInconsistencyException（データ不整合エラー）
+     */
+    private DataInconsistencyException createZeroCountException(
+            Long svkyNo,
+            LocalDate hkkKsenSaymd,
+            List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L213">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L214">                svmstkrDataAccess.tableName(),</span>
+                SvmstkrDataAccess.CallSpecs
+                        .COUNT_BY_SVKY_NO_AND_RKKI_STT_YMD_AND_RKKI_END_YMD_AND_RKKI_KNRN_JTKB
+<span class="fc" id="L217">                        .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L219">                        .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L220">                        .put(&quot;knskKjnYmd&quot;, hkkKsenSaymd)</span>
+<span class="fc" id="L221">                        .put(&quot;rkkiKnrnJtkbList&quot;, rkkiKnrnJtkbList));</span>
+    }
+
+    /**
+     * 概要: 取得結果から最大料金計算終了年月日を算出する。
+     * 主な仕様:
+     * - レコード順に走査し、より大きい料金計算終了年月日を保持する。
+     * - 料金計算終了年月日が null のレコードは比較対象外とする。
+     *
+     * @param relatedRecords DA-041-R004 の取得結果
+     * @return 最大料金計算終了年月日。比較対象がない場合は null
+     */
+    private LocalDate findMaximumChargeCalculationEndDate(List&lt;SvmstkrRecord&gt; relatedRecords) {
+<span class="fc" id="L234">        LocalDate maximumChargeCalculationEndDate = null;</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (SvmstkrRecord relatedRecord : relatedRecords) {</span>
+<span class="fc" id="L236">            LocalDate currentChargeCalculationEndDate = relatedRecord.rkkiEndYmd();</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">            if (currentChargeCalculationEndDate != null</span>
+                    &amp;&amp; (maximumChargeCalculationEndDate == null
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                            || currentChargeCalculationEndDate.isAfter(maximumChargeCalculationEndDate))) {</span>
+<span class="fc" id="L240">                maximumChargeCalculationEndDate = currentChargeCalculationEndDate;</span>
+            }
+<span class="fc" id="L242">        }</span>
+<span class="fc" id="L243">        return maximumChargeCalculationEndDate;</span>
+    }
+
+    /**
+     * 概要: 継続使用扱いコードを判定する。
+     * 主な仕様:
+     * - 継続使用かつ総合判定結果フラグ true の場合のみ判定対象とする。
+     * - 入力料金計算終了年月日が最大料金計算終了年月日より前なら代替開栓対象、それ以外は総合ワーニング対象を返す。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param suguHtkFlg 総合判定結果フラグ
+     * @param rkkiEndYmd 入力の料金計算終了年月日
+     * @param maximumChargeCalculationEndDate 取得結果から求めた最大料金計算終了年月日
+     * @return 継続使用扱いコード。条件不成立時は null
+     */
+    private String resolveContinuousUseHandlingCode(
+            String kasJysb,
+            boolean suguHtkFlg,
+            LocalDate rkkiEndYmd,
+            LocalDate maximumChargeCalculationEndDate) {
+<span class="fc bfc" id="L263" title="All 4 branches covered.">        if (!openingReasonContinuedUse.equals(kasJysb) || !suguHtkFlg) {</span>
+<span class="fc" id="L264">            return null;</span>
+        }
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (maximumChargeCalculationEndDate != null</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                &amp;&amp; rkkiEndYmd.isBefore(maximumChargeCalculationEndDate)) {</span>
+<span class="fc" id="L268">            return continuousUseHandlingCodeAlternativeOpeningTarget;</span>
+        }
+<span class="fc" id="L270">        return continuousUseHandlingCodeComprehensiveWarningTarget;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

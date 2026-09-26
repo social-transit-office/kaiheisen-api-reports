@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractInfoUpdateNoAlternativePipelineAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractinfoupdatenoalternativepipelineatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractInfoUpdateNoAlternativePipelineAtOpeningImpl.java</span></div><h1>ContractInfoUpdateNoAlternativePipelineAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoUpdateNoAlternativePipelineAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.DeemedMeterReadingRegistration;
+
+/**
+ * SV-227（開栓時契約情報更新処理（代替なし）（導管））のサービス実装。
+ */
+public class ContractInfoUpdateNoAlternativePipelineAtOpeningImpl
+        implements ContractInfoUpdateNoAlternativePipelineAtOpening {
+
+    static final String SERVICE_USER_ID = &quot;KHSS227&quot;;
+
+<span class="fc" id="L35">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private static final String DEEMED_METER_READING_REQUIRED = &quot;1&quot;;
+
+<span class="fc" id="L39">    private static final Integer DEEMED_METER_READING_SEQUENCE = 0;</span>
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final DeemedMeterReadingRegistration deemedMeterReadingRegistration;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String invalidTransportationServiceContractStatus;
+
+    private final String invalidTransportationServiceContractRelatedStatus;
+
+    private final String underContractStatus;
+
+    private final String applyingRelationStatus;
+
+    private final String previousContractContinuationReason;
+
+    private final String consignmentContractType;
+
+    private final String tokyoGasRetailerCode;
+
+    private final String originalGasMeterStatus;
+
+    private final String closedGasMeterStatus;
+
+    /**
+     * 依存オブジェクトと必須定数を初期化する。
+     *
+     * @param tkssvkyDataAccess 託送サービス契約データアクセス
+     * @param tskgmstDataAccess 託送サービス契約・ガスメーター設置場所関連データアクセス
+     * @param deemedMeterReadingRegistration みなし検針登録サービス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public ContractInfoUpdateNoAlternativePipelineAtOpeningImpl(
+            final TkssvkyDataAccess tkssvkyDataAccess,
+            final TskgmstDataAccess tskgmstDataAccess,
+            final DeemedMeterReadingRegistration deemedMeterReadingRegistration,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L86">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L87">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L88">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L89">        this.deemedMeterReadingRegistration =</span>
+<span class="fc" id="L90">                Objects.requireNonNull(deemedMeterReadingRegistration, &quot;deemedMeterReadingRegistration&quot;);</span>
+<span class="fc" id="L91">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L92">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L93">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L94">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L95">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L96">        this.invalidTransportationServiceContractStatus =</span>
+<span class="fc" id="L97">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.INVALID);
+<span class="fc" id="L101">        this.invalidTransportationServiceContractRelatedStatus =</span>
+<span class="fc" id="L102">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.INVALID);
+<span class="fc" id="L106">        this.underContractStatus =</span>
+<span class="fc" id="L107">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L111">        this.applyingRelationStatus =</span>
+<span class="fc" id="L112">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L116">        this.previousContractContinuationReason =</span>
+<span class="fc" id="L117">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ConsignmentServiceContractStartReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ConsignmentServiceContractStartReasonType
+                                .CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L122">        this.consignmentContractType =</span>
+<span class="fc" id="L123">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ConsignmentContractType.TYPE,
+                        ConstantLookupKeys.Cirius.ConsignmentContractType.CONSIGNMENT_CONTRACT);
+<span class="fc" id="L127">        this.tokyoGasRetailerCode =</span>
+<span class="fc" id="L128">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                        ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L132">        this.originalGasMeterStatus =</span>
+<span class="fc" id="L133">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L137">        this.closedGasMeterStatus =</span>
+<span class="fc" id="L138">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * 開栓時の導管契約情報を更新する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kktTksuSvkyNo 確定託送サービス契約番号
+     * @param kktTkysYmd 確定適用開始年月日
+     * @param kktSyoKyoTrno 確定使用者契約お客さま登録番号
+     * @param kktSvkyNo 確定サービス契約番号
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param snyInfList 専用メーター情報リスト
+     */
+    @Override
+    public void execute(
+            final Long gasMtstNo,
+            final Long kktTksuSvkyNo,
+            final LocalDate kktTkysYmd,
+            final Long kktSyoKyoTrno,
+            final Long kktSvkyNo,
+            final String ckrtGmscJtkb,
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="fc" id="L164">        requireCorrelationId();</span>
+<span class="fc" id="L165">        requireSystemDatetime();</span>
+<span class="fc" id="L166">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L167">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L169">        registerContract(gasMtstNo, kktTksuSvkyNo, kktTkysYmd, kktSyoKyoTrno, auditContext);</span>
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (!originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L172">            return;</span>
+        }
+
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        for (SnyInf dedicatedMeterInfo : normalizeDedicatedMeterInfoList(snyInfList)) {</span>
+<span class="fc" id="L176">            registerDedicatedMeter(</span>
+                    dedicatedMeterInfo,
+                    kktTkysYmd,
+                    kktSyoKyoTrno,
+                    kktSvkyNo,
+                    auditContext);
+<span class="fc" id="L182">        }</span>
+<span class="fc" id="L183">    }</span>
+
+    private void registerDedicatedMeter(
+            final SnyInf dedicatedMeterInfo,
+            final LocalDate kktTkysYmd,
+            final Long kktSyoKyoTrno,
+            final Long kktSvkyNo,
+            final AuditContext auditContext) {
+<span class="fc" id="L191">        Long dedicatedGasMtstNo = dedicatedMeterInfo.gasMtstNo();</span>
+<span class="fc" id="L192">        Long dedicatedTksuSvkyNo = dedicatedMeterInfo.kktTksuSvkyNo();</span>
+<span class="fc" id="L193">        registerContract(</span>
+                dedicatedGasMtstNo,
+                dedicatedTksuSvkyNo,
+                kktTkysYmd,
+                kktSyoKyoTrno,
+                auditContext);
+<span class="fc" id="L199">        deemedMeterReadingRegistration.execute(</span>
+                DEEMED_METER_READING_REQUIRED,
+                kktTkysYmd,
+                dedicatedGasMtstNo,
+                DEEMED_METER_READING_SEQUENCE,
+                kktSvkyNo,
+                closedGasMeterStatus);
+<span class="fc" id="L206">    }</span>
+
+    private void registerContract(
+            final Long gasMtstNo,
+            final Long tksuSvkyNo,
+            final LocalDate tkysYmd,
+            final Long syoKyoTrno,
+            final AuditContext auditContext) {
+<span class="fc" id="L214">        TkssvkyRecord currentTransportContract = requireTransportContract(tksuSvkyNo);</span>
+<span class="fc" id="L215">        tkssvkyDataAccess.insert(</span>
+<span class="fc" id="L216">                buildTkssvkyWriteRecord(currentTransportContract, tkysYmd, syoKyoTrno),</span>
+                auditContext);
+
+<span class="fc" id="L219">        TskgmstRecord currentTransportRelation = requireTransportRelation(gasMtstNo, tksuSvkyNo);</span>
+<span class="fc" id="L220">        tskgmstDataAccess.insert(</span>
+<span class="fc" id="L221">                buildTskgmstWriteRecord(currentTransportRelation, tkysYmd),</span>
+                auditContext);
+<span class="fc" id="L223">    }</span>
+
+    private TkssvkyRecord requireTransportContract(final Long tksuSvkyNo) {
+<span class="fc" id="L226">        return tkssvkyDataAccess</span>
+<span class="fc" id="L227">                .findByTksuSvkyNoAndTksuSvkyJtkb(tksuSvkyNo, invalidTransportationServiceContractStatus)</span>
+<span class="fc" id="L228">                .orElseThrow(() -&gt; createTkssvkyNotFoundException(tksuSvkyNo));</span>
+    }
+
+    private TskgmstRecord requireTransportRelation(
+            final Long gasMtstNo,
+            final Long tksuSvkyNo) {
+<span class="fc" id="L234">        return tskgmstDataAccess</span>
+<span class="fc" id="L235">                .findByGasMtstNoAndTksuSvkyNoAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        tksuSvkyNo,
+                        invalidTransportationServiceContractRelatedStatus)
+<span class="fc" id="L239">                .orElseThrow(() -&gt; createTskgmstNotFoundException(gasMtstNo, tksuSvkyNo));</span>
+    }
+
+    private TkssvkyWriteRecord buildTkssvkyWriteRecord(
+            final TkssvkyRecord currentTransportContract,
+            final LocalDate tkysYmd,
+            final Long syoKyoTrno) {
+<span class="fc" id="L246">        return new TkssvkyWriteRecord(</span>
+<span class="fc" id="L247">                currentTransportContract.tksuSvkyNo(),</span>
+<span class="fc" id="L248">                currentTransportContract.skno() + 1,</span>
+                underContractStatus,
+                previousContractContinuationReason,
+                null,
+                tkysYmd,
+                MAX_DATE,
+<span class="fc" id="L254">                currentTransportContract.hesnYtiYmd(),</span>
+                consignmentContractType,
+                tokyoGasRetailerCode,
+                Boolean.TRUE,
+                syoKyoTrno);
+    }
+
+    private TskgmstWriteRecord buildTskgmstWriteRecord(
+            final TskgmstRecord currentTransportRelation,
+            final LocalDate tkysYmd) {
+<span class="fc" id="L264">        return new TskgmstWriteRecord(</span>
+<span class="fc" id="L265">                currentTransportRelation.gasMtstNo(),</span>
+<span class="fc" id="L266">                currentTransportRelation.tksuSvkyNo(),</span>
+<span class="fc" id="L267">                currentTransportRelation.skno() + 1,</span>
+                applyingRelationStatus,
+                tkysYmd,
+                MAX_DATE);
+    }
+
+    private List&lt;SnyInf&gt; normalizeDedicatedMeterInfoList(final List&lt;SnyInf&gt; snyInfList) {
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        return snyInfList == null ? List.of() : snyInfList;</span>
+    }
+
+    private DataInconsistencyException createTkssvkyNotFoundException(final Long tksuSvkyNo) {
+<span class="fc" id="L278">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L279">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L280">                TkssvkyDataAccess.CallSpecs.FIND_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L282">                        .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L283">                        .put(&quot;tksuSvkyJtkb&quot;, invalidTransportationServiceContractStatus));</span>
+    }
+
+    private DataInconsistencyException createTskgmstNotFoundException(
+            final Long gasMtstNo,
+            final Long tksuSvkyNo) {
+<span class="fc" id="L289">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L290">                tskgmstDataAccess.tableName(),</span>
+<span class="fc" id="L291">                TskgmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_TKSU_SVKK_JTKB.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L293">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L294">                        .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L295">                        .put(&quot;tksuSvkkJtkb&quot;, invalidTransportationServiceContractRelatedStatus));</span>
+    }
+
+    private String requireCorrelationId() {
+<span class="fc" id="L299">        String correlationId = requestContext.getCorrelationId()</span>
+<span class="fc" id="L300">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">        if (correlationId.isBlank()) {</span>
+<span class="nc" id="L302">            throw new IllegalStateException(&quot;RequestContext.correlationId is required&quot;);</span>
+        }
+<span class="fc" id="L304">        return correlationId;</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L308">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L309">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L313">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L314">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (hukkSysShbt.isBlank()) {</span>
+<span class="nc" id="L316">            throw new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;);</span>
+        }
+<span class="fc" id="L318">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L321" title="2 of 4 branches missed.">        if (decodedOriginFunctionId == null || decodedOriginFunctionId.isBlank()) {</span>
+<span class="nc" id="L322">            throw new IllegalStateException(&quot;Origin function id constant is required&quot;);</span>
+        }
+<span class="fc" id="L324">        return decodedOriginFunctionId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

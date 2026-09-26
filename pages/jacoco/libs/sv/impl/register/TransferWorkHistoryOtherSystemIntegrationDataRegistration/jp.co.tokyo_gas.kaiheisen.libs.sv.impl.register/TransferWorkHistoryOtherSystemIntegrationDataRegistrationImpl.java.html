@@ -1,0 +1,343 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryOtherSystemIntegrationDataRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-transferworkhistoryothersystemintegrationdataregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TransferWorkHistoryOtherSystemIntegrationDataRegistrationImpl.java</span></div><h1>TransferWorkHistoryOtherSystemIntegrationDataRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DuplicateKeyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.IsrrkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryOtherSystemIntegrationDataRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf;
+
+/**
+ * 概要: SV-272（異動・作業履歴他システム連携データ登録）の実装。
+ * 主な仕様:
+ * - 性能計測のため、コンスタントマスタの存在・登録利用可否チェック計20項目を一時停止する。
+ * - DA-158-R002 で通し番号を採番し、DA-158-C001 の主キー重複時は 1 回だけ再試行する。
+ * - 監査情報は RequestContext と AuditContext から組み立てる。
+ * 既知の制約:
+ * - SV-273 の公開契約が未配置のため、登録利用可否判定は既存のコンスタントマスタ取得 SV で代替する。
+ * - チェック用の補助メソッドと依存は復元用に保持し、一時停止中は呼び出さない。
+ */
+public final class TransferWorkHistoryOtherSystemIntegrationDataRegistrationImpl
+        implements TransferWorkHistoryOtherSystemIntegrationDataRegistration {
+
+    static final String SERVICE_USER_ID = &quot;KHSS272&quot;;
+
+    private static final String OWNER_DIVISION_CONDUIT = ConstantLookupKeys.Cirius.Unnamed__N3.CONDUIT;
+
+    private static final String OWNER_DIVISION_RETAIL = ConstantLookupKeys.Cirius.Unnamed__N3.RETAIL;
+
+<span class="fc" id="L43">    private static final List&lt;ConstantCheckDefinition&gt; HELPER_GROUP_ONE_CONDUIT = List.of(</span>
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                    IsrrkrInf::kytuIsrrGymCd),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                    IsrrkrInf::kytuIsrrGymShsiCd));
+
+<span class="fc" id="L51">    private static final List&lt;ConstantCheckDefinition&gt; HELPER_GROUP_ONE_RETAIL = List.of(</span>
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                    IsrrkrInf::kytuIsrrGymCd),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                    IsrrkrInf::kytuIsrrGymShsiCd));
+
+<span class="fc" id="L59">    private static final List&lt;ConstantCheckDefinition&gt; HELPER_GROUP_TWO = List.of(</span>
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.InstallmentEquipmentPayment.TYPE,
+                    IsrrkrInf::kpkkSisnKbn),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                    IsrrkrInf::hesnJysb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.ServiceContractTerminationReasonType.TYPE,
+                    IsrrkrInf::svkyEndJysb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                    IsrrkrInf::kkysSisnJtkb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterModelCodeType.TYPE,
+                    IsrrkrInf::shnGmkShbt),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                    IsrrkrInf::gmtKhsJtkb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                    IsrrkrInf::kngmStbJtkb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterRemovalReasonType.TYPE,
+                    IsrrkrInf::gmtThkgJysb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.RegularMeterReadingBatchNumber.TYPE,
+                    IsrrkrInf::shnTkkbNo),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.DesignatedMeterReadingDate.TYPE,
+                    IsrrkrInf::sinsKsddKbn),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.DesignatedMeterReadingBatchNumber.TYPE,
+                    IsrrkrInf::sinsKskbNo),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                    IsrrkrInf::ckrtGmscJtkb),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.EquipmentGasMeter.TYPE,
+                    IsrrkrInf::kkyuGmtKbn),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterLocationMajor.TYPE,
+                    IsrrkrInf::gmicDbriShbt),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterPositionSub.TYPE,
+                    IsrrkrInf::gmicSbriShbt),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.MeterReadingAvailabilityFlag.TYPE,
+<span class="nc" id="L107">                    info -&gt; toConstantCode(info.knsKhFlg())),</span>
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasUsageCode.TYPE,
+                    IsrrkrInf::gasYtCd),
+            new ConstantCheckDefinition(
+                    ConstantLookupKeys.Cirius.GasMeterReplacementReasonType.TYPE,
+                    IsrrkrInf::gmtTkeJysb));
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    private final IsrrkrDataAccess isrrkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * 概要: SV-272 実行に必要な依存を初期化する。
+     * 主な仕様:
+     * - コンスタント確認 SV、DA-158、RequestContext、開閉栓定数サービスを保持する。
+     * - 依存が不足している場合はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param constantMasterInfoAcquisition コンスタントマスタ情報取得 SV
+     * @param isrrkrDataAccess 異動・作業履歴連携管理 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public TransferWorkHistoryOtherSystemIntegrationDataRegistrationImpl(
+            ConstantMasterInfoAcquisition constantMasterInfoAcquisition,
+            IsrrkrDataAccess isrrkrDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L138">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L139">        this.constantMasterInfoAcquisition = Objects.requireNonNull(</span>
+                constantMasterInfoAcquisition,
+                &quot;constantMasterInfoAcquisition&quot;);
+<span class="fc" id="L142">        this.isrrkrDataAccess = Objects.requireNonNull(isrrkrDataAccess, &quot;isrrkrDataAccess&quot;);</span>
+<span class="fc" id="L143">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L144">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L147">    }</span>
+
+    /**
+     * 概要: 異動・作業履歴連携管理情報を登録する。
+     * 主な仕様:
+     * - 必須項目、所有事業者区分、RequestContext を確認し、コンスタント確認は一時省略する。
+     * - 最大通し番号を採番し、重複時は 1 回だけ通し番号を加算して再登録する。
+     * - 正常終了時は戻り値を持たずに完了する。
+     *
+     * @param isrrkrInf 異動・作業履歴連携管理情報
+     */
+    @Override
+    public void execute(IsrrkrInf isrrkrInf) {
+<span class="fc" id="L160">        validateRequiredFields(isrrkrInf);</span>
+<span class="fc" id="L161">        validateOwnerDivision(isrrkrInf.shyuJgysKbn());</span>
+<span class="fc" id="L162">        String decodedOriginFunctionId = requireDecodedOriginFunctionId();</span>
+        // 性能計測のため、コンスタントマスタの存在・登録利用可否チェック計20項目を一時停止する。
+
+<span class="fc" id="L165">        int nextSequence = isrrkrDataAccess</span>
+<span class="fc" id="L166">                .findMaxIsrrRkkrTsnoByCstNoAndIsrrTriYmd(isrrkrInf.cstNo(), isrrkrInf.isrrTriYmd())</span>
+<span class="fc" id="L167">                .map(value -&gt; value + 1)</span>
+<span class="fc" id="L168">                .orElse(1);</span>
+
+        try {
+<span class="fc" id="L171">            insertIsrrkr(isrrkrInf, nextSequence, decodedOriginFunctionId);</span>
+<span class="fc" id="L172">        } catch (DuplicateKeyException firstDuplicateKeyException) {</span>
+<span class="fc" id="L173">            insertIsrrkr(isrrkrInf, nextSequence + 1, decodedOriginFunctionId);</span>
+<span class="fc" id="L174">        }</span>
+<span class="fc" id="L175">    }</span>
+
+    private void validateRequiredFields(IsrrkrInf isrrkrInf) {
+<span class="fc" id="L178">        List&lt;String&gt; missingFieldNames = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (isrrkrInf.cstNo() == null) {</span>
+<span class="fc" id="L180">            missingFieldNames.add(&quot;お客さま番号&quot;);</span>
+        }
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (isrrkrInf.isrrTriHms() == null) {</span>
+<span class="nc" id="L183">            missingFieldNames.add(&quot;異動・作業履歴登録依頼時分秒&quot;);</span>
+        }
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (isBlank(isrrkrInf.shyuJgysKbn())) {</span>
+<span class="nc" id="L186">            missingFieldNames.add(&quot;所有事業者区分&quot;);</span>
+        }
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (isBlank(isrrkrInf.kytuIsrrGymCd())) {</span>
+<span class="fc" id="L189">            missingFieldNames.add(&quot;異動・作業履歴業務コード&quot;);</span>
+        }
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (isrrkrInf.idsgYmd() == null) {</span>
+<span class="nc" id="L192">            missingFieldNames.add(&quot;異動・作業年月日&quot;);</span>
+        }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (!missingFieldNames.isEmpty()) {</span>
+<span class="fc" id="L195">            throw new ValidationException(</span>
+<span class="fc" id="L196">                    List.of(ValidationError.ofField(</span>
+                            ErrorCodeConstants.ERROR_CODE_010000001,
+<span class="fc" id="L198">                            String.join(&quot;、&quot;, missingFieldNames))),</span>
+                    true);
+        }
+<span class="fc" id="L201">    }</span>
+
+    private void validateOwnerDivision(String ownerDivision) {
+<span class="fc bfc" id="L204" title="All 4 branches covered.">        if (!OWNER_DIVISION_CONDUIT.equals(ownerDivision) &amp;&amp; !OWNER_DIVISION_RETAIL.equals(ownerDivision)) {</span>
+<span class="fc" id="L205">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000010);</span>
+        }
+<span class="fc" id="L207">    }</span>
+
+    private List&lt;ConstantCheckDefinition&gt; resolveHelperGroupOneDefinitions(String ownerDivision) {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        if (OWNER_DIVISION_CONDUIT.equals(ownerDivision)) {</span>
+<span class="nc" id="L211">            return HELPER_GROUP_ONE_CONDUIT;</span>
+        }
+<span class="nc" id="L213">        return HELPER_GROUP_ONE_RETAIL;</span>
+    }
+
+    private void executeExistenceChecks(IsrrkrInf isrrkrInf, List&lt;ConstantCheckDefinition&gt; definitions) {
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        for (ConstantCheckDefinition definition : definitions) {</span>
+<span class="nc" id="L218">            String constantCode = normalizeConstantCode(definition.codeResolver().apply(isrrkrInf));</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">            if (constantCode == null) {</span>
+<span class="nc" id="L220">                continue;</span>
+            }
+            try {
+<span class="nc" id="L223">                constantMasterInfoAcquisition.execute(definition.cnstShbtCd(), constantCode);</span>
+<span class="nc" id="L224">            } catch (DataNotFoundException dataNotFoundException) {</span>
+<span class="nc" id="L225">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000010);</span>
+<span class="nc" id="L226">            }</span>
+<span class="nc" id="L227">        }</span>
+<span class="nc" id="L228">    }</span>
+
+    private void executeAvailabilityChecks(IsrrkrInf isrrkrInf, List&lt;ConstantCheckDefinition&gt; definitions) {
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        for (ConstantCheckDefinition definition : definitions) {</span>
+<span class="nc" id="L232">            String constantCode = normalizeConstantCode(definition.codeResolver().apply(isrrkrInf));</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            if (constantCode == null) {</span>
+<span class="nc" id="L234">                continue;</span>
+            }
+            try {
+<span class="nc" id="L237">                ConstantMasterInfoAcquisitionOutput output =</span>
+<span class="nc" id="L238">                        constantMasterInfoAcquisition.execute(definition.cnstShbtCd(), constantCode);</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">                if (Boolean.FALSE.equals(output.trkjRykhFlg())) {</span>
+<span class="nc" id="L240">                    throw new IllegalStateException(</span>
+                            &quot;Constant registration unavailable: cnstShbtCd=&quot;
+<span class="nc" id="L242">                                    + definition.cnstShbtCd()</span>
+                                    + &quot;, cnstCd=&quot;
+                                    + constantCode);
+                }
+<span class="nc" id="L246">            } catch (DataNotFoundException dataNotFoundException) {</span>
+<span class="nc" id="L247">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000010);</span>
+<span class="nc" id="L248">            }</span>
+<span class="nc" id="L249">        }</span>
+<span class="nc" id="L250">    }</span>
+
+    private void insertIsrrkr(IsrrkrInf isrrkrInf, int sequence, String decodedOriginFunctionId) {
+<span class="fc" id="L253">        isrrkrDataAccess.insert(</span>
+                new IsrrkrWriteRecord(
+<span class="fc" id="L255">                        isrrkrInf.cstNo(),</span>
+<span class="fc" id="L256">                        isrrkrInf.isrrTriYmd(),</span>
+<span class="fc" id="L257">                        sequence,</span>
+<span class="fc" id="L258">                        isrrkrInf.shyuJgysKbn(),</span>
+<span class="fc" id="L259">                        isrrkrInf.isrrTriHms(),</span>
+<span class="fc" id="L260">                        isrrkrInf.kytuIsrrGymCd(),</span>
+<span class="fc" id="L261">                        isrrkrInf.kytuIsrrGymShsiCd(),</span>
+<span class="fc" id="L262">                        isrrkrInf.idsgYmd(),</span>
+<span class="fc" id="L263">                        isrrkrInf.kyuSvkyNo(),</span>
+<span class="fc" id="L264">                        isrrkrInf.shnSvkyNo(),</span>
+<span class="fc" id="L265">                        isrrkrInf.kpkkSisnKbn(),</span>
+<span class="fc" id="L266">                        isrrkrInf.hesnJysb(),</span>
+<span class="fc" id="L267">                        isrrkrInf.svkyEndJysb(),</span>
+<span class="fc" id="L268">                        isrrkrInf.kkysSisnJtkb(),</span>
+<span class="fc" id="L269">                        isrrkrInf.hesnYmd(),</span>
+<span class="fc" id="L270">                        isrrkrInf.kyuSkyoTrno(),</span>
+<span class="fc" id="L271">                        isrrkrInf.shnSkyoTrno(),</span>
+<span class="fc" id="L272">                        isrrkrInf.kyuGmb(),</span>
+<span class="fc" id="L273">                        isrrkrInf.shnGmb(),</span>
+<span class="fc" id="L274">                        isrrkrInf.kyuGmkShbt(),</span>
+<span class="fc" id="L275">                        isrrkrInf.shnGmkShbt(),</span>
+<span class="fc" id="L276">                        isrrkrInf.kyuGasSyry(),</span>
+<span class="fc" id="L277">                        isrrkrInf.shnGmtGusu(),</span>
+<span class="fc" id="L278">                        isrrkrInf.skinGmtShjSu(),</span>
+<span class="fc" id="L279">                        isrrkrInf.gmtKhsJtkb(),</span>
+<span class="fc" id="L280">                        isrrkrInf.kngmStbJtkb(),</span>
+<span class="fc" id="L281">                        isrrkrInf.gmtThkgJysb(),</span>
+<span class="fc" id="L282">                        isrrkrInf.kyuTkkbNo(),</span>
+<span class="fc" id="L283">                        isrrkrInf.shnTkkbNo(),</span>
+<span class="fc" id="L284">                        isrrkrInf.kyusKsddKbn(),</span>
+<span class="fc" id="L285">                        isrrkrInf.kyusKskbNo(),</span>
+<span class="fc" id="L286">                        isrrkrInf.sinsKsddKbn(),</span>
+<span class="fc" id="L287">                        isrrkrInf.sinsKskbNo(),</span>
+<span class="fc" id="L288">                        isrrkrInf.ckrtGmscJtkb(),</span>
+<span class="fc" id="L289">                        isrrkrInf.kkyuGmtKbn(),</span>
+<span class="fc" id="L290">                        isrrkrInf.bldNo(),</span>
+<span class="fc" id="L291">                        isrrkrInf.gmicDbriShbt(),</span>
+<span class="fc" id="L292">                        isrrkrInf.gmicSbriShbt(),</span>
+<span class="fc" id="L293">                        isrrkrInf.knsKhFlg(),</span>
+<span class="fc" id="L294">                        isrrkrInf.gmrKkykNo(),</span>
+<span class="fc" id="L295">                        isrrkrInf.gmrMticCd(),</span>
+<span class="fc" id="L296">                        isrrkrInf.gmrHangCd(),</span>
+<span class="fc" id="L297">                        isrrkrInf.shsyKyoTrno(),</span>
+<span class="fc" id="L298">                        isrrkrInf.gasYtCd(),</span>
+<span class="fc" id="L299">                        isrrkrInf.shnGmtkYmd(),</span>
+<span class="fc" id="L300">                        isrrkrInf.kyuGmtGusu(),</span>
+<span class="fc" id="L301">                        isrrkrInf.kyuKtyYm(),</span>
+<span class="fc" id="L302">                        isrrkrInf.gmtTkeJysb(),</span>
+<span class="fc" id="L303">                        isrrkrInf.rkhsYmd(),</span>
+<span class="fc" id="L304">                        isrrkrInf.kzfYtiYmd(),</span>
+                        null),
+<span class="fc" id="L306">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L307">    }</span>
+
+    private String requireDecodedOriginFunctionId() {
+<span class="fc" id="L310">        String hukkSysShbt = requestContext</span>
+<span class="fc" id="L311">                .getHukkSysShbt()</span>
+<span class="fc" id="L312">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L313">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+
+    private static String normalizeConstantCode(String value) {
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L320">            return null;</span>
+        }
+<span class="nc" id="L322">        String normalized = value.trim();</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+
+    private static String toConstantCode(Boolean value) {
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L328">            return null;</span>
+        }
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        return value</span>
+<span class="nc" id="L331">                ? ConstantLookupKeys.Cirius.MeterReadingAvailabilityFlag.METER_READING_POSSIBLE</span>
+<span class="nc" id="L332">                : ConstantLookupKeys.Cirius.MeterReadingAvailabilityFlag.METER_READING_NOT_POSSIBLE;</span>
+    }
+
+    private static boolean isBlank(String value) {
+<span class="pc bpc" id="L336" title="1 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+
+<span class="fc" id="L339">    private record ConstantCheckDefinition(String cnstShbtCd, Function&lt;IsrrkrInf, String&gt; codeResolver) {</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

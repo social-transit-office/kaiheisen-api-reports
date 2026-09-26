@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelocationOtherPlaceCollectionRequestCheckAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-relocationotherplacecollectionrequestcheckatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">RelocationOtherPlaceCollectionRequestCheckAtOpeningImpl.java</span></div><h1>RelocationOtherPlaceCollectionRequestCheckAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.RelocationOtherPlaceCollectionRequestCheckAtOpening;
+
+/**
+ * 概要: SV-203（開栓時移転分他所集金依頼中チェック）の実装クラス。
+ * 主な仕様:
+ * - 託送供給依頼事業者コード、契約有無フラグ、閉栓事由種別、他所集金依頼状況コードの組み合わせを判定する。
+ * - 全条件成立時は開栓共通エラー 020100045 を送出し、それ以外は何も返さずに正常終了する。
+ * - 判定に使用する CIRIUS 定数はコンストラクタ初期化時点で解決し、実行時は解決済み値のみを参照する。
+ * 既知の制約:
+ * - 入力値の trim、blank 補正、null 補正は行わず、呼び出し元から渡された値をそのまま評価する。
+ * - RequestContext は共通ルールとの整合のため保持するが、本ロジックでは参照しない。
+ * - 閉栓事由種別の対象は設計書記載の 4 種に限定し、それ以外の事由はすべて正常終了扱いとする。
+ */
+public class RelocationOtherPlaceCollectionRequestCheckAtOpeningImpl
+        implements RelocationOtherPlaceCollectionRequestCheckAtOpening {
+
+    /**
+     * 概要: SV 実行時のリクエストコンテキスト。
+     * 主な仕様:
+     * - 共通ルールに従いコンストラクタで受け取り、他の SV 実装と同じ依存注入形を維持する。
+     * - 相関ID、報告システム種別、システム日時などの共通情報の受け渡し先となる。
+     * 既知の制約:
+     * - SV-203 の業務判定ロジック自体では本フィールドを参照しない。
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: 判定対象となる東京ガス小売事業者コードの解決済み定数値。
+     * 主な仕様:
+     * - CIRIUS 定数 J0580 の東京ガス株式会社コードをコンストラクタで解決して保持する。
+     * - 実行時は引数の託送供給依頼事業者コードとの完全一致判定に使用する。
+     * 既知の制約:
+     * - 定数未登録時はコンストラクタ内で fail-fast し、インスタンス生成に失敗する。
+     */
+    private final String tokyoGasRetailerCode;
+
+    /**
+     * 概要: 開栓共通エラー対象となる閉栓事由種別の解決済み定数集合。
+     * 主な仕様:
+     * - 移転閉栓、不使用閉栓、供給停止、保安閉栓の 4 定数をコンストラクタで解決して保持する。
+     * - 実行時は引数の閉栓事由種別が集合に含まれるかで対象判定する。
+     * 既知の制約:
+     * - 設計書に記載のない閉栓事由種別は将来追加されても自動では対象化されない。
+     */
+    private final Set&lt;String&gt; targetClosureReasonTypes;
+
+    /**
+     * 概要: 移転分回収依頼を表す他所集金依頼状況コードの解決済み定数値。
+     * 主な仕様:
+     * - CIRIUS 定数 34800 の「移転分回収依頼」をコンストラクタで解決して保持する。
+     * - 実行時は引数の他所集金依頼状況コードとの完全一致判定に使用する。
+     * 既知の制約:
+     * - 判定対象は単一コードのみで、返却依頼や依頼なしなどの他ステータスは正常終了扱いとする。
+     */
+    private final String transferAmountCollectionRequestStatus;
+
+    /**
+     * 概要: 依存と必須定数を初期化するコンストラクタ。
+     * 主な仕様:
+     * - RequestContext と CiriusConstantService を必須依存として受け取り、null を許容しない。
+     * - 業務判定に必要な小売事業者コード、閉栓事由種別群、他所集金依頼状況コードを初期化時に解決する。
+     * - 実行時の条件判定では外部サービス再呼び出しを行わず、解決済みフィールドだけを使用する。
+     * 既知の制約:
+     * - いずれかの必須定数が未登録の場合はインスタンス生成時点で例外送出となる。
+     * - RequestContext は保持のみであり、コンストラクタ時点では値内容の妥当性確認を行わない。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public RelocationOtherPlaceCollectionRequestCheckAtOpeningImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L83">            RequestContext requestContext) {</span>
+<span class="fc" id="L84">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L85">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L86">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L87">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L91">        this.targetClosureReasonTypes = Set.of(</span>
+<span class="fc" id="L92">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE),
+<span class="fc" id="L96">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE),
+<span class="fc" id="L100">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE),
+<span class="fc" id="L104">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE));
+<span class="fc" id="L108">        this.transferAmountCollectionRequestStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.OtherPaymentCollectionRequestStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.OtherPaymentCollectionRequestStatusCode
+                        .REQUEST_FOR_COLLECTION_OF_TRANSFERRED_AMOUNT);
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * 概要: SV-203 の条件判定を実行する。
+     * 主な仕様:
+     * - 東京ガス小売事業者、契約なし、対象閉栓事由、移転分回収依頼の 4 条件がすべて成立した場合に開栓共通エラーを送出する。
+        * - いずれかの条件が不成立の場合は処理なしとして何も返さずに正常終了する。
+     * - 契約有無フラグは `Boolean.FALSE.equals(...)` で判定し、null は不成立として扱う。
+     * 既知の制約:
+     * - 入力の正規化や同義コードの吸収は行わず、定数値との完全一致のみで評価する。
+     * - 開栓共通エラー以外の例外変換は行わず、条件に該当しない限り常に正常終了する。
+     *
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param kiyUmFlg 契約有無フラグ
+     * @param hesnJysb 閉栓事由種別
+     * @param tssiJkyCd 他所集金依頼状況コード
+     * @throws KaisenRuleException 全条件成立時に開栓共通エラーを送出する
+     */
+    @Override
+        public void execute(
+            String tksuKijsCd,
+            Boolean kiyUmFlg,
+            String hesnJysb,
+            String tssiJkyCd) {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (tokyoGasRetailerCode.equals(tksuKijsCd)</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                &amp;&amp; Boolean.FALSE.equals(kiyUmFlg)</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                &amp;&amp; targetClosureReasonTypes.contains(hesnJysb)</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                &amp;&amp; transferAmountCollectionRequestStatus.equals(tssiJkyCd)) {</span>
+<span class="fc" id="L141">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100045);</span>
+        }
+
+<span class="fc" id="L144">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

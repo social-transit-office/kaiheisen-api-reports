@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KnsytiDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-knsyti</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.knsyti</a> &gt; <span class="el_source">KnsytiDataAccessImpl.java</span></div><h1>KnsytiDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.knsyti;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/**
+ * DA-067-R001/U001 の SQL 振る舞いを模した KNSYTI インメモリ実装。
+ */
+public class KnsytiDataAccessImpl extends DataAccessBase implements KnsytiDataAccess {
+
+<span class="fc" id="L36">    private static final ReflectiveInMemoryRowMapper&lt;KnsytiColumn, KnsytiRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L37">        ReflectiveInMemoryRowMapper.create(KnsytiColumn.class, KnsytiRecord.class);</span>
+
+<span class="fc" id="L39">    private static final AutoNeutralValueResolver&lt;KnsytiColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L40">        AutoNeutralValueResolver.create(KnsytiColumn.class, KnsytiRecord.class);</span>
+
+<span class="fc" id="L42">    private final List&lt;EnumMap&lt;KnsytiColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KnsytiWriteRecord, KnsytiColumn&gt;
+        updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public KnsytiDataAccessImpl() {
+<span class="fc" id="L53">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L54">    }</span>
+
+    KnsytiDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L57">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L58">    }</span>
+
+    KnsytiDataAccessImpl(
+            SystemDateTimeProvider clock,
+<span class="fc" id="L62">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L63">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L64">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L66">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KnsytiWriteDefinition.INSTANCE,
+                        NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * テストデータを追加する。
+     *
+     * @param row 行データ
+     * @return このインスタンス
+     */
+    public KnsytiDataAccessImpl addRow(InternalRow row) {
+<span class="fc" id="L79">        KnsytiRecord record = toRecord(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L80">        EnumMap&lt;KnsytiColumn, Object&gt; values = ROW_MAPPER.toRawValueMap(record);</span>
+<span class="fc" id="L81">        NEUTRAL_VALUE_RESOLVER.complement(values, KnsytiWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L82">        rows.add(values);</span>
+<span class="fc" id="L83">        return this;</span>
+    }
+
+    @Override
+    public List&lt;KnsytiRecord&gt; findAllByGasMtstNoAndTkysYmAndTyenYm(Long gasMtstNo, YearMonth knskKjnYm) {
+<span class="fc" id="L88">        Long safeGasMtstNo = WhereParamGuard.complement(gasMtstNo, &quot;gasMtstNo&quot;, 0L);</span>
+        Integer safeKnskKjnYm =
+<span class="fc" id="L90">            WhereParamGuard.complement(</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                knskKjnYm == null ? null : knskKjnYm.toYmInt(),</span>
+                &quot;knskKjnYm&quot;,
+<span class="fc" id="L93">                0);</span>
+<span class="fc" id="L94">        return rows.stream()</span>
+<span class="fc" id="L95">            .filter(row -&gt; Objects.equals(row.get(KnsytiColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L96">            .filter(</span>
+                row -&gt; {
+<span class="fc" id="L98">                    YearMonth tkysYm = (YearMonth) row.get(KnsytiColumn.TKYS_YM);</span>
+<span class="fc" id="L99">                    YearMonth tyenYm = (YearMonth) row.get(KnsytiColumn.TYEN_YM);</span>
+<span class="pc bpc" id="L100" title="2 of 4 branches missed.">                    return tkysYm != null</span>
+                        &amp;&amp; tyenYm != null
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        &amp;&amp; tkysYm.toYmInt() &lt;= safeKnskKjnYm</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                        &amp;&amp; tyenYm.toYmInt() &gt;= safeKnskKjnYm;</span>
+                })
+<span class="fc" id="L105">            .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L106">                .toList();</span>
+    }
+
+    /**
+     * KNSYTI のテストデータ行。
+     */
+    public static record InternalRow(
+            long gasMtstNo,
+            int tkysYm,
+            int tyenYm,
+            String tkkbNo,
+            String knsHuhuKbn,
+            String stkbKbn,
+            String shtiKskbNo,
+            String tdkKskbNo,
+            int jkiTkytYmd,
+            String nwjgCd,
+            String mgksTyumFlg,
+            LocalDateTime regTsmp,
+            String regUsrId,
+            LocalDateTime updTsmp,
+            String updUsrId,
+            String updKtnKinoId,
+            int recUpdJnjNo
+    ) {
+        /** コンパクトコンストラクタ。 */
+<span class="fc" id="L132">        public InternalRow {</span>
+<span class="fc" id="L133">            Objects.requireNonNull(tkkbNo, &quot;tkkbNo&quot;);</span>
+<span class="fc" id="L134">            Objects.requireNonNull(knsHuhuKbn, &quot;knsHuhuKbn&quot;);</span>
+<span class="fc" id="L135">            Objects.requireNonNull(stkbKbn, &quot;stkbKbn&quot;);</span>
+<span class="fc" id="L136">            Objects.requireNonNull(shtiKskbNo, &quot;shtiKskbNo&quot;);</span>
+<span class="fc" id="L137">            Objects.requireNonNull(tdkKskbNo, &quot;tdkKskbNo&quot;);</span>
+<span class="fc" id="L138">            Objects.requireNonNull(nwjgCd, &quot;nwjgCd&quot;);</span>
+<span class="fc" id="L139">            Objects.requireNonNull(mgksTyumFlg, &quot;mgksTyumFlg&quot;);</span>
+<span class="fc" id="L140">            Objects.requireNonNull(regTsmp, &quot;regTsmp&quot;);</span>
+<span class="fc" id="L141">            Objects.requireNonNull(regUsrId, &quot;regUsrId&quot;);</span>
+<span class="fc" id="L142">            Objects.requireNonNull(updTsmp, &quot;updTsmp&quot;);</span>
+<span class="fc" id="L143">            Objects.requireNonNull(updUsrId, &quot;updUsrId&quot;);</span>
+<span class="fc" id="L144">            Objects.requireNonNull(updKtnKinoId, &quot;updKtnKinoId&quot;);</span>
+<span class="fc" id="L145">        }</span>
+    }
+
+    @Override
+    public Optional&lt;KnsytiRecord&gt; findByPK(Long gasMtstNo, YearMonth tkysYm) {
+<span class="fc" id="L150">        Long safeGasMtstNo = WhereParamGuard.complement(gasMtstNo, &quot;gasMtstNo&quot;, 0L);</span>
+        Integer safeTkysYm =
+<span class="fc" id="L152">            WhereParamGuard.complement(</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                tkysYm == null ? null : tkysYm.toYmInt(),</span>
+                &quot;tkysYm&quot;,
+<span class="fc" id="L155">                0);</span>
+<span class="fc" id="L156">        return rows.stream()</span>
+<span class="fc" id="L157">                .filter(row -&gt; Objects.equals(row.get(KnsytiColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L158">            .filter(</span>
+                row -&gt; {
+<span class="fc" id="L160">                    YearMonth rowTkysYm = (YearMonth) row.get(KnsytiColumn.TKYS_YM);</span>
+<span class="pc bpc" id="L161" title="2 of 4 branches missed.">                    return rowTkysYm != null &amp;&amp; rowTkysYm.toYmInt() == safeTkysYm;</span>
+                })
+<span class="fc" id="L163">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L164">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndTkysYmAndRecUpdJnjNo(
+            KnsytiWriteRecord record,
+            Set&lt;KnsytiColumn&gt; targetColumns,
+            KnsytiUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L173">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L174">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L175">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L176">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L178">        Long safeGasMtstNo = WhereParamGuard.complement(updateKey.gasMtstNo(), &quot;gasMtstNo&quot;, 0L);</span>
+        Integer safeTkysYm =
+<span class="fc" id="L180">            WhereParamGuard.complement(</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                updateKey.tkysYm() == null ? null : updateKey.tkysYm().toYmInt(),</span>
+                &quot;tkysYm&quot;,
+<span class="fc" id="L183">                0);</span>
+<span class="fc" id="L184">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(KnsytiColumn.GAS_MTST_NO), safeGasMtstNo)</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                &amp;&amp; matchesTkysYm(row, safeTkysYm),</span>
+                row -&gt;
+<span class="fc" id="L189">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L193">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        KnsytiColumn.class,
+                                                        values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="nc" id="L200">                                                        ? (Integer) row.get(KnsytiColumn.REC_UPD_JNJ_NO)</span>
+<span class="fc" id="L201">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L202">                updateSupport::apply,</span>
+                KnsytiColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L204">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L205">                KnsytiDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKYS_YM_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                safeGasMtstNo,
+                safeTkysYm);
+    }
+
+    /**
+     * 行の適用開始年月が検索条件と一致するかを判定する。
+     *
+     * @param row 保存行
+     * @param safeTkysYm 補完済みの検索年月
+     * @return 一致する場合 true
+     */
+    private static boolean matchesTkysYm(Map&lt;KnsytiColumn, Object&gt; row, Integer safeTkysYm) {
+<span class="fc" id="L218">        YearMonth rowTkysYm = (YearMonth) row.get(KnsytiColumn.TKYS_YM);</span>
+<span class="pc bpc" id="L219" title="2 of 4 branches missed.">        return rowTkysYm != null &amp;&amp; rowTkysYm.toYmInt() == safeTkysYm;</span>
+    }
+
+    /**
+     * テスト用内部行を read record へ変換する。
+     *
+     * @param row テスト用内部行
+     * @return read record
+     */
+    private static KnsytiRecord toRecord(InternalRow row) {
+<span class="fc" id="L229">        return new KnsytiRecord(</span>
+<span class="fc" id="L230">                row.gasMtstNo(),</span>
+<span class="fc" id="L231">                toYearMonth(row.tkysYm()),</span>
+<span class="fc" id="L232">                toYearMonth(row.tyenYm()),</span>
+<span class="fc" id="L233">                row.tkkbNo(),</span>
+<span class="fc" id="L234">                row.knsHuhuKbn(),</span>
+<span class="fc" id="L235">                row.stkbKbn(),</span>
+<span class="fc" id="L236">                row.shtiKskbNo(),</span>
+<span class="fc" id="L237">                row.tdkKskbNo(),</span>
+<span class="fc" id="L238">                toLocalDate(row.jkiTkytYmd()),</span>
+<span class="fc" id="L239">                row.nwjgCd(),</span>
+<span class="fc" id="L240">                toBooleanFlag(row.mgksTyumFlg()),</span>
+<span class="fc" id="L241">                row.regTsmp(),</span>
+<span class="fc" id="L242">                row.regUsrId(),</span>
+<span class="fc" id="L243">                row.updTsmp(),</span>
+<span class="fc" id="L244">                row.updUsrId(),</span>
+<span class="fc" id="L245">                row.updKtnKinoId(),</span>
+<span class="fc" id="L246">                row.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 数値型年月を YearMonth へ変換する。
+     *
+     * @param ym 数値年月
+     * @return YearMonth
+     */
+    private static YearMonth toYearMonth(int ym) {
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (ym &lt;= 0) {</span>
+<span class="nc" id="L257">            return null;</span>
+        }
+<span class="fc" id="L259">        return YearMonth.of(ym / 100, ym % 100);</span>
+    }
+
+    /**
+     * 数値型年月日を LocalDate へ変換する。
+     *
+     * @param ymd 数値年月日
+     * @return LocalDate
+     */
+    private static LocalDate toLocalDate(int ymd) {
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (ymd &lt;= 0) {</span>
+<span class="nc" id="L270">            return null;</span>
+        }
+<span class="fc" id="L272">        return LocalDate.of(ymd / 10000, (ymd / 100) % 100, ymd % 100);</span>
+    }
+
+    /**
+     * 文字列フラグを Boolean へ変換する。
+     *
+     * @param value フラグ文字列
+     * @return Boolean
+     */
+    private static Boolean toBooleanFlag(String value) {
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L283">            return null;</span>
+        }
+<span class="fc" id="L285">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">        if (normalized.isEmpty()) {</span>
+<span class="nc" id="L287">            return null;</span>
+        }
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (&quot;1&quot;.equals(normalized)</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">                || &quot;Y&quot;.equalsIgnoreCase(normalized)</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">                || &quot;T&quot;.equalsIgnoreCase(normalized)</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                || &quot;TRUE&quot;.equalsIgnoreCase(normalized)) {</span>
+<span class="fc" id="L293">            return Boolean.TRUE;</span>
+        }
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        if (&quot;0&quot;.equals(normalized)</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">                || &quot;N&quot;.equalsIgnoreCase(normalized)</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                || &quot;F&quot;.equalsIgnoreCase(normalized)</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                || &quot;FALSE&quot;.equalsIgnoreCase(normalized)) {</span>
+<span class="nc" id="L299">            return Boolean.FALSE;</span>
+        }
+<span class="nc" id="L301">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

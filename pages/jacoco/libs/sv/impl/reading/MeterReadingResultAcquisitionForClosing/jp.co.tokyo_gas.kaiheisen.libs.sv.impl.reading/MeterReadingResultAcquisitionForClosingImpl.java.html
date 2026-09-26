@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingResultAcquisitionForClosingImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-meterreadingresultacquisitionforclosing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">MeterReadingResultAcquisitionForClosingImpl.java</span></div><h1>MeterReadingResultAcquisitionForClosingImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ClosingReportDeadlineAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ClosingReportDeadlineAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosingOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisitionForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisitionForClosingOutput;
+
+/**
+ * 概要: 検針結果取得（閉栓）サービス実装。
+ * 主な仕様:
+ * - SV-069 と SV-068 を順番に呼び出し、閉栓用の検針結果情報を組み立てて返却する。
+ * - SV 規約に従い、報告システム種別、相関ID、システム日時は下位 SV 側で RequestContext から扱う。
+ * 既知の制約:
+ * - 本クラスは入力妥当性検証を追加せず、下位 SV の例外も変換せずに上位へ伝播する。
+ */
+public class MeterReadingResultAcquisitionForClosingImpl
+        implements MeterReadingResultAcquisitionForClosing {
+
+    private final RecentMeterReadingInfoAcquisitionForClosing recentMeterReadingInfoAcquisitionForClosing;
+
+    private final ClosingReportDeadlineAcquisition closingReportDeadlineAcquisition;
+
+    /**
+     * 概要: 依存 SV を受け取り、実装を初期化するコンストラクタ。
+     * 主な仕様:
+     * - 直近検針情報取得（閉栓）と閉栓報告可能期限日取得の 2 サービスを保持する。
+     * - DI 構成不備は fail-fast で検知する。
+     * 既知の制約:
+     * - public メソッド引数の妥当性検証は本コンストラクタでは扱わない。
+     *
+     * @param recentMeterReadingInfoAcquisitionForClosing SV-069
+     * @param closingReportDeadlineAcquisition SV-068
+     */
+    @Inject
+    public MeterReadingResultAcquisitionForClosingImpl(
+            RecentMeterReadingInfoAcquisitionForClosing recentMeterReadingInfoAcquisitionForClosing,
+<span class="fc" id="L43">            ClosingReportDeadlineAcquisition closingReportDeadlineAcquisition) {</span>
+<span class="fc" id="L44">        this.recentMeterReadingInfoAcquisitionForClosing =</span>
+<span class="fc" id="L45">                Objects.requireNonNull(</span>
+                        recentMeterReadingInfoAcquisitionForClosing,
+                        &quot;recentMeterReadingInfoAcquisitionForClosing&quot;);
+<span class="fc" id="L48">        this.closingReportDeadlineAcquisition =</span>
+<span class="fc" id="L49">                Objects.requireNonNull(</span>
+                        closingReportDeadlineAcquisition,
+                        &quot;closingReportDeadlineAcquisition&quot;);
+<span class="fc" id="L52">    }</span>
+
+    /**
+     * 概要: SV-162 を実行し、閉栓用の検針結果情報を返却する。
+     * 主な仕様:
+     * - SV-069 の最近検針結果情報から SV-068 の入力値を組み立てる。
+     * - SV-069 の戻り値は閉栓向け DTO へ移送し、SV-068 の戻り値を期限日として補完する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 閉栓用の検針結果情報
+     */
+    @Override
+    public MeterReadingResultAcquisitionForClosingOutput execute(Long gasMtstNo) {
+<span class="fc" id="L65">        RecentMeterReadingInfoAcquisitionForClosingOutput recentOutput =</span>
+<span class="fc" id="L66">                requireRecentOutput(recentMeterReadingInfoAcquisitionForClosing.execute(gasMtstNo));</span>
+<span class="fc" id="L67">        SkinKnkkInf recentMeterReading = requireRecentMeterReading(recentOutput);</span>
+<span class="fc" id="L68">        ClosingReportDeadlineAcquisitionOutput deadlineOutput = requireDeadlineOutput(</span>
+<span class="fc" id="L69">                closingReportDeadlineAcquisition.execute(</span>
+                        gasMtstNo,
+<span class="fc" id="L71">                        requireRecentMeterReadingDate(recentMeterReading),</span>
+<span class="fc" id="L72">                        requireRecentMeterReadingReason(recentMeterReading)));</span>
+<span class="fc" id="L73">        return new MeterReadingResultAcquisitionForClosingOutput(</span>
+<span class="fc" id="L74">                mapZnkiKnkkInf(recentOutput.znkiKnkkInf()),</span>
+<span class="fc" id="L75">                mapSkinKnkkInf(recentMeterReading),</span>
+<span class="fc" id="L76">                resolveDeadline(deadlineOutput));</span>
+    }
+
+    /**
+     * 概要: SV-069 の戻り値 DTO を検証する。
+     * 主な仕様:
+     * - 想定外に null が返却された場合は契約違反として fail-fast する。
+     *
+     * @param recentOutput SV-069 の戻り値
+     * @return 非 null の戻り値 DTO
+     */
+    private RecentMeterReadingInfoAcquisitionForClosingOutput requireRecentOutput(
+            RecentMeterReadingInfoAcquisitionForClosingOutput recentOutput) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (recentOutput == null) {</span>
+<span class="fc" id="L90">            throw new IllegalStateException(&quot;SV-069 returned null output&quot;);</span>
+        }
+<span class="fc" id="L92">        return recentOutput;</span>
+    }
+
+    /**
+     * 概要: SV-069 の最近検針結果情報を検証する。
+     * 主な仕様:
+     * - SV-068 呼出しに必要な最近検針結果情報が欠けている場合は契約違反として fail-fast する。
+     *
+     * @param recentOutput SV-069 の戻り値
+     * @return 非 null の最近検針結果情報
+     */
+    private SkinKnkkInf requireRecentMeterReading(
+            RecentMeterReadingInfoAcquisitionForClosingOutput recentOutput) {
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        if (recentOutput.skinKnkkInf() == null) {</span>
+<span class="fc" id="L106">            throw new IllegalStateException(&quot;SV-069 returned null skinKnkkInf&quot;);</span>
+        }
+<span class="fc" id="L108">        return recentOutput.skinKnkkInf();</span>
+    }
+
+    /**
+     * 概要: SV-068 呼出しに必要な検針年月日を検証する。
+     * 主な仕様:
+     * - 最近検針結果情報の検針年月日が欠けている場合は契約違反として fail-fast する。
+     *
+     * @param recentMeterReading 最近検針結果情報
+     * @return 非 null の検針年月日
+     */
+    private LocalDate requireRecentMeterReadingDate(SkinKnkkInf recentMeterReading) {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (recentMeterReading.knsYmd() == null) {</span>
+<span class="fc" id="L121">            throw new IllegalStateException(&quot;SV-069 returned null skinKnkkInf.knsYmd&quot;);</span>
+        }
+<span class="fc" id="L123">        return recentMeterReading.knsYmd();</span>
+    }
+
+    /**
+     * 概要: SV-068 呼出しに必要な検針結果作成事由種別を検証する。
+     * 主な仕様:
+     * - 最近検針結果情報の検針結果作成事由種別が欠けている場合は契約違反として fail-fast する。
+     *
+     * @param recentMeterReading 最近検針結果情報
+     * @return 非 null の検針結果作成事由種別
+     */
+    private String requireRecentMeterReadingReason(SkinKnkkInf recentMeterReading) {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (recentMeterReading.knkkSsjyShbt() == null) {</span>
+<span class="fc" id="L136">            throw new IllegalStateException(&quot;SV-069 returned null skinKnkkInf.knkkSsjyShbt&quot;);</span>
+        }
+<span class="fc" id="L138">        return recentMeterReading.knkkSsjyShbt();</span>
+    }
+
+    /**
+     * 概要: SV-068 の戻り値 DTO を検証する。
+     * 主な仕様:
+     * - 想定外に null が返却された場合は契約違反として fail-fast する。
+     *
+     * @param deadlineOutput SV-068 の戻り値
+     * @return 非 null の戻り値 DTO
+     */
+    private ClosingReportDeadlineAcquisitionOutput requireDeadlineOutput(
+            ClosingReportDeadlineAcquisitionOutput deadlineOutput) {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (deadlineOutput == null) {</span>
+<span class="fc" id="L152">            throw new IllegalStateException(&quot;SV-068 returned null output&quot;);</span>
+        }
+<span class="fc" id="L154">        return deadlineOutput;</span>
+    }
+
+    /**
+     * 概要: 前回検針結果情報を閉栓向け DTO へ変換する。
+     * 主な仕様:
+     * - 子 SV の戻り値を閉栓向け API モデルへ項目移送する。
+     * - 入力が null の場合は null を返却する。
+     *
+     * @param childValue 子 SV の前回検針結果情報
+     * @return 閉栓向け前回検針結果情報
+     */
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.ZnkiKnkkInf mapZnkiKnkkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ZnkiKnkkInf childValue) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (childValue == null) {</span>
+<span class="nc" id="L169">            return null;</span>
+        }
+<span class="fc" id="L171">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.ZnkiKnkkInf(</span>
+<span class="fc" id="L172">                childValue.knsYmd(),</span>
+<span class="fc" id="L173">                childValue.knsKkaTsno(),</span>
+<span class="fc" id="L174">                childValue.gmtShjSu(),</span>
+<span class="fc" id="L175">                childValue.knkkSsjyShbt(),</span>
+<span class="fc" id="L176">                childValue.knkkKtmeFlg(),</span>
+<span class="fc" id="L177">                childValue.sjskKbn(),</span>
+<span class="fc" id="L178">                childValue.knsJsjkCd());</span>
+    }
+
+    /**
+     * 概要: 最近検針結果情報を閉栓向け DTO へ変換する。
+     * 主な仕様:
+     * - 子 SV の戻り値を閉栓向け API モデルへ項目移送する。
+     * - 入力が null の場合は null を返却する。
+     *
+     * @param childValue 子 SV の最近検針結果情報
+     * @return 閉栓向け最近検針結果情報
+     */
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.SkinKnkkInf mapSkinKnkkInf(
+            SkinKnkkInf childValue) {
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (childValue == null) {</span>
+<span class="nc" id="L193">            return null;</span>
+        }
+<span class="fc" id="L195">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.SkinKnkkInf(</span>
+<span class="fc" id="L196">                childValue.knsYmd(),</span>
+<span class="fc" id="L197">                childValue.knsKkaTsno(),</span>
+<span class="fc" id="L198">                childValue.gmtShjSu(),</span>
+<span class="fc" id="L199">                childValue.knkkSsjyShbt(),</span>
+<span class="fc" id="L200">                childValue.knkkKtmeFlg(),</span>
+<span class="fc" id="L201">                childValue.sjskKbn(),</span>
+<span class="fc" id="L202">                childValue.knsJsjkCd());</span>
+    }
+
+    /**
+     * 概要: 閉栓報告可能期限日を解決する。
+     * 主な仕様:
+      * - 事前検証済みの子 SV 戻り値 DTO から期限日を返却する。
+     *
+     * @param deadlineOutput 子 SV の戻り値
+     * @return 閉栓報告可能期限日
+     */
+    private LocalDate resolveDeadline(ClosingReportDeadlineAcquisitionOutput deadlineOutput) {
+<span class="fc" id="L214">        return deadlineOutput.hsenHkkKnuKigenYmd();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SupplySuspensionReportAvailabilityConfirmationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-supplysuspensionreportavailabilityconfirmation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">SupplySuspensionReportAvailabilityConfirmationImpl.java</span></div><h1>SupplySuspensionReportAvailabilityConfirmationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtksts.GmtkstsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtksts.GmtkstsRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.SupplySuspensionReportAvailabilityConfirmation;
+
+/**
+ * 概要: SV-277（供給停止報告可否確認）の実装クラス。
+ * 主な仕様:
+ * - 託送メータ情報の仮登録有無を起点に、スイッチング受付エラーおよび他小売開栓落成待ちエラーを判定する。
+ * - スイッチ申込経路では、確定前ガスメーター検針結果件数と定例検針予定年月日を使って 020200048 を判定する。
+ * - スイッチ申込以外の経路では、託送開始年月日を使って 020200053 を判定する。
+ * 既知の制約:
+ * - `correlationId`、`hukkSysShbt`、`systemDatetime` は SV 規約に従い公開引数へ含めない。
+ * - DA-019-R002 の取得結果が複数件の場合でも、設計に明示された優先順がないため先頭レコードを評価対象とする。
+ * - public 引数の null ガードや入力補正は行わず、下位比較処理に委譲する。
+ */
+public final class SupplySuspensionReportAvailabilityConfirmationImpl
+        implements SupplySuspensionReportAvailabilityConfirmation {
+
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final GmtkstsDataAccess gmtkstsDataAccess;
+
+    private final String temporaryRegistrationStatus;
+
+    private final String switchApplicationCisJudgmentCode;
+
+    private final List&lt;String&gt; readingReasonTypes;
+
+    /**
+     * 概要: 判定に必要な依存と CIRIUS 定数を初期化する。
+     * 主な仕様:
+     * - 託送契約状態コード 0H800 の仮登録コードを必須解決して保持する。
+     * - 託送契約ＣＩＳ判定コード 1AP00 のスイッチ申込コードを必須解決して保持する。
+     * - 検針結果作成事由種別 07000 の定例・臨時コードを必須解決して保持する。
+     *
+     * @param taksmtrDataAccess 託送メータ情報データアクセス
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果情報データアクセス
+     * @param gmtkstsDataAccess ガスメーター定例検針対象管理情報データアクセス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public SupplySuspensionReportAvailabilityConfirmationImpl(
+            TaksmtrDataAccess taksmtrDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            GmtkstsDataAccess gmtkstsDataAccess,
+<span class="fc" id="L61">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.taksmtrDataAccess = Objects.requireNonNull(taksmtrDataAccess, &quot;taksmtrDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L64">        this.gmtkstsDataAccess = Objects.requireNonNull(gmtkstsDataAccess, &quot;gmtkstsDataAccess&quot;);</span>
+<span class="fc" id="L65">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L66">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L68">        this.temporaryRegistrationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TEMPORARY_REGISTRATION);
+<span class="fc" id="L72">        this.switchApplicationCisJudgmentCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.SWITCH_APPLICATION);
+<span class="fc" id="L76">        this.readingReasonTypes = List.of(</span>
+<span class="fc" id="L77">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR),
+<span class="fc" id="L81">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY));
+<span class="fc" id="L85">    }</span>
+
+    /**
+     * 概要: 供給停止報告の可否を判定する。
+     * 主な仕様:
+     * - DA-019-R002 の取得結果が 0 件なら後続判定を行わず正常終了する。
+     * - スイッチ申込経路では DA-052-R007 と DA-036-R001 を使って 020200048 を判定する。
+     * - スイッチ申込以外の経路では託送開始年月日と閉栓年月日を比較し、020200053 を判定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param hesnYmd 閉栓年月日
+     */
+    @Override
+    public void execute(Long gasMtstNo, LocalDate hesnYmd) {
+<span class="fc" id="L99">        List&lt;TaksmtrRecord&gt; taksmtrRecords =</span>
+<span class="fc" id="L100">                taksmtrDataAccess.findAllByGmtSetNoAndTaksKyJtCd(</span>
+                        gasMtstNo,
+                        temporaryRegistrationStatus);
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (taksmtrRecords.isEmpty()) {</span>
+<span class="fc" id="L104">            return;</span>
+        }
+
+<span class="fc" id="L107">        TaksmtrRecord targetRecord = taksmtrRecords.getFirst();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (switchApplicationCisJudgmentCode.equals(targetRecord.taksCisHntCd())) {</span>
+<span class="fc" id="L109">            validateSwitchApplication(gasMtstNo, hesnYmd);</span>
+<span class="fc" id="L110">            return;</span>
+        }
+
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (!targetRecord.taksStartYmd().isAfter(hesnYmd)) {</span>
+<span class="fc" id="L114">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200053);</span>
+        }
+<span class="fc" id="L116">    }</span>
+
+    private void validateSwitchApplication(Long gasMtstNo, LocalDate hesnYmd) {
+<span class="fc" id="L119">        long count = ktmgmkkDataAccess.countByGasMtstNoAndKnkkSksiJysb(gasMtstNo, readingReasonTypes);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (count != 0L) {</span>
+<span class="fc" id="L121">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200048);</span>
+        }
+
+<span class="fc" id="L124">        Optional&lt;GmtkstsRecord&gt; gmtkstsRecord = gmtkstsDataAccess.findByGasMtstNo(gasMtstNo);</span>
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        if (gmtkstsRecord.isPresent() &amp;&amp; !gmtkstsRecord.orElseThrow().tkytYmd().isAfter(hesnYmd)) {</span>
+<span class="fc" id="L126">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200048);</span>
+        }
+<span class="fc" id="L128">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
