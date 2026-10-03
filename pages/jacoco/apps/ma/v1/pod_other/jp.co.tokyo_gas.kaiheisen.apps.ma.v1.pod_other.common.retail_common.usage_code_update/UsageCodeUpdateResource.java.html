@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UsageCodeUpdateResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-other</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.usage_code_update</a> &gt; <span class="el_source">UsageCodeUpdateResource.java</span></div><h1>UsageCodeUpdateResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.usage_code_update;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.TransactionSynchronizationRegistry;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.exception_mapper.MaErrorResponseResolver;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.usage_code_update.qualifier.UsageCodeUpdateFunctionPipelineConfiguration;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.common.retail_common.usage_code_update.qualifier.UsageCodeUpdateFunctionRetailConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.ErrorResponseBody;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.usage_code_update.UsageCodeUpdateEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.usage_code_update.UsageCodeUpdateErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.usage_code_update.UsageCodeUpdateRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.usage_code_update.UsageCodeUpdateResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.UsageCodeUpdateFunctionPipeline;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.UsageCodeUpdateFunctionRetail;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-108 用途コード更新機能-共通 API のリソース実装。
+ */
+@Path(UsageCodeUpdateEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-108&quot;, name = &quot;用途コード更新機能-共通&quot;)
+@Tag(name = &quot;用途コード更新機能-共通&quot;, description = &quot;MA-108 用途コード更新機能-共通 API&quot;)
+public final class UsageCodeUpdateResource extends BaseResource&lt;UsageCodeUpdateRequest&gt; {
+
+    static final long MIN_GAS_MTST_NO = 10_000_000_000L;
+
+    static final long MAX_GAS_MTST_NO = 19_999_999_999L;
+
+    static final String CASE_HISTORY_DIVISION = ConstantLookupKeys.Cirius.CaseHistory.WORK;
+
+    static final String CASE_HISTORY_REGISTRATION_DESTINATION =
+            ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.PLACE;
+
+    static final String RETAIL_WORK_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.REGULAR_SECURITY_PATROL_S00002;
+
+    static final String RETAIL_WORK_DETAIL_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CHANGE_USAGE_CODE_S0000204;
+
+    static final String PIPELINE_WORK_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.REGULAR_SECURITY_PATROL_S00002;
+
+    static final String PIPELINE_WORK_DETAIL_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.CHANGE_USAGE_CODE_S0000202;
+
+    static final String REPORTING_ROUTE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.OTHER_SYSTEMS;
+
+    static final String INQUIRY_TARGET_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT;
+
+    private final UsageCodeUpdateFunctionPipeline usageCodeUpdateFunctionPipeline;
+
+    private final UsageCodeUpdateFunctionRetail usageCodeUpdateFunctionRetail;
+
+    private final TransactionSynchronizationRegistry transactionSynchronizationRegistry;
+
+    /**
+     * コンストラクタ。
+     */
+    @Inject
+    public UsageCodeUpdateResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            @UsageCodeUpdateFunctionPipelineConfiguration
+            UsageCodeUpdateFunctionPipeline usageCodeUpdateFunctionPipeline,
+            @UsageCodeUpdateFunctionRetailConfiguration
+            UsageCodeUpdateFunctionRetail usageCodeUpdateFunctionRetail,
+            TransactionSynchronizationRegistry transactionSynchronizationRegistry) {
+<span class="fc" id="L101">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L102">        this.usageCodeUpdateFunctionPipeline = Objects.requireNonNull(</span>
+                usageCodeUpdateFunctionPipeline,
+                &quot;usageCodeUpdateFunctionPipeline&quot;);
+<span class="fc" id="L105">        this.usageCodeUpdateFunctionRetail = Objects.requireNonNull(</span>
+                usageCodeUpdateFunctionRetail,
+                &quot;usageCodeUpdateFunctionRetail&quot;);
+<span class="fc" id="L108">        this.transactionSynchronizationRegistry = transactionSynchronizationRegistry;</span>
+<span class="fc" id="L109">    }</span>
+
+    UsageCodeUpdateResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            UsageCodeUpdateFunctionPipeline usageCodeUpdateFunctionPipeline,
+            UsageCodeUpdateFunctionRetail usageCodeUpdateFunctionRetail) {
+<span class="fc" id="L117">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L118">        this.usageCodeUpdateFunctionPipeline = Objects.requireNonNull(</span>
+                usageCodeUpdateFunctionPipeline,
+                &quot;usageCodeUpdateFunctionPipeline&quot;);
+<span class="fc" id="L121">        this.usageCodeUpdateFunctionRetail = Objects.requireNonNull(</span>
+                usageCodeUpdateFunctionRetail,
+                &quot;usageCodeUpdateFunctionRetail&quot;);
+<span class="fc" id="L124">        this.transactionSynchronizationRegistry = null;</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * MA-108 を実行する。
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(summary = &quot;用途コード更新機能-共通&quot;, description = &quot;TSV 設計に従い用途コード更新を実行する。&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;用途コード更新完了&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = UsageCodeUpdateResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = UsageCodeUpdateErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public Response endpoint(@RequestBody UsageCodeUpdateRequest request) {
+<span class="fc" id="L152">        bindCorrelationIdFromBodyIfPresent(request);</span>
+        try {
+<span class="fc" id="L154">            return Response.ok(execute(request, () -&gt; handle(request)))</span>
+<span class="fc" id="L155">                    .type(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L156">                    .build();</span>
+<span class="fc" id="L157">        } catch (BusinessRuleException | DataNotFoundException exception) {</span>
+<span class="fc" id="L158">            return usageCodeUpdateErrorResponse(exception);</span>
+        }
+    }
+
+    private UsageCodeUpdateResponse handle(UsageCodeUpdateRequest request) {
+<span class="fc" id="L163">        Long gasMtstNo = Objects.requireNonNull(request.gasMtstNo(), &quot;gasMtstNo&quot;);</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">        if (gasMtstNo &lt; MIN_GAS_MTST_NO || gasMtstNo &gt; MAX_GAS_MTST_NO) {</span>
+<span class="fc" id="L165">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000089);</span>
+        }
+
+<span class="fc" id="L168">        InternalVariables internalVariables = resolveInternalVariables(normalizeOptional(request.hukkSysShbt()));</span>
+<span class="fc" id="L169">        LocalDate shrYmd = Rfc3339LocalDateParser.parse(request.shrYmd());</span>
+<span class="fc" id="L170">        String gasYtCd = normalizeOptional(request.gasYtCd());</span>
+
+<span class="fc" id="L172">        usageCodeUpdateFunctionPipeline.execute(</span>
+                gasMtstNo,
+                shrYmd,
+                gasYtCd,
+<span class="fc" id="L176">                internalVariables.akrkKbn(),</span>
+<span class="fc" id="L177">                internalVariables.akrkTrskShbt(),</span>
+<span class="fc" id="L178">                internalVariables.duknIsrgCd(),</span>
+<span class="fc" id="L179">                internalVariables.duknIsrsCd(),</span>
+<span class="fc" id="L180">                internalVariables.isrrHkkrKbn(),</span>
+<span class="fc" id="L181">                internalVariables.isrrSktCd());</span>
+
+<span class="fc" id="L183">        usageCodeUpdateFunctionRetail.execute(</span>
+                gasMtstNo,
+                shrYmd,
+                gasYtCd,
+<span class="fc" id="L187">                internalVariables.akrkKbn(),</span>
+<span class="fc" id="L188">                internalVariables.akrkTrskShbt(),</span>
+<span class="fc" id="L189">                internalVariables.isrrGymCd(),</span>
+<span class="fc" id="L190">                internalVariables.isrrGmssCd(),</span>
+<span class="fc" id="L191">                internalVariables.isrrHkkrKbn(),</span>
+<span class="fc" id="L192">                internalVariables.isrrSktCd());</span>
+
+<span class="fc" id="L194">        return new UsageCodeUpdateResponse(resolveResponseCorrelationId());</span>
+    }
+
+    private Response usageCodeUpdateErrorResponse(KaiheisenException exception) {
+<span class="fc" id="L198">        markTransactionRollbackOnly();</span>
+<span class="fc" id="L199">        ErrorResponseBody body = MaErrorResponseResolver.fromKaiheisenException(exception);</span>
+<span class="fc" id="L200">        return Response.status(MaErrorResponseResolver.resolveHttpStatus(exception))</span>
+<span class="fc" id="L201">                .type(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L202">                .entity(new UsageCodeUpdateErrorResponse(</span>
+<span class="fc" id="L203">                        body.errorCode(),</span>
+<span class="fc" id="L204">                        body.errorDescription(),</span>
+<span class="fc" id="L205">                        body.errorDetailList()))</span>
+<span class="fc" id="L206">                .build();</span>
+    }
+
+    private void markTransactionRollbackOnly() {
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (transactionSynchronizationRegistry != null) {</span>
+<span class="fc" id="L211">            transactionSynchronizationRegistry.setRollbackOnly();</span>
+        }
+<span class="fc" id="L213">    }</span>
+
+    private InternalVariables resolveInternalVariables(String hukkSysShbt) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT.equals(hukkSysShbt)) {</span>
+<span class="fc" id="L217">            return new InternalVariables(</span>
+                    CASE_HISTORY_DIVISION,
+                    CASE_HISTORY_REGISTRATION_DESTINATION,
+                    RETAIL_WORK_CODE,
+                    RETAIL_WORK_DETAIL_CODE,
+                    PIPELINE_WORK_CODE,
+                    PIPELINE_WORK_DETAIL_CODE,
+                    REPORTING_ROUTE,
+                    INQUIRY_TARGET_CODE);
+        }
+<span class="fc" id="L227">        return new InternalVariables(null, null, null, null, null, null, null, null);</span>
+    }
+
+    private void bindCorrelationIdFromBodyIfPresent(UsageCodeUpdateRequest request) {
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L232">            return;</span>
+        }
+<span class="fc" id="L234">        String correlationId = normalizeOptional(request.correlationId());</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (correlationId != null) {</span>
+<span class="fc" id="L236">            requestContext.setCorrelationId(CorrelationIdResolver.resolve(correlationId));</span>
+        }
+<span class="fc" id="L238">    }</span>
+
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L241">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L242">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="fc" id="L243">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L244">            return generated;</span>
+        });
+    }
+
+<span class="fc" id="L248">    record InternalVariables(</span>
+            String akrkKbn,
+            String akrkTrskShbt,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            String isrrSktCd) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

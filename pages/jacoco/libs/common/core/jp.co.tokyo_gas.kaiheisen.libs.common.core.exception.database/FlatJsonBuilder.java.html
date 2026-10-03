@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlatJsonBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database</a> &gt; <span class="el_source">FlatJsonBuilder.java</span></div><h1>FlatJsonBuilder.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database;
+
+import java.time.temporal.TemporalAccessor;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * DataInconsistencyException 向けのフラット JSON 文字列ビルダー。
+ */
+<span class="fc" id="L13">public final class FlatJsonBuilder {</span>
+
+<span class="fc" id="L15">    private final Map&lt;String, Object&gt; entries = new LinkedHashMap&lt;&gt;();</span>
+
+    /**
+     * JSON 項目を追加する。
+     *
+     * @param key キー
+     * @param value 値
+     * @return このビルダー
+     */
+    public FlatJsonBuilder put(String key, Object value) {
+<span class="fc" id="L25">        entries.put(Objects.requireNonNull(key, &quot;key&quot;), normalizeValue(value));</span>
+<span class="fc" id="L26">        return this;</span>
+    }
+
+    /**
+     * 値が null でない場合のみ JSON 項目を追加する。
+     *
+     * @param key キー
+     * @param value 値
+     * @return このビルダー
+     */
+    public FlatJsonBuilder putIfNonNull(String key, Object value) {
+<span class="fc" id="L37">        Objects.requireNonNull(key, &quot;key&quot;);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (value != null) {</span>
+<span class="nc" id="L39">            put(key, value);</span>
+        }
+<span class="fc" id="L41">        return this;</span>
+    }
+
+    /**
+     * JSON 文字列を生成する。
+     *
+     * @return JSON 文字列
+     */
+    public String build() {
+<span class="fc" id="L50">        StringBuilder builder = new StringBuilder();</span>
+<span class="fc" id="L51">        builder.append('{');</span>
+<span class="fc" id="L52">        boolean first = true;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; entry : entries.entrySet()) {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            if (!first) {</span>
+<span class="fc" id="L55">                builder.append(',');</span>
+            }
+<span class="fc" id="L57">            appendString(builder, entry.getKey());</span>
+<span class="fc" id="L58">            builder.append(':');</span>
+<span class="fc" id="L59">            appendValue(builder, entry.getValue());</span>
+<span class="fc" id="L60">            first = false;</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc" id="L62">        return builder.append('}').toString();</span>
+    }
+
+    private static Object normalizeValue(Object value) {
+<span class="pc bpc" id="L66" title="1 of 12 branches missed.">        if (value == null</span>
+                || value instanceof Number
+                || value instanceof Boolean
+                || value instanceof CharSequence
+                || value instanceof TemporalAccessor
+                || value instanceof Enum&lt;?&gt;) {
+<span class="fc" id="L72">            return value;</span>
+        }
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (value instanceof Iterable&lt;?&gt; iterable) {</span>
+<span class="fc" id="L75">            return normalizeIterable(iterable);</span>
+        }
+<span class="fc" id="L77">        throw new IllegalArgumentException(&quot;Unsupported JSON value type: &quot; + value.getClass().getName());</span>
+    }
+
+    private static List&lt;Object&gt; normalizeIterable(Iterable&lt;?&gt; iterable) {
+<span class="fc" id="L81">        List&lt;Object&gt; normalized = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (Object item : iterable) {</span>
+<span class="fc" id="L83">            Object normalizedItem = normalizeValue(item);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (normalizedItem instanceof List&lt;?&gt;) {</span>
+<span class="nc" id="L85">                throw new IllegalArgumentException(&quot;Nested iterable is not supported&quot;);</span>
+            }
+<span class="fc" id="L87">            normalized.add(normalizedItem);</span>
+<span class="fc" id="L88">        }</span>
+<span class="fc" id="L89">        return List.copyOf(normalized);</span>
+    }
+
+    private static void appendValue(StringBuilder builder, Object value) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L94">            builder.append(&quot;null&quot;);</span>
+<span class="fc" id="L95">            return;</span>
+        }
+<span class="fc bfc" id="L97" title="All 4 branches covered.">        if (value instanceof Number || value instanceof Boolean) {</span>
+<span class="fc" id="L98">            builder.append(value);</span>
+<span class="fc" id="L99">            return;</span>
+        }
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (value instanceof Iterable&lt;?&gt; iterable) {</span>
+<span class="fc" id="L102">            appendArray(builder, iterable);</span>
+<span class="fc" id="L103">            return;</span>
+        }
+<span class="fc" id="L105">        appendString(builder, value.toString());</span>
+<span class="fc" id="L106">    }</span>
+
+    private static void appendArray(StringBuilder builder, Iterable&lt;?&gt; values) {
+<span class="fc" id="L109">        builder.append('[');</span>
+<span class="fc" id="L110">        boolean first = true;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (Object value : values) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (!first) {</span>
+<span class="fc" id="L113">                builder.append(',');</span>
+            }
+<span class="fc" id="L115">            appendValue(builder, value);</span>
+<span class="fc" id="L116">            first = false;</span>
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        builder.append(']');</span>
+<span class="fc" id="L119">    }</span>
+
+    private static void appendString(StringBuilder builder, String text) {
+<span class="fc" id="L122">        builder.append('&quot;');</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (int i = 0; i &lt; text.length(); i++) {</span>
+<span class="fc" id="L124">            char current = text.charAt(i);</span>
+<span class="fc bfc" id="L125" title="All 8 branches covered.">            switch (current) {</span>
+<span class="fc" id="L126">                case '&quot;' -&gt; builder.append(&quot;\\\&quot;&quot;);</span>
+<span class="fc" id="L127">                case '\\' -&gt; builder.append(&quot;\\\\&quot;);</span>
+<span class="fc" id="L128">                case '\b' -&gt; builder.append(&quot;\\b&quot;);</span>
+<span class="fc" id="L129">                case '\f' -&gt; builder.append(&quot;\\f&quot;);</span>
+<span class="fc" id="L130">                case '\n' -&gt; builder.append(&quot;\\n&quot;);</span>
+<span class="fc" id="L131">                case '\r' -&gt; builder.append(&quot;\\r&quot;);</span>
+<span class="fc" id="L132">                case '\t' -&gt; builder.append(&quot;\\t&quot;);</span>
+                default -&gt; {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                    if (current &lt;= 0x1F) {</span>
+<span class="fc" id="L135">                        builder.append(&quot;\\u%04x&quot;.formatted((int) current));</span>
+                    } else {
+<span class="fc" id="L137">                        builder.append(current);</span>
+                    }
+                }
+            }
+        }
+<span class="fc" id="L142">        builder.append('&quot;');</span>
+<span class="fc" id="L143">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

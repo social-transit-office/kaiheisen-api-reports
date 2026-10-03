@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EntityColumnMetadataResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">EntityColumnMetadataResolver.java</span></div><h1>EntityColumnMetadataResolver.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import jakarta.persistence.Column;
+import java.lang.reflect.Field;
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+/** JPA エンティティの {@link Column} メタデータを解決するユーティリティ。 */
+public final class EntityColumnMetadataResolver {
+
+<span class="fc" id="L15">    private static final ConcurrentMap&lt;Class&lt;?&gt;, Map&lt;String, EntityColumnMetadata&gt;&gt; CACHE =</span>
+            new ConcurrentHashMap&lt;&gt;();
+
+    private EntityColumnMetadataResolver() { }
+
+    /**
+     * エンティティクラスの列メタデータを列名キーで返す。
+     *
+     * @param entityClass エンティティクラス
+     * @return 列メタデータ
+     */
+    public static Map&lt;String, EntityColumnMetadata&gt; resolve(Class&lt;?&gt; entityClass) {
+<span class="fc" id="L27">        Objects.requireNonNull(entityClass, &quot;entityClass&quot;);</span>
+<span class="fc" id="L28">        return CACHE.computeIfAbsent(entityClass, EntityColumnMetadataResolver::scan);</span>
+    }
+
+    private static Map&lt;String, EntityColumnMetadata&gt; scan(Class&lt;?&gt; entityClass) {
+<span class="fc" id="L32">        Map&lt;String, EntityColumnMetadata&gt; resolved = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L33">        Class&lt;?&gt; current = entityClass;</span>
+<span class="pc bpc" id="L34" title="1 of 4 branches missed.">        while (current != null &amp;&amp; current != Object.class) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            for (Field field : current.getDeclaredFields()) {</span>
+<span class="fc" id="L36">                Column column = field.getAnnotation(Column.class);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">                if (column == null) {</span>
+<span class="nc" id="L38">                    continue;</span>
+                }
+<span class="fc" id="L40">                field.setAccessible(true);</span>
+<span class="fc" id="L41">                resolved.putIfAbsent(</span>
+<span class="fc" id="L42">                        column.name(),</span>
+<span class="fc" id="L43">                        new EntityColumnMetadata(column.name(), field, column.nullable()));</span>
+            }
+<span class="fc" id="L45">            current = current.getSuperclass();</span>
+        }
+<span class="fc" id="L47">        return Map.copyOf(resolved);</span>
+    }
+
+    /**
+     * 列メタデータ。
+     *
+     * @param columnName 列物理名
+     * @param field 対応フィールド
+     * @param nullable nullable 属性
+     */
+<span class="fc" id="L57">    public record EntityColumnMetadata(String columnName, Field field, boolean nullable) {</span>
+
+        /**
+         * フィールド値を取得する。
+         *
+         * @param entity 対象エンティティ
+         * @return 現在値
+         */
+        public Object getValue(Object entity) {
+            try {
+<span class="fc" id="L67">                return field.get(entity);</span>
+<span class="nc" id="L68">            } catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L69">                throw new IllegalStateException(&quot;Failed to access field: &quot; + field.getName(), ex);</span>
+            }
+        }
+
+        /**
+         * フィールド値を設定する。
+         *
+         * @param entity 対象エンティティ
+         * @param value 設定値
+         */
+        public void setValue(Object entity, Object value) {
+            try {
+<span class="fc" id="L81">                field.set(entity, value);</span>
+<span class="nc" id="L82">            } catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L83">                throw new IllegalStateException(&quot;Failed to access field: &quot; + field.getName(), ex);</span>
+<span class="fc" id="L84">            }</span>
+<span class="fc" id="L85">        }</span>
+
+        /**
+         * 列の Java 型を返す。
+         *
+         * @return Java 型
+         */
+        public Class&lt;?&gt; javaType() {
+<span class="fc" id="L93">            return field.getType();</span>
+        }
+
+        /**
+         * NOT NULL 補完に使う中立値を返す。
+         *
+         * @return 補完値。対応外型は {@code null}
+         */
+        public Object neutralValue() {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            if (nullable) {</span>
+<span class="nc" id="L103">                return null;</span>
+            }
+<span class="fc" id="L105">            Class&lt;?&gt; type = javaType();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (type == String.class) {</span>
+<span class="fc" id="L107">                return &quot;&quot;;</span>
+            }
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (type == BigDecimal.class) {</span>
+<span class="fc" id="L110">                return BigDecimal.ZERO;</span>
+            }
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (type == Integer.class) {</span>
+<span class="fc" id="L113">                return 0;</span>
+            }
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            if (type == Long.class) {</span>
+<span class="nc" id="L116">                return 0L;</span>
+            }
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            if (type == Short.class) {</span>
+<span class="nc" id="L119">                return (short) 0;</span>
+            }
+<span class="nc" id="L121">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

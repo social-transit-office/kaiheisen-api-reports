@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-supplystopupdateandmeterreadingresultregistrationatcancellation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationImpl.java</span></div><h1>SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.EnumSet;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrHesnUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.write.KtmgmkkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationGmtsetkInf;
+
+/**
+ * 概要: SV-309（解約処理時の供給停止管理更新および検針結果登録）のサービス実装。
+ * 主な仕様:
+ * - 供給停止精算状態区分が供給停止精算保留の場合のみ、供給停止管理取得、確定前検針結果登録、供給停止管理更新を実施する。
+ * - `DA-055-R002` 0 件と `DA-055-U001` 更新 0 件は `DataInconsistencyException` を送出する。
+ * - `DA-052-R002` 0 件時は検針結果通し番号 `1`、取得あり時は `既存 + 1` を採用する。
+ */
+public final class SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationImpl
+        implements SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellation {
+
+    static final String SERVICE_USER_ID = &quot;KHSS309&quot;;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String supplyStopPaymentPendingStatus;
+
+    private final String supplyOutageStatus;
+
+    private final String supplyOutageReasonType;
+
+    private final String noChangeCode;
+
+    private final String onlineReportingMethodCode;
+
+    private final String irregularMeterReadingCode;
+
+    private final String actualInspectionStatusCode;
+
+    /**
+     * 必須依存と定数を受け取ってサービスを初期化する。
+     *
+     * @param kkytskrDataAccess 供給停止管理 DA
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationImpl(
+            KkytskrDataAccess kkytskrDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L72">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L73">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L76">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L79">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L82">        this.supplyStopPaymentPendingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L86">        this.supplyOutageStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_OUTAGE);
+<span class="fc" id="L90">        this.supplyOutageReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_OUTAGE);
+<span class="fc" id="L94">        this.noChangeCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChangeDetection.TYPE,
+                ConstantLookupKeys.Cirius.ChangeDetection.NO_CHANGE);
+<span class="fc" id="L98">        this.onlineReportingMethodCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterReadingResultReportingMethod.TYPE,
+                ConstantLookupKeys.Cirius.MeterReadingResultReportingMethod.ONLINE);
+<span class="fc" id="L102">        this.irregularMeterReadingCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RegularMeterReading.TYPE,
+                ConstantLookupKeys.Cirius.RegularMeterReading.IRREGULAR);
+<span class="fc" id="L106">        this.actualInspectionStatusCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterReadingImplementationStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.MeterReadingImplementationStatusCode
+                        .ACTUAL_INSPECTION_NORMAL_METER_READING);
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            String kkysSisnJtkb,
+            SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationGmtsetkInf gmtsetkInf,
+            String knsHuhuKbn,
+            Long tksuSvkyNo) {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!supplyStopPaymentPendingStatus.equals(kkysSisnJtkb)) {</span>
+<span class="fc" id="L121">            return;</span>
+        }
+
+<span class="fc" id="L124">        RequestState requestState = requireRequestState();</span>
+<span class="fc" id="L125">        KkytskrRecord supplyStopManagement = kkytskrDataAccess.findByGasMtstNoAndHesnYmd(</span>
+                        gasMtstNo,
+<span class="fc" id="L127">                        gmtsetkInf.hesnYmd())</span>
+<span class="fc" id="L128">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L129">                        kkytskrDataAccess.tableName(),</span>
+<span class="fc" id="L130">                        KkytskrDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_HESN_YMD.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L132">                                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L133">                                .put(&quot;hesnYmd&quot;, gmtsetkInf.hesnYmd())));</span>
+
+<span class="fc" id="L135">        int nextSequenceNo = ktmgmkkDataAccess.findByGasMtstNoAndKnsYmd(gasMtstNo, gmtsetkInf.hesnYmd())</span>
+<span class="fc" id="L136">                .map(record -&gt; record.knsKkaTsno() + 1)</span>
+<span class="fc" id="L137">                .orElse(1);</span>
+
+<span class="fc" id="L139">        ktmgmkkDataAccess.insert(</span>
+<span class="fc" id="L140">                buildKtmgmkkWriteRecord(</span>
+                        supplyStopManagement,
+                        nextSequenceNo,
+                        gmtsetkInf,
+                        knsHuhuKbn,
+                        tksuSvkyNo,
+                        requestState),
+<span class="fc" id="L147">                AuditContext.of(SERVICE_USER_ID, requestState.originFunctionId()));</span>
+
+<span class="fc" id="L149">        int updatedCount = kkytskrDataAccess.updateByGasMtstNoAndHesnYmd(</span>
+<span class="fc" id="L150">                buildKkytskrWriteRecord(),</span>
+<span class="fc" id="L151">                EnumSet.of(KkytskrColumn.KKYS_SISN_JTKB),</span>
+<span class="fc" id="L152">                new KkytskrHesnUpdateKey(supplyStopManagement.gasMtstNo(), gmtsetkInf.hesnYmd()),</span>
+<span class="fc" id="L153">                AuditContext.of(SERVICE_USER_ID, requestState.originFunctionId()));</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L155">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L156">                    kkytskrDataAccess.tableName(),</span>
+<span class="fc" id="L157">                    KkytskrDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_HESN_YMD.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L159">                            .put(&quot;gasMtstNo&quot;, supplyStopManagement.gasMtstNo())</span>
+<span class="fc" id="L160">                            .put(&quot;hesnYmd&quot;, gmtsetkInf.hesnYmd())</span>
+<span class="fc" id="L161">                            .put(&quot;kkysSisnJtkb&quot;, supplyOutageStatus)</span>
+<span class="fc" id="L162">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L163">                            .put(&quot;updKtnKinoId&quot;, requestState.originFunctionId()));</span>
+        }
+<span class="fc" id="L165">    }</span>
+
+    private KtmgmkkWriteRecord buildKtmgmkkWriteRecord(
+            KkytskrRecord supplyStopManagement,
+            int nextSequenceNo,
+            SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationGmtsetkInf gmtsetkInf,
+            String knsHuhuKbn,
+            Long tksuSvkyNo,
+            RequestState requestState) {
+<span class="fc" id="L174">        return new KtmgmkkWriteRecord(</span>
+<span class="fc" id="L175">                supplyStopManagement.gasMtstNo(),</span>
+<span class="fc" id="L176">                gmtsetkInf.hesnYmd(),</span>
+<span class="fc" id="L177">                nextSequenceNo,</span>
+                null,
+                supplyOutageReasonType,
+                null,
+<span class="fc" id="L181">                supplyStopManagement.gmtShjSu(),</span>
+<span class="fc" id="L182">                supplyStopManagement.gasSyry(),</span>
+                null,
+<span class="fc" id="L184">                supplyStopManagement.shyDdsu(),</span>
+<span class="fc" id="L185">                supplyStopManagement.sjskKbn(),</span>
+                noChangeCode,
+                onlineReportingMethodCode,
+<span class="fc" id="L188">                supplyStopManagement.sgttKknnFlg(),</span>
+                irregularMeterReadingCode,
+                actualInspectionStatusCode,
+<span class="fc" id="L191">                gmtsetkInf.gmtKhsJtkb(),</span>
+                knsHuhuKbn,
+<span class="fc" id="L193">                gmtsetkInf.ckrtGmscJtkb(),</span>
+<span class="fc" id="L194">                gmtsetkInf.mtgMtstNo(),</span>
+                null,
+                null,
+<span class="fc" id="L197">                supplyStopManagement.gmb(),</span>
+<span class="fc" id="L198">                supplyStopManagement.gmbTsno(),</span>
+                tksuSvkyNo,
+<span class="fc" id="L200">                supplyStopManagement.sgttUsrId(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L207">                requestState.systemDate(),</span>
+<span class="fc" id="L208">                false,</span>
+                null);
+    }
+
+    private KkytskrWriteRecord buildKkytskrWriteRecord() {
+<span class="fc" id="L213">        return new KkytskrWriteRecord(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                supplyOutageStatus,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private RequestState requireRequestState() {
+<span class="fc" id="L235">        var systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L236">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L237">                .toLocalDate();</span>
+<span class="fc" id="L238">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L239">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L240">        String originFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (originFunctionId == null) {</span>
+<span class="fc" id="L244">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L248">        return new RequestState(systemDate, originFunctionId);</span>
+    }
+
+<span class="fc" id="L251">    private record RequestState(</span>
+            java.time.LocalDate systemDate,
+            String originFunctionId) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryIntegrationManagementSameDayCancelImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-transferworkhistoryintegrationmanagementsamedaycancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TransferWorkHistoryIntegrationManagementSameDayCancelImpl.java</span></div><h1>TransferWorkHistoryIntegrationManagementSameDayCancelImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.IsrrkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.IsrrkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrUpdatableColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryIntegrationManagementSameDayCancel;
+
+/**
+ * 概要: SV-256（異動・作業履歴連携管理当日取消）のサービス実装。
+ * 主な仕様:
+ * - `DA-158-R001` で未当日取消の異動・作業履歴連携管理を最新 1 件取得する。
+ * - 対象が見つかった場合は `DA-158-U002` で当日取消フラグを更新する。
+ * - 対象が見つからない場合は処理対象データ無しとしてデータ不整合例外を送出する。
+ * 既知の制約:
+ * - 実行時には RequestContext の `hukkSysShbt` が必須である。
+ * - `J0253 1:有` はコンストラクタ初期化時に必須定数として検証する。
+ */
+public class TransferWorkHistoryIntegrationManagementSameDayCancelImpl
+        implements TransferWorkHistoryIntegrationManagementSameDayCancel {
+
+    static final String SERVICE_USER_ID = &quot;KHSS256&quot;;
+
+    private final IsrrkrDataAccess isrrkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String sameDayCancelFlag;
+
+    /**
+     * 概要: 依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - ISRRKR データアクセスと RequestContext を保持する。
+     * - `J0253 1:有` をコンストラクタ初期化時に解決する。
+     *
+     * @param isrrkrDataAccess ISRRKR データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public TransferWorkHistoryIntegrationManagementSameDayCancelImpl(
+            IsrrkrDataAccess isrrkrDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L61">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.isrrkrDataAccess = Objects.requireNonNull(isrrkrDataAccess, &quot;isrrkrDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L67">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L70">        this.sameDayCancelFlag = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.YES);
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * 概要: 指定された異動・作業履歴連携管理を当日取消する。
+     * 主な仕様:
+     * - 対象が見つからない場合は `DA-158-R001` 起点のデータ不整合例外を送出する。
+     * - 対象が見つかった場合は `DA-158-U002` で当日取消フラグを更新する。
+     */
+    @Override
+    public void execute(Long cstNo, LocalDate isrrTriYmd, String kytuIsrrGymCd, String kytuIsrrGymShsiCd) {
+<span class="fc" id="L84">        requireRequestContext();</span>
+
+<span class="fc" id="L86">        Optional&lt;IsrrkrRecord&gt; foundRecord = isrrkrDataAccess</span>
+<span class="fc" id="L87">                .findByCstNoAndIsrrTriYmdAndIsrrGymCdAndIsrrGmssCdAndNotTjtTrksFlg(</span>
+                        cstNo,
+                        isrrTriYmd,
+                        kytuIsrrGymCd,
+                        kytuIsrrGymShsiCd,
+<span class="fc" id="L92">                        sameDayCancelFlagAsBoolean());</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (foundRecord.isEmpty()) {</span>
+<span class="fc" id="L94">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L95">                    isrrkrDataAccess.tableName(),</span>
+<span class="fc" id="L96">                    IsrrkrDataAccess.CallSpecs.R001.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L98">                            .put(&quot;cstNo&quot;, cstNo)</span>
+<span class="fc" id="L99">                            .put(&quot;isrrTriYmd&quot;, isrrTriYmd)</span>
+<span class="fc" id="L100">                            .put(&quot;isrrGymCd&quot;, kytuIsrrGymCd)</span>
+<span class="fc" id="L101">                            .put(&quot;isrrGmssCd&quot;, kytuIsrrGymShsiCd)</span>
+<span class="fc" id="L102">                            .put(&quot;tjtTrksFlg&quot;, sameDayCancelFlagAsBoolean()));</span>
+        }
+
+<span class="fc" id="L105">        IsrrkrRecord currentRecord = foundRecord.orElseThrow();</span>
+<span class="fc" id="L106">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L107">        isrrkrDataAccess.updateByCstNoAndIsrrTriYmdAndIsrrRkkrTsnoAndRecUpdJnjNo(</span>
+<span class="fc" id="L108">                buildUpdateRecord(),</span>
+<span class="fc" id="L109">                Set.of(IsrrkrUpdatableColumn.TJT_TRKS_FLG),</span>
+                new IsrrkrU002UpdateKey(
+<span class="fc" id="L111">                        currentRecord.cstNo(),</span>
+<span class="fc" id="L112">                        currentRecord.isrrTriYmd(),</span>
+<span class="fc" id="L113">                        currentRecord.isrrRkkrTsno(),</span>
+<span class="fc" id="L114">                        currentRecord.recUpdJnjNo()),</span>
+<span class="fc" id="L115">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * 概要: `DA-158-U002` に渡す更新レコードを組み立てる。
+     * 主な仕様:
+     * - 更新対象は当日取消フラグのみとする。
+     * - その他の列は targetColumns で指定しないため null のまま渡す。
+     *
+     * @return ISRRKR 更新用レコード
+     */
+    private IsrrkrWriteRecord buildUpdateRecord() {
+<span class="fc" id="L127">        return new IsrrkrWriteRecord(</span>
+                /* cstNo */ null,
+                /* isrrTriYmd */ null,
+                /* isrrRkkrTsno */ null,
+                /* shyuJgysKbn */ null,
+                /* isrrTriHms */ null,
+                /* isrrGymCd */ null,
+                /* isrrGmssCd */ null,
+                /* idsgYmd */ null,
+                /* kyuSvkyNo */ null,
+                /* shnSvkyNo */ null,
+                /* kpkkSisnKbn */ null,
+                /* hesnJysb */ null,
+                /* svkyEndJysb */ null,
+                /* kkysSisnJtkb */ null,
+                /* hesnYmd */ null,
+                /* kyuSkyoTrno */ null,
+                /* shnSkyoTrno */ null,
+                /* kyuGmb */ null,
+                /* shnGmb */ null,
+                /* kyuGmkShbt */ null,
+                /* shnGmkShbt */ null,
+                /* kyuGasSyry */ null,
+                /* shnGmtGusu */ null,
+                /* skinGmsSu */ null,
+                /* gmtKhsJtkb */ null,
+                /* kngmStbJtkb */ null,
+                /* gmtThkgJysb */ null,
+                /* kyuTkkbNo */ null,
+                /* shnTkkbNo */ null,
+                /* kyusKsddKbn */ null,
+                /* kyusKskbNo */ null,
+                /* sinsKsddKbn */ null,
+                /* sinsKskbNo */ null,
+                /* ckrtGmscJtkb */ null,
+                /* kkyuGmtKbn */ null,
+                /* bldNo */ null,
+                /* gmicDbriShbt */ null,
+                /* gmicSbriShbt */ null,
+                /* knsKhFlg */ null,
+                /* gmrKkykNo */ null,
+                /* gmrMticCd */ null,
+                /* gmrHangCd */ null,
+                /* shsyKyoTrno */ null,
+                /* gasYtCd */ null,
+                /* shnGmtkYmd */ null,
+                /* kyuGmtGusu */ null,
+                /* kyuKtyYm */ null,
+                /* gmtTkeJysb */ null,
+                /* rkhsYmd */ null,
+                /* kzfYtiYmd */ null,
+<span class="fc" id="L178">                /* tjtTrksFlg */ sameDayCancelFlagAsBoolean());</span>
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+     * 主な仕様:
+     * - `hukkSysShbt` の存在を確認する。
+     */
+    private void requireRequestContext() {
+<span class="fc" id="L187">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L188">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L189">    }</span>
+
+    /**
+     * 概要: RequestContext の報告システム種別から監査用の起点機能 ID を取得する。
+     * 主な仕様:
+     * - `KH001` の報告システム種別を名称へデコードする。
+     * - デコード結果が存在しない場合は定数未定義例外を送出する。
+     *
+     * @return 監査用の起点機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L200">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L201">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L202">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        if (decodedOriginFunctionId == null) {</span>
+<span class="fc" id="L206">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L211">        return decodedOriginFunctionId;</span>
+    }
+
+    private boolean sameDayCancelFlagAsBoolean() {
+<span class="fc" id="L215">        return ConstantLookupKeys.Cirius.PresenceFlag.YES.equals(sameDayCancelFlag);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

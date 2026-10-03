@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource</a> &gt; <span class="el_source">BaseResource.java</span></div><h1>BaseResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource;
+
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.request.BaseRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.DefaultExceptionLogMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.ExceptionLogContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.ExceptionLogMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogDecision;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLevel;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogRequestBodyMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+
+/**
+ * MA リクエスト共通パラメータの RequestContext バインドを担う基底クラス。
+ *
+ * @param &lt;T&gt; 共通パラメータを提供するリクエスト DTO 型
+ */
+public abstract class BaseResource&lt;T extends BaseRequest&gt; {
+
+    /** 開始時のイベント名。 */
+    private static final String RESOURCE_STARTED_EVENT = &quot;resource.started&quot;;
+
+    /** 開始時の要約。 */
+    private static final String RESOURCE_STARTED_SUMMARY = &quot;MA resource action started&quot;;
+
+    /** Successful terminal event name. */
+    private static final String RESOURCE_COMPLETED_EVENT = &quot;resource.completed&quot;;
+
+    /** Successful terminal event summary. */
+    private static final String RESOURCE_COMPLETED_SUMMARY = &quot;MA resource action completed&quot;;
+
+    /** Failed terminal event name. */
+    private static final String RESOURCE_FAILED_EVENT = &quot;resource.failed&quot;;
+
+    /** Failed terminal event summary. */
+    private static final String RESOURCE_FAILED_SUMMARY = &quot;MA resource action failed&quot;;
+
+    /** 機能ID属性名。 */
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    /** 既定の例外ログマッパー。 */
+<span class="fc" id="L61">    private static final ExceptionLogMapper DEFAULT_EXCEPTION_LOG_MAPPER =</span>
+            new DefaultExceptionLogMapper(LogLayer.MA);
+
+    protected final RequestContext requestContext;
+
+    private final RequestDtoValidator requestDtoValidator;
+
+    private final SystemDateTimeProvider clock;
+
+    private final StructuredLogger logger;
+
+    protected BaseResource(
+            final RequestContext requestContext,
+            final RequestDtoValidator requestDtoValidator,
+<span class="fc" id="L75">            final SystemDateTimeProvider clock) {</span>
+<span class="fc" id="L76">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L77">        this.requestDtoValidator = Objects.requireNonNull(requestDtoValidator, &quot;requestDtoValidator&quot;);</span>
+<span class="fc" id="L78">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L79">        this.logger = new JbossStructuredLogger(getClass());</span>
+<span class="fc" id="L80">    }</span>
+
+    protected final &lt;R&gt; R execute(T request, Supplier&lt;R&gt; action) {
+<span class="fc" id="L83">        Objects.requireNonNull(action, &quot;action&quot;);</span>
+<span class="fc" id="L84">        bindRequestContext(request);</span>
+        try {
+<span class="fc" id="L86">            validate(request);</span>
+<span class="fc" id="L87">            String functionId = resolveFunctionId();</span>
+            boolean terminalMeasurementEnabled =
+<span class="fc" id="L89">                    PerformanceObservabilitySettings.isTerminalEnabled();</span>
+<span class="fc" id="L90">            long startedAtNanos = System.nanoTime();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L92">                safeLogResourceStarted(request, functionId);</span>
+            } else {
+<span class="fc" id="L94">                logResourceStarted(request, functionId);</span>
+            }
+            try {
+<span class="fc" id="L97">                R result = action.get();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L99">                    logResourceTerminal(</span>
+                            RESOURCE_COMPLETED_EVENT,
+                            RESOURCE_COMPLETED_SUMMARY,
+                            functionId,
+                            startedAtNanos);
+                }
+<span class="fc" id="L105">                return result;</span>
+<span class="fc" id="L106">            } catch (RuntimeException | Error throwable) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L108">                    logResourceTerminal(</span>
+                            RESOURCE_FAILED_EVENT,
+                            RESOURCE_FAILED_SUMMARY,
+                            functionId,
+                            startedAtNanos);
+                }
+<span class="fc" id="L114">                throw throwable;</span>
+            }
+<span class="fc" id="L116">        } catch (RuntimeException ex) {</span>
+<span class="fc" id="L117">            logException(ex, logger(), exceptionLogMapper());</span>
+<span class="fc" id="L118">            throw ex;</span>
+        }
+    }
+
+    protected final void executeVoid(T request, Runnable action) {
+<span class="fc" id="L123">        Objects.requireNonNull(action, &quot;action&quot;);</span>
+<span class="fc" id="L124">        bindRequestContext(request);</span>
+        try {
+<span class="fc" id="L126">            validate(request);</span>
+<span class="fc" id="L127">            String functionId = resolveFunctionId();</span>
+            boolean terminalMeasurementEnabled =
+<span class="fc" id="L129">                    PerformanceObservabilitySettings.isTerminalEnabled();</span>
+<span class="fc" id="L130">            long startedAtNanos = System.nanoTime();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L132">                safeLogResourceStarted(request, functionId);</span>
+            } else {
+<span class="fc" id="L134">                logResourceStarted(request, functionId);</span>
+            }
+            try {
+<span class="fc" id="L137">                action.run();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L139">                    logResourceTerminal(</span>
+                            RESOURCE_COMPLETED_EVENT,
+                            RESOURCE_COMPLETED_SUMMARY,
+                            functionId,
+                            startedAtNanos);
+                }
+<span class="nc" id="L145">            } catch (RuntimeException | Error throwable) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                if (terminalMeasurementEnabled) {</span>
+<span class="nc" id="L147">                    logResourceTerminal(</span>
+                            RESOURCE_FAILED_EVENT,
+                            RESOURCE_FAILED_SUMMARY,
+                            functionId,
+                            startedAtNanos);
+                }
+<span class="nc" id="L153">                throw throwable;</span>
+<span class="fc" id="L154">            }</span>
+<span class="nc" id="L155">        } catch (RuntimeException ex) {</span>
+<span class="nc" id="L156">            logException(ex, logger(), exceptionLogMapper());</span>
+<span class="nc" id="L157">            throw ex;</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">    }</span>
+
+    protected final void bindRequestContext(T request) {
+<span class="fc" id="L162">        Objects.requireNonNull(request, &quot;request&quot;);</span>
+        // 相関IDは CorrelationIdFilter が RequestContext へ設定済みのため、ここでは扱わない
+<span class="fc" id="L164">        requestContext.setHukkSysShbt(normalizeOptional(request.hukkSysShbt()));</span>
+<span class="fc" id="L165">        requestContext.setSystemDatetime(resolveSystemDatetime(request.systemDatetime()));</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * 単一項目バリデーションと項目間バリデーションを実行する。
+     *
+     * &lt;p&gt;サブクラスが独自の追加検証を行う場合も、既定の DTO 検証と
+     * {@link #interFieldValidation()} の結果を維持すること。&lt;/p&gt;
+     *
+     * @param request リクエスト DTO
+     */
+    protected void validate(T request) {
+<span class="fc" id="L177">        List&lt;ValidationError&gt; errorDetailList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L178">        appendErrors(errorDetailList, requestDtoValidator.validate(request));</span>
+<span class="fc" id="L179">        appendErrors(errorDetailList, interFieldValidation().validate(request));</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (!errorDetailList.isEmpty()) {</span>
+<span class="fc" id="L181">            throw new ValidationException(errorDetailList, true);</span>
+        }
+<span class="fc" id="L183">    }</span>
+
+    /**
+     * ログ出力に使用するロガーを返す。デフォルトではサブクラス名をカテゴリとする。
+     *
+     * @return ロガー
+     */
+    protected StructuredLogger logger() {
+<span class="nc" id="L191">        return logger;</span>
+    }
+
+    /**
+     * 例外ログマッパーを返す。デフォルトでは MA レイヤ用の既定マッパーを使用する。
+     *
+     * @return 例外ログマッパー
+     */
+    protected ExceptionLogMapper exceptionLogMapper() {
+<span class="nc" id="L200">        return DEFAULT_EXCEPTION_LOG_MAPPER;</span>
+    }
+
+    /**
+     * 項目間バリデーションを返す。
+     *
+     * &lt;p&gt;サブクラスで上書きする場合は、副作用を持たない検証実装を返し、
+     * 検証エラーは {@link ValidationError} のリストで返すこと。&lt;/p&gt;
+     *
+     * @return 項目間バリデーション
+     */
+    protected InterFieldValidation&lt;T&gt; interFieldValidation() {
+<span class="nc" id="L212">        return InterFieldValidation.noOp();</span>
+    }
+
+    protected final void logException(Throwable throwable, StructuredLogger logger, ExceptionLogMapper mapper) {
+<span class="fc" id="L216">        Objects.requireNonNull(logger, &quot;logger&quot;);</span>
+<span class="fc" id="L217">        Objects.requireNonNull(mapper, &quot;mapper&quot;);</span>
+<span class="fc" id="L218">        LogDecision decision = mapper.map(throwable, exceptionLogContext());</span>
+<span class="pc bpc" id="L219" title="2 of 4 branches missed.">        if (decision == null || decision.event() == null) {</span>
+<span class="nc" id="L220">            return;</span>
+        }
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (decision.level() == LogLevel.ERROR) {</span>
+<span class="fc" id="L223">            logger.error(decision.event(), throwable);</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        } else if (decision.level() == LogLevel.WARN) {</span>
+<span class="fc" id="L225">            logger.warn(decision.event());</span>
+        } else {
+<span class="nc" id="L227">            logger.info(decision.event());</span>
+        }
+<span class="fc" id="L229">        requestContext.markExceptionLogged();</span>
+<span class="fc" id="L230">    }</span>
+
+    private ExceptionLogContext exceptionLogContext() {
+<span class="fc" id="L233">        return new ExceptionLogContext(</span>
+<span class="fc" id="L234">                requestContext.getCorrelationId().orElse(null),</span>
+<span class="fc" id="L235">                requestContext.getHttpMethod().orElse(null),</span>
+<span class="fc" id="L236">                requestContext.getRequestPath().orElse(null),</span>
+<span class="fc" id="L237">                getClass().getName(),</span>
+<span class="fc" id="L238">                requestContext.getServiceId().orElse(null),</span>
+<span class="fc" id="L239">                requestContext.getServiceName().orElse(null));</span>
+    }
+
+    protected final String normalizeOptional(String value) {
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L244">            return null;</span>
+        }
+<span class="fc" id="L246">        String normalized = value.trim();</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+
+    private void logResourceStarted(T request, final String functionId) {
+<span class="fc" id="L251">        requestContext.setRootFunctionIdIfAbsent(functionId);</span>
+<span class="fc" id="L252">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L253">        attributes.put(FUNCTION_ID_ATTRIBUTE, functionId);</span>
+<span class="fc" id="L254">        String callPath = requestContext.currentCallPath();</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (callPath != null) {</span>
+<span class="fc" id="L256">            attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+        }
+<span class="fc" id="L258">        Map&lt;String, Object&gt; requestBody = toRequestBody(request);</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">        if (!requestBody.isEmpty()) {</span>
+<span class="fc" id="L260">            attributes.put(LogField.REQUEST_BODY.key(), requestBody);</span>
+        }
+<span class="fc" id="L262">        appendRequestToResourceLatency(attributes);</span>
+<span class="fc" id="L263">        logger().info(new LogEvent(</span>
+                RESOURCE_STARTED_EVENT,
+                RESOURCE_STARTED_SUMMARY,
+                LogLayer.MA,
+                null,
+                null,
+                attributes));
+<span class="fc" id="L270">    }</span>
+
+    private void safeLogResourceStarted(final T request, final String functionId) {
+        try {
+<span class="fc" id="L274">            logResourceStarted(request, functionId);</span>
+<span class="nc" id="L275">        } catch (RuntimeException ignored) {</span>
+            // Observability must not alter the resource action result.
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">    }</span>
+
+    private void logResourceTerminal(
+            final String eventName,
+            final String summary,
+            final String functionId,
+            final long startedAtNanos) {
+        try {
+<span class="fc" id="L286">            Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L287">            attributes.put(FUNCTION_ID_ATTRIBUTE, functionId);</span>
+<span class="fc" id="L288">            String callPath = requestContext.currentCallPath();</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (callPath != null) {</span>
+<span class="fc" id="L290">                attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+            }
+<span class="fc" id="L292">            attributes.put(</span>
+<span class="fc" id="L293">                    LogField.LATENCY_MS.key(),</span>
+<span class="fc" id="L294">                    Math.max(0L, System.nanoTime() - startedAtNanos) / 1_000_000L);</span>
+<span class="fc" id="L295">            safeInfo(new LogEvent(</span>
+                    eventName,
+                    summary,
+                    LogLayer.MA,
+                    null,
+                    null,
+                    attributes));
+<span class="nc" id="L302">        } catch (RuntimeException ignored) {</span>
+            // Observability must not alter the resource action result.
+<span class="fc" id="L304">        }</span>
+<span class="fc" id="L305">    }</span>
+
+    private void safeInfo(final LogEvent event) {
+        try {
+<span class="fc" id="L309">            logger().info(event);</span>
+<span class="nc" id="L310">        } catch (RuntimeException ignored) {</span>
+            // Observability must not alter the resource action result.
+<span class="fc" id="L312">        }</span>
+<span class="fc" id="L313">    }</span>
+
+    private void appendRequestToResourceLatency(final Map&lt;String, Object&gt; attributes) {
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (!PerformanceObservabilitySettings.isEnabled()) {</span>
+<span class="fc" id="L317">            return;</span>
+        }
+        try {
+<span class="fc" id="L320">            requestContext.elapsedSinceRequestInMillis(System.nanoTime())</span>
+<span class="fc" id="L321">                    .ifPresentOrElse(</span>
+<span class="fc" id="L322">                            latency -&gt; attributes.put(</span>
+<span class="fc" id="L323">                                    LogField.REQUEST_TO_RESOURCE_LATENCY_MS.key(),</span>
+                                    latency),
+<span class="fc" id="L325">                            () -&gt; attributes.put(LogField.MEASUREMENT_UNAVAILABLE.key(), true));</span>
+<span class="nc" id="L326">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L327">            attributes.put(LogField.MEASUREMENT_UNAVAILABLE.key(), true);</span>
+<span class="fc" id="L328">        }</span>
+<span class="fc" id="L329">    }</span>
+
+    private Map&lt;String, Object&gt; toRequestBody(T request) {
+<span class="fc" id="L332">        return LogRequestBodyMapper.toMap(request);</span>
+    }
+
+    private String resolveFunctionId() {
+<span class="fc" id="L336">        Class&lt;?&gt; resourceClass = getClass();</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        while (resourceClass != null) {</span>
+<span class="fc" id="L338">            MainService mainService = resourceClass.getAnnotation(MainService.class);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">            if (mainService != null) {</span>
+<span class="fc" id="L340">                return mainService.identifier();</span>
+            }
+<span class="nc" id="L342">            resourceClass = resourceClass.getSuperclass();</span>
+<span class="nc" id="L343">        }</span>
+<span class="nc" id="L344">        return null;</span>
+    }
+
+    private void appendErrors(List&lt;ValidationError&gt; collector, List&lt;ValidationError&gt; errors) {
+<span class="pc bpc" id="L348" title="1 of 4 branches missed.">        if (errors == null || errors.isEmpty()) {</span>
+<span class="fc" id="L349">            return;</span>
+        }
+<span class="fc" id="L351">        collector.addAll(errors);</span>
+<span class="fc" id="L352">    }</span>
+
+    private LocalDateTime resolveSystemDatetime(String rawSystemDatetime) {
+<span class="fc" id="L355">        String normalized = normalizeOptional(rawSystemDatetime);</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (normalized == null) {</span>
+<span class="fc" id="L357">            return clock.currentDateTime();</span>
+        }
+        try {
+<span class="fc" id="L360">            return OffsetDateTime.parse(normalized).toLocalDateTime();</span>
+<span class="fc" id="L361">        } catch (DateTimeParseException ex) {</span>
+            try {
+<span class="nc" id="L363">                return LocalDateTime.parse(normalized);</span>
+<span class="fc" id="L364">            } catch (DateTimeParseException nested) {</span>
+<span class="fc" id="L365">                throw new ValidationException(</span>
+<span class="fc" id="L366">                        List.of(ValidationError.ofField(</span>
+                                ErrorCodeConstants.ERROR_CODE_010000015,
+                                &quot;systemDatetime&quot;)),
+                        true);
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

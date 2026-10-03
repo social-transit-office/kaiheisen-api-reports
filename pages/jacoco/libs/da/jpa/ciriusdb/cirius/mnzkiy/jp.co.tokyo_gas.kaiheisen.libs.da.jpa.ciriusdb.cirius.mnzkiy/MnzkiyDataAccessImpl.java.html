@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MnzkiyDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-mnzkiy</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.mnzkiy</a> &gt; <span class="el_source">MnzkiyDataAccessImpl.java</span></div><h1>MnzkiyDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.mnzkiy;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiySvkyTkysUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** MNZKIY データアクセスの JPA 実装。 */
+public class MnzkiyDataAccessImpl extends DataAccessBase implements MnzkiyDataAccess {
+
+    /** 操作対象のテーブル名。 */
+    private static final String TABLE_NAME = &quot;MNZKIY&quot;;
+
+    /** 主キー一致更新・削除で共通利用する WHERE 句。 */
+    private static final String PK_WHERE_CLAUSE = &quot;SVKY_NO = ? AND MNZI_TKYS_YMD = ?&quot;;
+
+    /** Entity と read record の相互変換を担うマッパー。 */
+<span class="fc" id="L44">    private static final ReflectiveRecordEntityMapper&lt;MnzkiyRecord, MnzkiyEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L45">            ReflectiveRecordEntityMapper.create(MnzkiyRecord.class, MnzkiyEntity.class);</span>
+
+    /** Entity と write record の相互変換を担うマッパー。 */
+    private static final ReflectiveRecordEntityMapper&lt;MnzkiyWriteRecord, MnzkiyEntity&gt;
+<span class="fc" id="L49">            WRITE_MAPPER =</span>
+<span class="fc" id="L50">                    ReflectiveRecordEntityMapper.create(</span>
+                            MnzkiyWriteRecord.class, MnzkiyEntity.class);
+
+    /** JPA 操作用の EntityManager。 */
+    private final EntityManager entityManager;
+
+    /** 検索条件構築に利用する CriteriaBuilderFactory。 */
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    /** 監査列補完に利用する現在時刻プロバイダ。 */
+    private final SystemDateTimeProvider clock;
+
+    /** エンティティの監査列アクセスを束ねるバインダ。 */
+    private final JpaAuditColumnAccessBinder&lt;MnzkiyEntity&gt; auditColumnAccessBinder;
+
+    /** CIRIUS 共通の監査列自動設定ロジック。 */
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    /** Insert 用の JPA 書き込み支援。 */
+    private final JpaInsertSupport&lt;MnzkiyWriteRecord, MnzkiyEntity, MnzkiyColumn&gt; insertSupport;
+
+    /** Update 用の JPA 書き込み支援。 */
+    private final JpaTargetColumnUpdateSupport&lt;MnzkiyWriteRecord, MnzkiyEntity, MnzkiyColumn&gt;
+            updateSupport;
+
+    /** 標準依存で初期化する。 */
+    public MnzkiyDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L78">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L83">    }</span>
+
+    /**
+     * テスト用に依存を差し替えて初期化する。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     * @param clock 時刻プロバイダ
+     * @param auditColumnAutoSetter 監査列自動設定
+     */
+    MnzkiyDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L97">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L98">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L99">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L100">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L101">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L102">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(MnzkiyEntity.class);</span>
+<span class="fc" id="L103">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L104">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L105">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        MnzkiyWriteDefinition.INSTANCE,
+                        MnzkiyEntity.class,
+<span class="fc" id="L111">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L112">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        MnzkiyWriteDefinition.INSTANCE,
+                        MnzkiyEntity.class,
+<span class="fc" id="L118">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L119">    }</span>
+
+    /** 1 行登録する。 */
+    @Override
+    public int insert(MnzkiyWriteRecord record, AuditContext context) {
+<span class="fc" id="L124">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L125">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L126">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L129">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L130">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    /** 主キーと排他制御順序番号を条件に 1 行削除する。 */
+    @Override
+    public int deleteBySvkyNoAndMnziTkysYmdAndRecUpdJnjNo(
+            Long svkyNo, LocalDate mnziTkysYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L137">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L138">                .delete(</span>
+<span class="fc" id="L139">                        preparedWhere(svkyNo, mnziTkysYmd),</span>
+                        recUpdJnjNo,
+<span class="fc" id="L141">                        MnzkiyDataAccess.CallSpecs.DELETE_BY_SVKY_NO_AND_MNZI_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier());</span>
+    }
+
+    /** 主キーで 1 行取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmd(Long svkyNo, LocalDate mnziTkysYmd) {
+<span class="fc" id="L147">        SqlCapture.set(</span>
+                &quot;SELECT * FROM MNZKIY WHERE SVKY_NO = :svkyNo AND MNZI_TKYS_YMD = :mnziTkysYmd&quot;);
+<span class="fc" id="L149">        var builder = criteriaBuilderFactory.create(entityManager, MnzkiyEntity.class);</span>
+<span class="fc" id="L150">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeLong(svkyNo, &quot;svkyNo&quot;));</span>
+<span class="fc" id="L151">        JpaWhere.eq(builder, &quot;mnziTkysYmd&quot;, safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;));</span>
+<span class="fc" id="L152">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    /** サービス契約番号と免税適用終了年月日で 1 行取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTyenYmd(Long svkyNo, LocalDate mnziTyenYmd) {
+<span class="fc" id="L158">        SqlCapture.set(</span>
+                &quot;SELECT * FROM MNZKIY WHERE SVKY_NO = :svkyNo AND MNZI_TYEN_YMD = :mnziTyenYmd&quot;
+                        + &quot; ORDER BY MNZI_TKYS_YMD DESC FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L161">        var builder = criteriaBuilderFactory.create(entityManager, MnzkiyEntity.class);</span>
+<span class="fc" id="L162">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeLong(svkyNo, &quot;svkyNo&quot;));</span>
+<span class="fc" id="L163">        JpaWhere.eq(builder, &quot;mnziTyenYmd&quot;, safeYmd(mnziTyenYmd, &quot;mnziTyenYmd&quot;));</span>
+<span class="fc" id="L164">        builder.orderByDesc(&quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L165">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    /** 指定開始年月日より後の最初の 1 行を取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmdGreaterThan(
+            Long svkyNo, LocalDate mnziTkysYmd) {
+<span class="fc" id="L172">        SqlCapture.set(</span>
+                &quot;SELECT * FROM MNZKIY WHERE SVKY_NO = :svkyNo AND MNZI_TKYS_YMD &gt; :mnziTkysYmd&quot;
+                        + &quot; ORDER BY MNZI_TKYS_YMD FETCH FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L175">        var builder = criteriaBuilderFactory.create(entityManager, MnzkiyEntity.class);</span>
+<span class="fc" id="L176">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeLong(svkyNo, &quot;svkyNo&quot;));</span>
+<span class="fc" id="L177">        JpaWhere.gt(builder, &quot;mnziTkysYmd&quot;, safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;));</span>
+<span class="fc" id="L178">        builder.orderByAsc(&quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L179">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    /** 基準日を含む有効期間のうち最新開始日の 1 行を取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmdAndMnziTyenYmd(
+            Long svkyNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L186">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L187">        SqlCapture.set(</span>
+                &quot;SELECT * FROM MNZKIY WHERE SVKY_NO = :svkyNo AND MNZI_TKYS_YMD &lt;= :knskKjnYmd&quot;
+                        + &quot; AND MNZI_TYEN_YMD &gt;= :knskKjnYmd ORDER BY MNZI_TKYS_YMD DESC FETCH&quot;
+                        + &quot; FIRST 1 ROWS ONLY&quot;);
+<span class="fc" id="L191">        var builder = criteriaBuilderFactory.create(entityManager, MnzkiyEntity.class);</span>
+<span class="fc" id="L192">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeLong(svkyNo, &quot;svkyNo&quot;));</span>
+<span class="fc" id="L193">        JpaWhere.le(builder, &quot;mnziTkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L194">        JpaWhere.ge(builder, &quot;mnziTyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L195">        builder.orderByDesc(&quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L196">        return builder.setMaxResults(1).getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    /** U001 条件で 1 行更新する。 */
+    @Override
+    public int updateBySvkyNoAndMnziTkysYmdAndRecUpdJnjNo(
+            MnzkiyWriteRecord record,
+            Set&lt;MnzkiyColumn&gt; targetColumns,
+            MnzkiySvkyTkysUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L206">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L207">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L208">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L209">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L210">        return update(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L213">                updateKey.svkyNo(),</span>
+<span class="fc" id="L214">                updateKey.mnziTkysYmd(),</span>
+<span class="fc" id="L215">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L217">                MnzkiyDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_MNZI_TKYS_YMD_AND_REC_UPD_JNJ_NO_U001.identifier());</span>
+    }
+
+    /**
+     * 主キー一致行を更新する。
+     *
+     * @param record 更新内容
+     * @param targetColumns 更新対象列
+     * @param svkyNo サービス契約番号
+     * @param mnziTkysYmd 免税適用開始年月日
+     * @param recUpdJnjNo 排他制御順序番号
+     * @param context 監査コンテキスト
+     * @param daId DA 識別子
+     * @return 更新件数
+     */
+    private int update(
+            MnzkiyWriteRecord record,
+            Set&lt;MnzkiyColumn&gt; targetColumns,
+            Long svkyNo,
+            LocalDate mnziTkysYmd,
+            Integer recUpdJnjNo,
+            AuditContext context,
+            String daId) {
+<span class="fc" id="L240">        Set&lt;MnzkiyColumn&gt; canonicalTargetColumns = canonicalTargetColumns(targetColumns);</span>
+<span class="fc" id="L241">        return updateSupport.update(</span>
+                record,
+                canonicalTargetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L245">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L246">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L249">                                Objects.requireNonNullElse(recUpdJnjNo, 0)),</span>
+<span class="fc" id="L250">                preparedWhere(svkyNo, mnziTkysYmd),</span>
+                recUpdJnjNo,
+                daId);
+    }
+
+    /**
+     * 主キー条件に対応する PreparedWhere を生成する。
+     *
+     * @param svkyNo サービス契約番号
+     * @param mnziTkysYmd 免税適用開始年月日
+     * @return PreparedWhere
+     */
+    private PreparedWhere preparedWhere(Long svkyNo, LocalDate mnziTkysYmd) {
+<span class="fc" id="L263">        BigDecimal safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L264">        BigDecimal safeMnziTkysYmd = safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L265">        return PreparedWhere.of(</span>
+                PK_WHERE_CLAUSE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L268">                    int nextIndex = JpaBind.set(query, startIndex, safeSvkyNo);</span>
+<span class="fc" id="L269">                    return JpaBind.set(query, nextIndex, safeMnziTkysYmd);</span>
+                },
+                safeSvkyNo,
+                safeMnziTkysYmd);
+    }
+
+    /**
+     * 更新対象列を EnumSet 化して canonical 形式に整える。
+     *
+     * @param targetColumns 更新対象列
+     * @return canonical 化した更新対象列
+     */
+    private static Set&lt;MnzkiyColumn&gt; canonicalTargetColumns(Set&lt;MnzkiyColumn&gt; targetColumns) {
+<span class="fc" id="L282">        EnumSet&lt;MnzkiyColumn&gt; canonicalColumns = EnumSet.noneOf(MnzkiyColumn.class);</span>
+<span class="fc" id="L283">        canonicalColumns.addAll(targetColumns);</span>
+<span class="fc" id="L284">        return canonicalColumns;</span>
+    }
+
+    /**
+     * Long 条件値を BigDecimal に変換し null-safe に補完する。
+     *
+     * @param value 入力値
+     * @param paramName パラメータ名
+     * @return 補完後の値
+     */
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L295">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L296">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    /**
+     * 年月日条件値を BigDecimal に変換し null-safe に補完する。
+     *
+     * @param value 入力値
+     * @param paramName パラメータ名
+     * @return 補完後の値
+     */
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L307">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L308">                JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

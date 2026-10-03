@@ -1,0 +1,805 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OnlineTerminateReportProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-other</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.retail.retail_tg</a> &gt; <span class="el_source">OnlineTerminateReportProcessor.java</span></div><h1>OnlineTerminateReportProcessor.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.retail.retail_tg;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.OnlineTerminateReportRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsnkrn.KnsnkrnDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsnkrn.KnsnkrnRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GrkKsbHwsb;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancellationCommonProcessCommon;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.RelocationDestinationManagementAdditionAtRelocationCancellation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryOtherSystemIntegrationDataRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationGmtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransferWorkHistoryDetailCodePipelineAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransferWorkHistoryDetailCodePipelineAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransferWorkHistoryDetailCodeRetailAcquisition2;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransferWorkHistoryDetailCodeRetailAcquisition2Output;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransportServiceContractTerminationReasonTypeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.TransportServiceContractTerminationReasonTypeAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningClosingInProgressErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OriginalMeterCancellationDedicatedContractCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OriginalMeterCancellationDedicatedContractCheckOutput;
+
+/**
+ * MA-034 の実処理。
+ */
+@ApplicationScoped
+public class OnlineTerminateReportProcessor {
+
+<span class="fc" id="L69">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L71">    private static final DateTimeFormatter SLASH_DATE_FORMATTER =</span>
+<span class="fc" id="L72">            DateTimeFormatter.ofPattern(&quot;yyyy/MM/dd&quot;);</span>
+
+    private static final String CONDUIT_CLOSURE_SCREEN_ID = &quot;CXXG0082&quot;;
+
+    private static final String RETAIL_ONLINE_TERMINATION_SCREEN_ID = &quot;CXXG0014&quot;;
+
+    private static final String TABLE_GMTSETK = &quot;GMTSETK&quot;;
+
+    private static final String TABLE_SVSIHKR = &quot;SVSIHKR&quot;;
+
+    private static final String TABLE_SIHAKY = &quot;SIHAKY&quot;;
+
+    private static final String TABLE_SVCKYA = &quot;SVCKYA&quot;;
+
+    private static final String TABLE_SVMSTKR = &quot;SVMSTKR&quot;;
+
+    private static final String TABLE_TSKGMST = &quot;TSKGMST&quot;;
+
+    private static final String TABLE_TKSSVKY = &quot;TKSSVKY&quot;;
+
+    private static final String TABLE_KNSNKRN = &quot;KNSNKRN&quot;;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final KnsnkrnDataAccess knsnkrnDataAccess;
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    private final OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment;
+
+    private final OriginalMeterCancellationDedicatedContractCheck
+            originalMeterCancellationDedicatedContractCheck;
+
+    private final ComprehensiveJudgmentProcess comprehensiveJudgmentProcess;
+
+    private final GasFeeContractTypeSortingContentAcquisition
+            gasFeeContractTypeSortingContentAcquisition;
+
+    private final SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellation
+            supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation;
+
+    private final TransportServiceContractTerminationReasonTypeAcquisition
+            transportServiceContractTerminationReasonTypeAcquisition;
+
+    private final RelocationDestinationManagementAdditionAtRelocationCancellation
+            relocationDestinationManagementAdditionAtRelocationCancellation;
+
+    private final TransferWorkHistoryDetailCodePipelineAcquisition
+            transferWorkHistoryDetailCodePipelineAcquisition;
+
+    private final TransferWorkHistoryDetailCodeRetailAcquisition2
+            transferWorkHistoryDetailCodeRetailAcquisition2;
+
+    private final CancellationCommonProcessCommon cancellationCommonProcessCommon;
+
+    private final TransferWorkHistoryOtherSystemIntegrationDataRegistration
+            transferWorkHistoryOtherSystemIntegrationDataRegistration;
+
+    private final IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter;
+
+    private final IdousagyourirekiKouriJouhouCiriusAdapter kouriAdapter;
+
+    private final RequestContext requestContext;
+
+    /**
+     * テスト用のデフォルトコンストラクタ。
+     */
+<span class="fc" id="L151">    protected OnlineTerminateReportProcessor() {</span>
+<span class="fc" id="L152">        this.gmtsetkDataAccess = null;</span>
+<span class="fc" id="L153">        this.svsihkrDataAccess = null;</span>
+<span class="fc" id="L154">        this.sihakyDataAccess = null;</span>
+<span class="fc" id="L155">        this.svckyaDataAccess = null;</span>
+<span class="fc" id="L156">        this.svmstkrDataAccess = null;</span>
+<span class="fc" id="L157">        this.tskgmstDataAccess = null;</span>
+<span class="fc" id="L158">        this.tkssvkyDataAccess = null;</span>
+<span class="fc" id="L159">        this.knsnkrnDataAccess = null;</span>
+<span class="fc" id="L160">        this.constantMasterInfoAcquisition = null;</span>
+<span class="fc" id="L161">        this.openingClosingInProgressErrorJudgment = null;</span>
+<span class="fc" id="L162">        this.originalMeterCancellationDedicatedContractCheck = null;</span>
+<span class="fc" id="L163">        this.comprehensiveJudgmentProcess = null;</span>
+<span class="fc" id="L164">        this.gasFeeContractTypeSortingContentAcquisition = null;</span>
+<span class="fc" id="L165">        this.supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation = null;</span>
+<span class="fc" id="L166">        this.transportServiceContractTerminationReasonTypeAcquisition = null;</span>
+<span class="fc" id="L167">        this.relocationDestinationManagementAdditionAtRelocationCancellation = null;</span>
+<span class="fc" id="L168">        this.transferWorkHistoryDetailCodePipelineAcquisition = null;</span>
+<span class="fc" id="L169">        this.transferWorkHistoryDetailCodeRetailAcquisition2 = null;</span>
+<span class="fc" id="L170">        this.cancellationCommonProcessCommon = null;</span>
+<span class="fc" id="L171">        this.transferWorkHistoryOtherSystemIntegrationDataRegistration = null;</span>
+<span class="fc" id="L172">        this.doukanAdapter = null;</span>
+<span class="fc" id="L173">        this.kouriAdapter = null;</span>
+<span class="fc" id="L174">        this.requestContext = null;</span>
+<span class="fc" id="L175">    }</span>
+
+    /**
+     * MA-034 の依存コンポーネントを初期化する。
+     */
+    @Inject
+    public OnlineTerminateReportProcessor(
+            GmtsetkDataAccess gmtsetkDataAccess,
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            SvmstkrDataAccess svmstkrDataAccess,
+            TskgmstDataAccess tskgmstDataAccess,
+            TkssvkyDataAccess tkssvkyDataAccess,
+            KnsnkrnDataAccess knsnkrnDataAccess,
+            ConstantMasterInfoAcquisition constantMasterInfoAcquisition,
+            OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment,
+            OriginalMeterCancellationDedicatedContractCheck
+                    originalMeterCancellationDedicatedContractCheck,
+            ComprehensiveJudgmentProcess comprehensiveJudgmentProcess,
+            GasFeeContractTypeSortingContentAcquisition
+                    gasFeeContractTypeSortingContentAcquisition,
+            SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellation
+                    supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation,
+            TransportServiceContractTerminationReasonTypeAcquisition
+                    transportServiceContractTerminationReasonTypeAcquisition,
+            RelocationDestinationManagementAdditionAtRelocationCancellation
+                    relocationDestinationManagementAdditionAtRelocationCancellation,
+            TransferWorkHistoryDetailCodePipelineAcquisition
+                    transferWorkHistoryDetailCodePipelineAcquisition,
+            TransferWorkHistoryDetailCodeRetailAcquisition2
+                    transferWorkHistoryDetailCodeRetailAcquisition2,
+            CancellationCommonProcessCommon cancellationCommonProcessCommon,
+            TransferWorkHistoryOtherSystemIntegrationDataRegistration
+                    transferWorkHistoryOtherSystemIntegrationDataRegistration,
+            IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter,
+            IdousagyourirekiKouriJouhouCiriusAdapter kouriAdapter,
+<span class="fc" id="L212">            RequestContext requestContext) {</span>
+<span class="fc" id="L213">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L214">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L215">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L216">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L217">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L218">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L219">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L220">        this.knsnkrnDataAccess = Objects.requireNonNull(knsnkrnDataAccess, &quot;knsnkrnDataAccess&quot;);</span>
+<span class="fc" id="L221">        this.constantMasterInfoAcquisition = Objects.requireNonNull(</span>
+                constantMasterInfoAcquisition,
+                &quot;constantMasterInfoAcquisition&quot;);
+<span class="fc" id="L224">        this.openingClosingInProgressErrorJudgment = Objects.requireNonNull(</span>
+                openingClosingInProgressErrorJudgment,
+                &quot;openingClosingInProgressErrorJudgment&quot;);
+<span class="fc" id="L227">        this.originalMeterCancellationDedicatedContractCheck = Objects.requireNonNull(</span>
+                originalMeterCancellationDedicatedContractCheck,
+                &quot;originalMeterCancellationDedicatedContractCheck&quot;);
+<span class="fc" id="L230">        this.comprehensiveJudgmentProcess = Objects.requireNonNull(</span>
+                comprehensiveJudgmentProcess,
+                &quot;comprehensiveJudgmentProcess&quot;);
+<span class="fc" id="L233">        this.gasFeeContractTypeSortingContentAcquisition = Objects.requireNonNull(</span>
+                gasFeeContractTypeSortingContentAcquisition,
+                &quot;gasFeeContractTypeSortingContentAcquisition&quot;);
+<span class="fc" id="L236">        this.supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation =</span>
+<span class="fc" id="L237">                Objects.requireNonNull(</span>
+                        supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation,
+                        &quot;supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation&quot;);
+<span class="fc" id="L240">        this.transportServiceContractTerminationReasonTypeAcquisition = Objects.requireNonNull(</span>
+                transportServiceContractTerminationReasonTypeAcquisition,
+                &quot;transportServiceContractTerminationReasonTypeAcquisition&quot;);
+<span class="fc" id="L243">        this.relocationDestinationManagementAdditionAtRelocationCancellation =</span>
+<span class="fc" id="L244">                Objects.requireNonNull(</span>
+                        relocationDestinationManagementAdditionAtRelocationCancellation,
+                        &quot;relocationDestinationManagementAdditionAtRelocationCancellation&quot;);
+<span class="fc" id="L247">        this.transferWorkHistoryDetailCodePipelineAcquisition = Objects.requireNonNull(</span>
+                transferWorkHistoryDetailCodePipelineAcquisition,
+                &quot;transferWorkHistoryDetailCodePipelineAcquisition&quot;);
+<span class="fc" id="L250">        this.transferWorkHistoryDetailCodeRetailAcquisition2 = Objects.requireNonNull(</span>
+                transferWorkHistoryDetailCodeRetailAcquisition2,
+                &quot;transferWorkHistoryDetailCodeRetailAcquisition2&quot;);
+<span class="fc" id="L253">        this.cancellationCommonProcessCommon = Objects.requireNonNull(</span>
+                cancellationCommonProcessCommon,
+                &quot;cancellationCommonProcessCommon&quot;);
+<span class="fc" id="L256">        this.transferWorkHistoryOtherSystemIntegrationDataRegistration = Objects.requireNonNull(</span>
+                transferWorkHistoryOtherSystemIntegrationDataRegistration,
+                &quot;transferWorkHistoryOtherSystemIntegrationDataRegistration&quot;);
+<span class="fc" id="L259">        this.doukanAdapter = Objects.requireNonNull(doukanAdapter, &quot;doukanAdapter&quot;);</span>
+<span class="fc" id="L260">        this.kouriAdapter = Objects.requireNonNull(kouriAdapter, &quot;kouriAdapter&quot;);</span>
+<span class="fc" id="L261">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L262">    }</span>
+
+    /**
+     * オンライン解約報告の業務処理を実行する。
+     *
+     * @param request オンライン解約報告リクエスト
+     */
+    public void process(OnlineTerminateReportRequest request) {
+<span class="fc" id="L270">        LocalDate tkysYmd = LocalDate.parse(request.gmtsetkInf().tkysYmd());</span>
+<span class="fc" id="L271">        LocalDate kykYmd = LocalDate.parse(request.kykYmd());</span>
+<span class="fc" id="L272">        LocalDateTime systemDatetime = requestContext</span>
+<span class="fc" id="L273">                .getSystemDatetime()</span>
+<span class="pc" id="L274">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L275">        Long gasMtstNo = request.gmtsetkInf().gasMtstNo();</span>
+<span class="fc" id="L276">        Long svkyNo = request.svckyaInf().svkyNo();</span>
+<span class="fc" id="L277">        Integer skno = request.svckyaInf().skno();</span>
+
+<span class="fc" id="L279">        GmtsetkRecord gmtsetk = gmtsetkDataAccess</span>
+<span class="fc" id="L280">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, systemDatetime.toLocalDate())</span>
+<span class="fc" id="L281">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_GMTSETK,
+                        GmtsetkDataAccess.Identifiers.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD,
+                        &quot;{\&quot;gasMtstNo\&quot;:&quot; + gasMtstNo
+<span class="fc" id="L285">                                + &quot;,\&quot;knskKjnYmd\&quot;:\&quot;&quot; + systemDatetime.toLocalDate() + &quot;\&quot;}&quot;));</span>
+
+<span class="fc" id="L287">        executeOpeningClosingInProgressErrorJudgment(gmtsetk);</span>
+
+<span class="fc" id="L289">        OriginalMeterCancellationDedicatedContractCheckOutput originalMeterCheckOutput =</span>
+<span class="fc" id="L290">                originalMeterCancellationDedicatedContractCheck.execute(</span>
+<span class="fc" id="L291">                        gmtsetk.ckrtGmscJtkb(),</span>
+                        gasMtstNo,
+                        tkysYmd);
+
+<span class="fc" id="L295">        SvsihkrRecord svsihkr = svsihkrDataAccess</span>
+<span class="fc" id="L296">                .findBySvkyNoAndTkysYmdAndTyenYmdAndNotSihKiyJtkb(</span>
+                        svkyNo,
+<span class="fc" id="L298">                        systemDatetime.toLocalDate(),</span>
+                        ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID)
+<span class="pc" id="L300">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_SVSIHKR,
+                        &quot;DA-044-R007&quot;,
+                        &quot;{\&quot;svkyNo\&quot;:&quot; + svkyNo
+<span class="nc" id="L304">                                + &quot;,\&quot;knskKjnYmd\&quot;:\&quot;&quot; + systemDatetime.toLocalDate()</span>
+                                + &quot;\&quot;,\&quot;sihKiyJtkb\&quot;:\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID
+                                + &quot;\&quot;}&quot;));
+
+<span class="fc" id="L309">        SihakyRecord sihaky = sihakyDataAccess</span>
+<span class="fc" id="L310">                .findBySihKiyNoAndSihKiyJtkb(</span>
+<span class="fc" id="L311">                        svsihkr.sihKiyNo(),</span>
+                        ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING)
+<span class="pc" id="L313">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_SIHAKY,
+                        &quot;DA-075-R001&quot;,
+<span class="nc" id="L316">                        &quot;{\&quot;sihKiyNo\&quot;:&quot; + svsihkr.sihKiyNo()</span>
+                                + &quot;,\&quot;sihKiyJtkb\&quot;:\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING
+                                + &quot;\&quot;}&quot;));
+
+<span class="fc" id="L321">        ComprehensiveJudgmentProcessOutput comprehensiveJudgmentOutput =</span>
+<span class="fc" id="L322">                comprehensiveJudgmentProcess.execute(</span>
+                        gasMtstNo,
+<span class="fc" id="L324">                        systemDatetime.toLocalDate(),</span>
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing
+                                .OVERALL_JUDGMENT_RELATED_END);
+
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">        if (Boolean.TRUE.equals(comprehensiveJudgmentOutput.suguHntFlg())) {</span>
+<span class="nc" id="L329">            throw new BusinessRuleException(</span>
+                    ErrorCodeConstants.ERROR_CODE_020000036,
+<span class="nc" id="L331">                    List.of(),</span>
+<span class="nc" id="L332">                    List.of(formatGasMeterLocationNumber(gasMtstNo)));</span>
+        }
+
+<span class="fc" id="L335">        SvckyaRecord svckya = svckyaDataAccess</span>
+<span class="fc" id="L336">                .findBySvkyNoAndSkno(svkyNo, skno)</span>
+<span class="pc" id="L337">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_SVCKYA,
+                        &quot;DA-038-R010&quot;,
+                        &quot;{\&quot;svkyNo\&quot;:&quot; + svkyNo + &quot;,\&quot;skno\&quot;:&quot; + skno + &quot;}&quot;));
+
+<span class="fc" id="L342">        SvmstkrRecord relatedSvmstkr = svmstkrDataAccess</span>
+<span class="fc" id="L343">                .findByMtstNoAndRkkiKnrnJtkb(</span>
+                        gasMtstNo,
+<span class="fc" id="L345">                        List.of(</span>
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID,
+                                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03))
+<span class="pc" id="L348">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_SVMSTKR,
+                        &quot;DA-041-R009&quot;,
+                        &quot;{\&quot;mtstNo\&quot;:&quot; + gasMtstNo
+                                + &quot;,\&quot;rkkiKnrnJtkbList\&quot;:[\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID
+                                + &quot;\&quot;,\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03
+                                + &quot;\&quot;]}&quot;));
+
+<span class="fc" id="L358">        GasFeeContractTypeSortingContentAcquisitionOutput gasFeeContractTypeOutput =</span>
+<span class="fc" id="L359">                gasFeeContractTypeSortingContentAcquisition.execute(</span>
+<span class="fc" id="L360">                        svckya.kiyShbt(),</span>
+<span class="fc" id="L361">                        List.of(new GrkKsbHwsb(</span>
+                                ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType
+                                        .POSSIBILITY_OF_ONLINE_CANCELLATION,
+                                null)),
+<span class="fc" id="L365">                        systemDatetime.toLocalDate());</span>
+
+<span class="fc" id="L367">        boolean onlineCancellationAvailable = gasFeeContractTypeOutput.grkKsbHnsbList().stream()</span>
+<span class="fc" id="L368">                .map(value -&gt; value.grkKsbHnsb())</span>
+<span class="fc" id="L369">                .anyMatch(ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType</span>
+                        .POSSIBILITY_OF_ONLINE_CANCELLATION_POSSIBLE::equals);
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">        if (!onlineCancellationAvailable) {</span>
+<span class="nc" id="L372">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000037);</span>
+        }
+
+<span class="fc" id="L375">        if (svckyaDataAccess.findFirstBySvkyNoAndSvkyJtkb(</span>
+                svkyNo,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.WAITING_FOR_CONTRACT_APPLICATION)
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">                .isPresent()) {</span>
+<span class="nc" id="L379">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000038);</span>
+        }
+
+<span class="fc" id="L382">        TskgmstRecord tskgmst = tskgmstDataAccess</span>
+<span class="fc" id="L383">                .findByGasMtstNoAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING)
+<span class="pc" id="L386">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_TSKGMST,
+                        &quot;DA-108-R002&quot;,
+                        &quot;{\&quot;gasMtstNo\&quot;:&quot; + gasMtstNo
+                                + &quot;,\&quot;tksuSvkkJtkb\&quot;:\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING
+                                + &quot;\&quot;}&quot;));
+
+<span class="fc" id="L394">        TkssvkyRecord tkssvky = tkssvkyDataAccess</span>
+<span class="fc" id="L395">                .findAllByTksuSvkyNoAndTksuSvkyJtkb(</span>
+<span class="fc" id="L396">                        tskgmst.tksuSvkyNo(),</span>
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT)
+<span class="fc" id="L398">                .stream()</span>
+<span class="fc" id="L399">                .sorted(Comparator</span>
+<span class="fc" id="L400">                        .comparing(</span>
+                                TkssvkyRecord::tkysYmd,
+<span class="fc" id="L402">                                Comparator.nullsLast(Comparator.reverseOrder()))</span>
+<span class="fc" id="L403">                        .thenComparing(</span>
+                                TkssvkyRecord::skno,
+<span class="fc" id="L405">                                Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L406">                .findFirst()</span>
+<span class="pc" id="L407">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_TKSSVKY,
+                        &quot;DA-099-R001&quot;,
+<span class="nc" id="L410">                        &quot;{\&quot;tksuSvkyNo\&quot;:&quot; + tskgmst.tksuSvkyNo()</span>
+                                + &quot;,\&quot;tksuSvkyJtkb\&quot;:\&quot;&quot;
+                                + ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT
+                                + &quot;\&quot;}&quot;));
+
+<span class="fc" id="L415">        KnsnkrnRecord knsnkrn = knsnkrnDataAccess</span>
+<span class="fc" id="L416">                .findByGasMtstNo(gasMtstNo)</span>
+<span class="pc" id="L417">                .orElseThrow(() -&gt; dataInconsistency(</span>
+                        TABLE_KNSNKRN,
+                        &quot;DA-063-R001&quot;,
+                        &quot;{\&quot;gasMtstNo\&quot;:&quot; + gasMtstNo + &quot;}&quot;));
+
+<span class="fc" id="L422">        ConstantMasterInfoAcquisitionOutput contractTypeConstant =</span>
+<span class="fc" id="L423">                constantMasterInfoAcquisition.execute(</span>
+                        ConstantLookupKeys.Cirius.ContractType.TYPE,
+<span class="fc" id="L425">                        svckya.kiyShbt());</span>
+<span class="fc" id="L426">        ConstantMasterInfoAcquisitionOutput transportationContractTypeConstant =</span>
+<span class="fc" id="L427">                constantMasterInfoAcquisition.execute(</span>
+                        ConstantLookupKeys.Cirius.ConsignmentContractType.TYPE,
+<span class="fc" id="L429">                        tkssvky.tkykShbt());</span>
+
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">        if (!ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE.equals(gmtsetk.hesnJysb())) {</span>
+<span class="nc" id="L432">            supplyStopUpdateAndMeterReadingResultRegistrationAtCancellation.execute(</span>
+                    gasMtstNo,
+<span class="nc" id="L434">                    svckya.kkysSisnJtkb(),</span>
+                    new SupplyStopUpdateAndMeterReadingResultRegistrationAtCancellationGmtsetkInf(
+<span class="nc" id="L436">                            gmtsetk.gmtKhsJtkb(),</span>
+<span class="nc" id="L437">                            gmtsetk.hesnYmd(),</span>
+<span class="nc" id="L438">                            gmtsetk.ckrtGmscJtkb(),</span>
+<span class="nc" id="L439">                            gmtsetk.mtgMtstNo()),</span>
+<span class="nc" id="L440">                    knsnkrn.knsHuhuKbn(),</span>
+<span class="nc" id="L441">                    tkssvky.tksuSvkyNo());</span>
+        }
+
+<span class="fc" id="L444">        TransportServiceContractTerminationReasonTypeAcquisitionOutput transportTerminationReason =</span>
+<span class="fc" id="L445">                transportServiceContractTerminationReasonTypeAcquisition.execute(request.svkyEndJysb());</span>
+
+<span class="fc" id="L447">        relocationDestinationManagementAdditionAtRelocationCancellation.execute(</span>
+<span class="fc" id="L448">                request.svkyEndJysb(),</span>
+                gasMtstNo,
+<span class="fc" id="L450">                YearMonth.of(kykYmd.getYear(), kykYmd.getMonthValue()),</span>
+                svkyNo,
+<span class="fc" id="L452">                svsihkr.sihKiyNo());</span>
+
+<span class="fc" id="L454">        cancellationCommonProcessCommon.execute(</span>
+                gasMtstNo,
+                kykYmd,
+<span class="fc" id="L457">                gmtsetk.hesnJysb(),</span>
+<span class="fc" id="L458">                transportTerminationReason.tksuSvkeJysb(),</span>
+<span class="fc" id="L459">                request.svkyEndJysb(),</span>
+<span class="fc" id="L460">                toCancellationGmtsetdInf(gmtsetk, originalMeterCheckOutput),</span>
+<span class="fc" id="L461">                toCancellationTskgmstInf(tskgmst),</span>
+<span class="fc" id="L462">                toCancellationTkssvkyInf(tkssvky),</span>
+<span class="fc" id="L463">                toCancellationSvmstkrInf(relatedSvmstkr),</span>
+<span class="fc" id="L464">                toCancellationSvckyaInf(svckya),</span>
+<span class="fc" id="L465">                toCancellationSvsihkrInf(svsihkr),</span>
+<span class="fc" id="L466">                toCancellationSihakyInf(sihaky),</span>
+<span class="fc" id="L467">                toCancellationSnyInfList(originalMeterCheckOutput),</span>
+<span class="fc" id="L468">                List.of(),</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .ONLINE_CANCELLATION_REPORT,
+<span class="fc" id="L471">                request.hukkUsrId(),</span>
+<span class="fc" id="L472">                request.hukkUnmKj(),</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute
+                        .ONLINE_REPORTING_USUALLY);
+
+<span class="fc" id="L476">        TransferWorkHistoryDetailCodePipelineAcquisitionOutput conduitDetailCode =</span>
+<span class="fc" id="L477">                transferWorkHistoryDetailCodePipelineAcquisition.execute(request.svkyEndJysb());</span>
+<span class="fc" id="L478">        doukanAdapter.register(toDoukanRequest(</span>
+                request,
+                systemDatetime,
+                kykYmd,
+<span class="fc" id="L482">                gmtsetk.hesnYmd(),</span>
+<span class="fc" id="L483">                conduitDetailCode.duknIsrsCd(),</span>
+<span class="fc" id="L484">                transportationContractTypeConstant.cntn()));</span>
+
+<span class="fc" id="L486">        TransferWorkHistoryDetailCodeRetailAcquisition2Output retailDetailCode =</span>
+<span class="fc" id="L487">                transferWorkHistoryDetailCodeRetailAcquisition2.execute(request.svkyEndJysb());</span>
+<span class="fc" id="L488">        kouriAdapter.register(toKouriRequest(</span>
+                request,
+                systemDatetime,
+                kykYmd,
+<span class="fc" id="L492">                gmtsetk.hesnYmd(),</span>
+<span class="fc" id="L493">                retailDetailCode.isrrGmssCd(),</span>
+<span class="fc" id="L494">                contractTypeConstant.cntn()));</span>
+
+        String kkysSisnJtkb = ConstantLookupKeys.Cirius.SupplyStopPaymentStatus
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">                .SUPPLY_STOP_PAYMENT_PENDING.equals(svckya.kkysSisnJtkb())</span>
+<span class="nc" id="L498">                        ? &quot;&quot;</span>
+<span class="fc" id="L499">                        : ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_OUTAGE;</span>
+
+<span class="fc" id="L501">        transferWorkHistoryOtherSystemIntegrationDataRegistration.execute(</span>
+<span class="fc" id="L502">                toRetailOtherSystemIntegrationInfo(</span>
+                        gasMtstNo,
+                        systemDatetime,
+                        kykYmd,
+                        svkyNo,
+<span class="fc" id="L507">                        gmtsetk.hesnJysb(),</span>
+<span class="fc" id="L508">                        request.svkyEndJysb(),</span>
+                        kkysSisnJtkb,
+<span class="fc" id="L510">                        svckya.syoKyoTrno(),</span>
+<span class="fc" id="L511">                        sihaky.shsyKyoTrno(),</span>
+<span class="fc" id="L512">                        retailDetailCode.isrrGmssCd()));</span>
+<span class="fc" id="L513">    }</span>
+
+    private void executeOpeningClosingInProgressErrorJudgment(GmtsetkRecord gmtsetk) {
+        try {
+<span class="fc" id="L517">            openingClosingInProgressErrorJudgment.execute(</span>
+<span class="fc" id="L518">                    gmtsetk.gmtKhsJtkb(),</span>
+                    ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.OPENING);
+<span class="fc" id="L520">        } catch (KaisenRuleException exception) {</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">            if (ErrorCodeConstants.ERROR_CODE_020100016.equals(exception.getErrorCode())) {</span>
+<span class="fc" id="L522">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000067);</span>
+            }
+<span class="nc" id="L524">            throw exception;</span>
+<span class="fc" id="L525">        }</span>
+<span class="fc" id="L526">    }</span>
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationGmtsetdInf
+            toCancellationGmtsetdInf(
+                    GmtsetkRecord gmtsetk,
+                    OriginalMeterCancellationDedicatedContractCheckOutput originalMeterCheckOutput) {
+<span class="fc" id="L532">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationGmtsetdInf(</span>
+<span class="fc" id="L533">                gmtsetk.gasMtstNo(),</span>
+<span class="fc" id="L534">                originalMeterCheckOutput.mtsetkInf().szcGkkCd(),</span>
+<span class="fc" id="L535">                originalMeterCheckOutput.mtsetkInf().szcCmazCd(),</span>
+<span class="fc" id="L536">                originalMeterCheckOutput.mtsetkInf().szcMchCd(),</span>
+<span class="fc" id="L537">                gmtsetk.ckrtGmscJtkb());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TskgmstInf
+            toCancellationTskgmstInf(TskgmstRecord tskgmst) {
+<span class="fc" id="L542">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TskgmstInf(</span>
+<span class="fc" id="L543">                tskgmst.tksuSvkyNo(),</span>
+<span class="fc" id="L544">                tskgmst.skno(),</span>
+<span class="fc" id="L545">                tskgmst.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TkssvkyInf
+            toCancellationTkssvkyInf(TkssvkyRecord tkssvky) {
+<span class="fc" id="L550">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TkssvkyInf(</span>
+<span class="fc" id="L551">                tkssvky.tksuSvkyNo(),</span>
+<span class="fc" id="L552">                tkssvky.skno(),</span>
+<span class="fc" id="L553">                tkssvky.tksuKijsCd(),</span>
+<span class="fc" id="L554">                tkssvky.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvmstkrInf
+            toCancellationSvmstkrInf(SvmstkrRecord relatedSvmstkr) {
+<span class="fc" id="L559">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvmstkrInf(</span>
+<span class="fc" id="L560">                relatedSvmstkr.svkyNo(),</span>
+<span class="fc" id="L561">                relatedSvmstkr.skno(),</span>
+<span class="fc" id="L562">                relatedSvmstkr.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf
+            toCancellationSvckyaInf(SvckyaRecord svckya) {
+<span class="fc" id="L567">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf(</span>
+<span class="fc" id="L568">                svckya.svkyNo(),</span>
+<span class="fc" id="L569">                svckya.skno(),</span>
+<span class="fc" id="L570">                svckya.recUpdJnjNo(),</span>
+<span class="fc" id="L571">                svckya.sziKziKbn(),</span>
+<span class="fc" id="L572">                svckya.syaKbn(),</span>
+<span class="fc" id="L573">                svckya.sqtiKiyNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvsihkrInf
+            toCancellationSvsihkrInf(SvsihkrRecord svsihkr) {
+<span class="fc" id="L578">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvsihkrInf(</span>
+<span class="fc" id="L579">                svsihkr.sihKiyNo(),</span>
+<span class="fc" id="L580">                svsihkr.svkyNo(),</span>
+<span class="fc" id="L581">                svsihkr.skno(),</span>
+<span class="fc" id="L582">                svsihkr.ikskEndYm(),</span>
+<span class="fc" id="L583">                svsihkr.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SihakyInf
+            toCancellationSihakyInf(SihakyRecord sihaky) {
+<span class="fc" id="L588">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SihakyInf(</span>
+<span class="fc" id="L589">                sihaky.sihKiyNo(),</span>
+<span class="fc" id="L590">                sihaky.skno(),</span>
+<span class="fc" id="L591">                sihaky.sihHuhuShbt(),</span>
+<span class="fc" id="L592">                sihaky.sikSvcShbt(),</span>
+<span class="fc" id="L593">                sihaky.skshHyjsKrno(),</span>
+<span class="fc" id="L594">                sihaky.sikKrno(),</span>
+<span class="fc" id="L595">                sihaky.recUpdJnjNo());</span>
+    }
+
+    private List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SnyInf&gt; toCancellationSnyInfList(
+            OriginalMeterCancellationDedicatedContractCheckOutput originalMeterCheckOutput) {
+<span class="fc" id="L600">        return originalMeterCheckOutput.snyInfList().stream()</span>
+<span class="pc" id="L601">                .map(value -&gt; new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SnyInf(</span>
+                        new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationGmtsetdInf(
+<span class="nc" id="L603">                                value.gasMtstNo(),</span>
+                                null,
+                                null,
+                                null,
+                                null)))
+<span class="fc" id="L608">                .toList();</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest toDoukanRequest(
+            OnlineTerminateReportRequest request,
+            LocalDateTime systemDatetime,
+            LocalDate kykYmd,
+            LocalDate hesnYmd,
+            String duknIsrsCd,
+            String contractTypeName) {
+<span class="fc" id="L618">        return new IdousagyourirekiDoukanJouhouRequest(</span>
+                new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiDoukanJouhouRenkei(
+                        new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekigyoumuKyoutsuuDoukan(
+<span class="fc" id="L621">                                String.valueOf(request.gmtsetkInf().gasMtstNo()),</span>
+                                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER,
+                                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.PLACE,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit
+                                        .ONLINE_CANCELLATION_REPORT,
+                                duknIsrsCd,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute
+                                        .ONLINE_REPORTING_USUALLY,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT,
+<span class="fc" id="L630">                                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L631">                                toTimeText(systemDatetime),</span>
+<span class="fc" id="L632">                                toDateText(kykYmd),</span>
+<span class="fc" id="L633">                                request.hukkUsrId(),</span>
+<span class="fc" id="L634">                                request.hukkUnmKj(),</span>
+                                CONDUIT_CLOSURE_SCREEN_ID),
+<span class="fc" id="L636">                        List.of(</span>
+<span class="fc" id="L637">                                detailDoukan(1, &quot;解約日&quot;, toSlashDateText(kykYmd)),</span>
+<span class="fc" id="L638">                                detailDoukan(2, &quot;契約種別&quot;, blankToEmpty(contractTypeName)),</span>
+<span class="fc" id="L639">                                detailDoukan(3, &quot;閉栓日&quot;, toSlashDateText(hesnYmd)),</span>
+<span class="fc" id="L640">                                detailDoukan(4, &quot;履歴メモ&quot;, blankToEmpty(request.rirekiMemo()))),</span>
+                        ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE,
+<span class="fc" id="L642">                        toDateText(systemDatetime.toLocalDate())));</span>
+    }
+
+    private IdousagyourirekiKouriJouhouRequest toKouriRequest(
+            OnlineTerminateReportRequest request,
+            LocalDateTime systemDatetime,
+            LocalDate kykYmd,
+            LocalDate hesnYmd,
+            String isrrGmssCd,
+            String contractTypeName) {
+<span class="fc" id="L652">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+                        new IdousagyourirekiKouriJouhouRequest.IdousagyourirekigyoumuKyoutsuuKouri(
+<span class="fc" id="L655">                                String.valueOf(request.gmtsetkInf().gasMtstNo()),</span>
+                                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER,
+                                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType
+                                        .CUSTOMER,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                                        .ONLINE_CANCELLATION_REPORT,
+                                isrrGmssCd,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute
+                                        .ONLINE_REPORTING_USUALLY,
+                                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT,
+<span class="fc" id="L665">                                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L666">                                toTimeText(systemDatetime),</span>
+<span class="fc" id="L667">                                toDateText(kykYmd),</span>
+<span class="fc" id="L668">                                request.hukkUsrId(),</span>
+<span class="fc" id="L669">                                request.hukkUnmKj(),</span>
+                                RETAIL_ONLINE_TERMINATION_SCREEN_ID),
+<span class="fc" id="L671">                        List.of(</span>
+<span class="fc" id="L672">                                detailKouri(1, &quot;解約日&quot;, toSlashDateText(kykYmd)),</span>
+<span class="fc" id="L673">                                detailKouri(2, &quot;契約種別&quot;, blankToEmpty(contractTypeName)),</span>
+<span class="fc" id="L674">                                detailKouri(3, &quot;閉栓日&quot;, toSlashDateText(hesnYmd)),</span>
+<span class="fc" id="L675">                                detailKouri(4, &quot;履歴メモ&quot;, blankToEmpty(request.rirekiMemo()))),</span>
+                        ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE,
+                        &quot;&quot;,
+<span class="fc" id="L678">                        toDateText(kykYmd)));</span>
+    }
+
+    private IsrrkrInf toRetailOtherSystemIntegrationInfo(
+            Long gasMtstNo,
+            LocalDateTime systemDatetime,
+            LocalDate kykYmd,
+            Long svkyNo,
+            String hesnJysb,
+            String svkyEndJysb,
+            String kkysSisnJtkb,
+            Long kyuSkyoTrno,
+            Long shsyKyoTrno,
+            String retailDetailCode) {
+<span class="fc" id="L692">        return new IsrrkrInf(</span>
+                gasMtstNo,
+<span class="fc" id="L694">                systemDatetime.toLocalDate(),</span>
+                ConstantLookupKeys.Cirius.Unnamed__N3.RETAIL,
+<span class="fc" id="L696">                toHms(systemDatetime),</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .ONLINE_CANCELLATION_REPORT,
+                retailDetailCode,
+                kykYmd,
+                svkyNo,
+                null,
+                null,
+                hesnJysb,
+                svkyEndJysb,
+                kkysSisnJtkb,
+                null,
+                kyuSkyoTrno,
+                null,
+                null,
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                null,
+<span class="fc" id="L716">                0L,</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                shsyKyoTrno,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private DataInconsistencyException dataInconsistency(
+            String tableName,
+            String daIdentifier,
+            String parameterJsonString) {
+<span class="fc" id="L749">        return new DataInconsistencyException(tableName, daIdentifier, parameterJsonString);</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan detailDoukan(
+            int order,
+            String itemName,
+            String afterValue) {
+<span class="fc" id="L756">        return new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan(</span>
+<span class="fc" id="L757">                BigDecimal.valueOf(order),</span>
+                itemName,
+                null,
+                afterValue);
+    }
+
+    private IdousagyourirekiKouriJouhouRequest.IdousagyourirekiShousaiKouri detailKouri(
+            int order,
+            String itemName,
+            String afterValue) {
+<span class="fc" id="L767">        return new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiShousaiKouri(</span>
+<span class="fc" id="L768">                BigDecimal.valueOf(order),</span>
+                itemName,
+                null,
+                afterValue);
+    }
+
+    private String formatGasMeterLocationNumber(Long gasMtstNo) {
+<span class="nc" id="L775">        String digits = String.format(&quot;%011d&quot;, gasMtstNo);</span>
+<span class="nc" id="L776">        return digits.substring(0, 4) + &quot;-&quot; + digits.substring(4, 7) + &quot;-&quot; + digits.substring(7);</span>
+    }
+
+    private int toHms(LocalDateTime systemDatetime) {
+<span class="fc" id="L780">        return systemDatetime.getHour() * 10000</span>
+<span class="fc" id="L781">                + systemDatetime.getMinute() * 100</span>
+<span class="fc" id="L782">                + systemDatetime.getSecond();</span>
+    }
+
+    private String toTimeText(LocalDateTime systemDatetime) {
+<span class="fc" id="L786">        return String.format(</span>
+                &quot;%02d%02d%02d&quot;,
+<span class="fc" id="L788">                systemDatetime.getHour(),</span>
+<span class="fc" id="L789">                systemDatetime.getMinute(),</span>
+<span class="fc" id="L790">                systemDatetime.getSecond());</span>
+    }
+
+    private String toDateText(LocalDate value) {
+<span class="pc bpc" id="L794" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : DATE_FORMATTER.format(value);</span>
+    }
+
+    private String toSlashDateText(LocalDate value) {
+<span class="pc bpc" id="L798" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : SLASH_DATE_FORMATTER.format(value);</span>
+    }
+
+    private String blankToEmpty(String value) {
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

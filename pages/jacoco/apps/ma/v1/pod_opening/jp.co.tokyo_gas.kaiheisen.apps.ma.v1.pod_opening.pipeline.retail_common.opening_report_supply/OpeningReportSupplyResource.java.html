@@ -1,0 +1,819 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningReportSupplyResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-opening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply</a> &gt; <span class="el_source">OpeningReportSupplyResource.java</span></div><h1>OpeningReportSupplyResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.io.IOException;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.exception_mapper.MaPassthroughMaApiException;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply.qualifier.OpeningReportSupplyConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.MaPassthroughMaApiErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailCorrectionInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailNewTelephoneInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailOpeningErrorFollowKeyInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailOpeningErrorFollowLinkInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.common.retail_other.OpeningCommonNormalOtherRetailTelephoneUpdateInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply.OpeningReportSupplyEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply.OpeningReportSupplyRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_common.opening_report_supply.OpeningReportSupplyResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_other.OpeningCommonResumeOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_tg.OpeningCommonRecoveryRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCatalog;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.external.MaApiException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.opening_common_normal_other_retail.OpeningCommonNormalOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.pod_opening.opening_common_recovery.OpeningCommonRecoveryMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.pod_opening.opening_common_resume_other_retail.OpeningCommonResumeOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.jusyom.JusyomDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.jusyom.JusyomRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerAcquisitionRegistrationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerAcquisitionRegistrationAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNumberAssignmentTargetJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNumberAssignmentTargetJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckRecentMeterReadingDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpeningOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-004 オンライン開栓報告 開栓報告 導管 APIのリソース実装
+ */
+@Path(OpeningReportSupplyEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;オンライン開栓報告（導管）&quot;, description = &quot;MA-004 オンライン開栓報告（導管）&quot;)
+public class OpeningReportSupplyResource extends BaseResource&lt;OpeningReportSupplyRequest&gt; {
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final JusyomDataAccess jusyomDataAccess;
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final KseflDataAccess kseflDataAccess;
+
+    private final MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening;
+
+    private final OpeningDateCheckRecentMeterReadingDate openingDateCheckRecentMeterReadingDate;
+
+    private final ContractCustomerAcquisitionRegistrationAtOpening contractCustomerAcquisitionRegistrationAtOpening;
+
+    private final CustomerNumberAssignmentTargetJudgmentAtOpening customerNumberAssignmentTargetJudgmentAtOpening;
+
+    private String followStatusCodeN2NotYetStarted;
+
+    private String alternativeOpening;
+
+    private String newlyOpenedTap;
+
+    private String supplyResumed;
+
+    private String securityRestoration;
+
+    private String disasterRecovery;
+
+    private String onlineReportingUsually;
+
+    private String otherRetail;
+
+    private final String conduit;
+
+    private final String openingReportSupplyCcjg04;
+
+    private final String openingReportSupplyCcbg62;
+
+    private String newlyOpenedTapCcjg0401;
+
+    private String alternativeOpeningCcjg0402;
+
+    private String supplyResumedCcjg0403;
+
+    private String alternativeOpeningCcjg0404;
+
+    private String alternativeOpeningCcjg0405;
+
+    private String alternativeOpeningCcbg6201;
+
+    private String alternativeOpeningCcbg6202;
+
+    private final OpeningCommonRecoveryMaAdapter openingCommonRecoveryMaAdapter;
+
+    private final OpeningCommonNormalOtherRetailMaAdapter openingCommonNormalOtherRetailMaAdapter;
+
+    private final OpeningCommonResumeOtherRetailMaAdapter openingCommonResumeOtherRetailMaAdapter;
+
+<span class="fc" id="L137">    private static final Boolean KSENSKJUTEIFLG_BOOLEAN_FALSE = Boolean.FALSE;</span>
+
+    private static final String ERROR_CODE_020000070 = ErrorCodeConstants.ERROR_CODE_020000070;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     */
+    @Inject
+    public OpeningReportSupplyResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            @OpeningReportSupplyConfiguration
+            MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening,
+            @OpeningReportSupplyConfiguration
+            OpeningDateCheckRecentMeterReadingDate openingDateCheckRecentMeterReadingDate,
+            @OpeningReportSupplyConfiguration
+            CustomerNumberAssignmentTargetJudgmentAtOpening customerNumberAssignmentTargetJudgmentAtOpening,
+            @OpeningReportSupplyConfiguration
+            ContractCustomerAcquisitionRegistrationAtOpening contractCustomerAcquisitionRegistrationAtOpening,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            JusyomDataAccess jusyomDataAccess,
+            GasmtrdDataAccess gasmtrdDataAccess,
+            KseflDataAccess kseflDataAccess,
+            CiriusConstantService ciriusConstantService,
+            OpeningCommonRecoveryMaAdapter openingCommonRecoveryMaAdapter,
+            OpeningCommonNormalOtherRetailMaAdapter openingCommonNormalOtherRetailMaAdapter,
+            OpeningCommonResumeOtherRetailMaAdapter openingCommonResumeOtherRetailMaAdapter,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L170">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L171">        this.meterReadingInfoAcquisitionForOpening = Objects.requireNonNull(</span>
+                meterReadingInfoAcquisitionForOpening,
+                &quot;meterReadingInfoAcquisitionForOpening&quot;);
+<span class="fc" id="L174">        this.openingDateCheckRecentMeterReadingDate = Objects.requireNonNull(</span>
+                openingDateCheckRecentMeterReadingDate,
+                &quot;openingDateCheckRecentMeterReadingDate&quot;);
+<span class="fc" id="L177">        this.customerNumberAssignmentTargetJudgmentAtOpening = Objects.requireNonNull(</span>
+                customerNumberAssignmentTargetJudgmentAtOpening, &quot;customerNumberAssignmentTargetJudgmentAtOpening&quot;);
+<span class="fc" id="L179">        this.contractCustomerAcquisitionRegistrationAtOpening = Objects.requireNonNull(</span>
+                contractCustomerAcquisitionRegistrationAtOpening, &quot;contractCustomerAcquisitionRegistrationAtOpening&quot;);
+<span class="fc" id="L181">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L182">        this.jusyomDataAccess = Objects.requireNonNull(jusyomDataAccess, &quot;jusyomDataAccess&quot;);</span>
+<span class="fc" id="L183">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L184">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L185">        this.openingCommonRecoveryMaAdapter =</span>
+<span class="fc" id="L186">                Objects.requireNonNull(openingCommonRecoveryMaAdapter, &quot;openingCommonRecoveryMaAdapter&quot;);</span>
+<span class="fc" id="L187">        this.openingCommonNormalOtherRetailMaAdapter =</span>
+<span class="fc" id="L188">                Objects.requireNonNull(openingCommonNormalOtherRetailMaAdapter, &quot;openingCommonNormalOtherRetailMaAdapter&quot;);</span>
+<span class="fc" id="L189">        this.openingCommonResumeOtherRetailMaAdapter =</span>
+<span class="fc" id="L190">                Objects.requireNonNull(openingCommonResumeOtherRetailMaAdapter, &quot;openingCommonResumeOtherRetailMaAdapter&quot;);</span>
+<span class="fc" id="L191">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L192">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L193">        this.alternativeOpening = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.ALTERNATIVE_OPENING);
+<span class="fc" id="L197">        this.newlyOpenedTap = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.NEWLY_OPENED_TAP);
+<span class="fc" id="L201">        this.supplyResumed = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.SUPPLY_RESUMED);
+<span class="fc" id="L205">        this.securityRestoration = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION);
+<span class="fc" id="L209">        this.disasterRecovery = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.DISASTER_RECOVERY);
+<span class="fc" id="L213">        this.followStatusCodeN2NotYetStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L217">        this.openingReportSupplyCcjg04 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.ONLINE_OPENING_REPORT_CONDUIT);
+<span class="fc" id="L221">        this.newlyOpenedTapCcjg0401 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.NEWLY_OPENED_TAP_CCJG0401);
+<span class="fc" id="L225">        this.alternativeOpeningCcjg0402 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.ALTERNATIVE_OPENING_CCJG0402);
+<span class="fc" id="L229">        this.supplyResumedCcjg0403 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.SUPPLY_RESUMED_CCJG0403);
+<span class="fc" id="L233">        this.alternativeOpeningCcjg0404 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.SECURITY_RESTORATION);
+<span class="fc" id="L237">        this.alternativeOpeningCcjg0405 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.DISASTER_RECOVERY);
+<span class="fc" id="L241">        this.openingReportSupplyCcbg62 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.ONLINE_OPENING_REPORT_CONDUIT);
+<span class="fc" id="L245">        this.alternativeOpeningCcbg6201 = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.SECURITY_RESTORATION);
+<span class="fc" id="L249">        this.alternativeOpeningCcbg6202 = RequiredConstantResolver.requireCiriusConstant(</span>
+              resolvedCiriusConstantService,
+              ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+              ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.DISASTER_RECOVERY);
+<span class="fc" id="L253">        this.onlineReportingUsually = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.ONLINE_REPORTING_USUALLY);
+<span class="fc" id="L257">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService,</span>
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L259">        this.otherRetail = RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L262">        this.conduit = RequiredConstantResolver.requireKaiheisenConstant(resolvedKaiheisenConstantService,</span>
+                ConstantLookupKeys.Kaiheisen.ConduitRetail.TYPE,
+                ConstantLookupKeys.Kaiheisen.ConduitRetail.CONDUIT);
+
+<span class="fc" id="L266">    }</span>
+
+    /**
+     * MA-004 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.NOT_SUPPORTED)
+    @Operation(
+            summary = &quot;オンライン開栓を報告&quot;,
+            description = &quot;オンライン開栓を報告する&quot;,
+            operationId = &quot;postOpeningReportSupplyResource&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常応答&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = OpeningReportSupplyResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = MaPassthroughMaApiErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+
+    public OpeningReportSupplyResponse endpoint(OpeningReportSupplyRequest request) {
+<span class="fc" id="L300">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L301">            Long gasMtstNo = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">            Long kyoTrkNo = request.kyoTrkNo() != null</span>
+<span class="fc" id="L303">                    ? Long.valueOf(request.kyoTrkNo().trim())</span>
+<span class="fc" id="L304">                    : null;</span>
+<span class="fc" id="L305">            Boolean namTisiFlg = Boolean.parseBoolean(request.namTisiUmFlg());</span>
+<span class="fc" id="L306">            Boolean kseflKknnFlg = Boolean.parseBoolean(request.kseflKknnFlg());</span>
+<span class="fc" id="L307">            Boolean ctnmKjhkFlg = Boolean.parseBoolean(request.kiycstInf().ctnmKjhkFlg());</span>
+<span class="fc" id="L308">            LocalDate kasgYmd = Rfc3339LocalDateParser.parse(request.kasYmd());</span>
+<span class="fc" id="L309">            String kasJysb = request.knsKkaInf().kasJysb();</span>
+<span class="fc" id="L310">            String correlationId = requestContext.getCorrelationId().orElseThrow(</span>
+<span class="fc" id="L311">                        () -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;));</span>
+<span class="fc" id="L312">            LocalDate gmtThkgYmd = null;</span>
+<span class="fc" id="L313">            LocalDate knskKjnYmd = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L314">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set in RequestContext&quot;))</span>
+<span class="fc" id="L315">                        .toLocalDate();</span>
+                // SV-027 検針結果（開栓）情報を取得する
+<span class="fc" id="L317">            MeterReadingInfoAcquisitionForOpeningOutput meterReadingInfoAcquisitionForOpeningOutput =</span>
+<span class="fc" id="L318">                        meterReadingInfoAcquisitionForOpening.execute(gasMtstNo);</span>
+
+                // SV-182 開栓報告可能期限日チェック
+<span class="fc" id="L321">            openingDateCheckRecentMeterReadingDate.execute(</span>
+                        kasgYmd,
+<span class="fc" id="L323">                        meterReadingInfoAcquisitionForOpeningOutput.ksenHkkKnuKigenYmd());</span>
+
+                // ガスメーター設置場所＜導管＞情報取得（DA-033-R005)
+<span class="fc" id="L326">            GmtsetdRecord gmtsetdRecord = requireGmtsetd(gasMtstNo, knskKjnYmd);</span>
+
+                // 開栓時お客さま番号採番対象判定（SV-276)
+<span class="fc" id="L329">            CustomerNumberAssignmentTargetJudgmentAtOpeningOutput customerNumberAssignmentTargetJudgmentAtOpeningOutput =</span>
+<span class="fc" id="L330">                        customerNumberAssignmentTargetJudgmentAtOpening.execute(namTisiFlg, gmtsetdRecord.ckrtGmscJtkb(), kasJysb);</span>
+
+               //住所情報取得(DA-002-R001)
+<span class="fc" id="L333">            JusyomRecord jusyomRecord = jusyomDataAccess.findByGkkCdAndMchCdAndCmazCd(</span>
+<span class="fc" id="L334">                        gmtsetdRecord.szcGkkCd(),</span>
+<span class="fc" id="L335">                        gmtsetdRecord.szcMchCd(),</span>
+<span class="fc" id="L336">                        gmtsetdRecord.szcCmazCd())</span>
+<span class="fc" id="L337">                        .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L338">                                jusyomDataAccess.tableName(),</span>
+<span class="fc" id="L339">                                JusyomDataAccess.CallSpecs.FIND_BY_GKK_CD_AND_MCH_CD_AND_CMAZ_CD.identifier(),</span>
+                                new FlatJsonBuilder()
+<span class="fc" id="L341">                                        .put(&quot;gkkCd&quot;, gmtsetdRecord.szcGkkCd())</span>
+<span class="fc" id="L342">                                        .put(&quot;mchCd&quot;, gmtsetdRecord.szcMchCd())</span>
+<span class="fc" id="L343">                                        .put(&quot;cmazCd&quot;, gmtsetdRecord.szcCmazCd())));</span>
+
+                // ガスメーター＜導管＞情報取得(DA-110-R004)
+<span class="fc" id="L346">            GasmtrdRecord gasmtrdRecords = requireGasmtrd(gasMtstNo, knskKjnYmd, gmtThkgYmd);</span>
+
+                // 開栓エラーフォロー件名情報存在チェック
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            if (kseflKknnFlg.equals(Boolean.FALSE)) {</span>
+<span class="fc" id="L350">                List&lt;KseflRecord&gt; kseflRecord =</span>
+<span class="fc" id="L351">                            kseflDataAccess.findAllByGmbAndFlwStCd(</span>
+<span class="fc" id="L352">                                    gasmtrdRecords.gmb(),</span>
+                                    followStatusCodeN2NotYetStarted);
+                    // 開栓エラーフォロー件名が0件でない場合
+<span class="fc bfc" id="L355" title="All 2 branches covered.">                if (!kseflRecord.isEmpty()) {</span>
+<span class="fc" id="L356">                    return (new OpeningReportSupplyResponse(ERROR_CODE_020000070,</span>
+<span class="fc" id="L357">                                ErrorCatalog.resolveErrorMessage(ERROR_CODE_020000070, null),</span>
+                                null,
+                                null,
+                                null,
+<span class="fc" id="L361">                                ErrorCatalog.resolveCiriusMessageId(ERROR_CODE_020000070),</span>
+                                null,
+                                correlationId));
+                }
+            }
+
+            // SV-275実行
+<span class="fc" id="L368">            ContractCustomerAcquisitionRegistrationAtOpeningOutput contractCustomerAcquisitionRegistrationAtOpeningOutput =</span>
+<span class="fc" id="L369">                this.callContractCustomerAcquisitionRegistrationAtOpening(</span>
+                    customerNumberAssignmentTargetJudgmentAtOpeningOutput, request, kyoTrkNo, ctnmKjhkFlg, jusyomRecord, gmtsetdRecord);
+
+            try {
+<span class="fc" id="L373">                this.callOpeningOperation(kasJysb, gasmtrdRecords.gmb(), request,</span>
+                            contractCustomerAcquisitionRegistrationAtOpeningOutput, knskKjnYmd, correlationId);
+<span class="fc" id="L375">            } catch (MaApiException ex) {</span>
+<span class="fc" id="L376">                throw new MaPassthroughMaApiException(ex, this::handleError);</span>
+<span class="fc" id="L377">            }</span>
+
+<span class="fc" id="L379">            return (new OpeningReportSupplyResponse(null, null, null, null, null, null, null, correlationId));</span>
+        });
+    }
+
+    /**
+     * 外部MA呼出処理。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param kyoTrkNo 契約お客さま番号
+     * @param gmb ガスメーター社番
+     * @param request リクエストDTO
+     * @param kseflRecord 開栓エラーフォロー情報
+     * @param jusyomRecord 住所マスター情報
+     */
+    private void callOpeningOperation(
+            String kasJysb,
+            String gmb,
+            OpeningReportSupplyRequest request,
+            ContractCustomerAcquisitionRegistrationAtOpeningOutput contractCustomerAcquisitionRegistrationAtOpeningOutput,
+            LocalDate knskKjnYmd,
+            String correlationId) {
+<span class="fc bfc" id="L400" title="All 2 branches covered.">        if (otherRetail.equals(request.tkourKbn())) {</span>
+<span class="fc bfc" id="L401" title="All 4 branches covered.">            if (alternativeOpening.equals(kasJysb) || newlyOpenedTap.equals(kasJysb)) {</span>
+            // MA-054
+<span class="fc" id="L403">                openingCommonNormalOtherRetailMaAdapter.invoke(</span>
+<span class="fc" id="L404">                    createOpeningCommonNormalOtherRetailRequest(</span>
+                            request,
+<span class="fc" id="L406">                            contractCustomerAcquisitionRegistrationAtOpeningOutput.kyoTrkNo(),</span>
+                            gmb,
+                            knskKjnYmd,
+                            correlationId
+                    ));
+<span class="fc bfc" id="L411" title="All 6 branches covered.">            } else if (securityRestoration.equals(kasJysb) || disasterRecovery.equals(kasJysb) || supplyResumed.equals(kasJysb)) {</span>
+            // MA-056
+<span class="fc" id="L413">                openingCommonResumeOtherRetailMaAdapter.invoke(</span>
+<span class="fc" id="L414">                    createOpeningCommonResumeOtherRetailRequest(</span>
+                            request,
+<span class="fc" id="L416">                            contractCustomerAcquisitionRegistrationAtOpeningOutput.kyoTrkNo(),</span>
+                            gmb,
+                            knskKjnYmd,
+                            correlationId
+                    ));
+            }
+        } else {
+            // MA-053
+<span class="fc" id="L424">            openingCommonRecoveryMaAdapter.invoke(</span>
+<span class="fc" id="L425">                createOpeningCommonRecoveryRequest(</span>
+                        request,
+<span class="fc" id="L427">                        contractCustomerAcquisitionRegistrationAtOpeningOutput.kyoTrkNo(),</span>
+                        gmb,
+                        knskKjnYmd,
+                        correlationId
+                ));
+        }
+<span class="fc" id="L433">    }</span>
+
+    /**
+     * MA-053リクエスト生成。
+     *
+     * @param request リクエストDTO
+     * @param kseflRecordOpt 開栓エラーフォロー情報
+     * @param jusyomRecordOpt 住所マスター情報
+     * @return OpeningCommonResumeTgRetailRequest MA-052リクエスト
+     */
+    private OpeningCommonRecoveryRequest createOpeningCommonRecoveryRequest(
+            OpeningReportSupplyRequest request,
+            Long kyoTrkNo,
+            String gmb,
+            LocalDate knskKjnYmd,
+            String correlationId) {
+
+<span class="fc" id="L450">        String kasJysb = request.knsKkaInf().kasJysb();</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        String duknIsrsCd = securityRestoration.equals(kasJysb)</span>
+<span class="fc" id="L452">                ? alternativeOpeningCcjg0404</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">                : disasterRecovery.equals(kasJysb)</span>
+<span class="fc" id="L454">                ? alternativeOpeningCcjg0405</span>
+<span class="fc" id="L455">                : null;</span>
+
+<span class="fc bfc" id="L457" title="All 2 branches covered.">        String isrrGmssCd = securityRestoration.equals(kasJysb)</span>
+<span class="fc" id="L458">                ? alternativeOpeningCcbg6201</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">                : disasterRecovery.equals(kasJysb)</span>
+<span class="fc" id="L460">                ? alternativeOpeningCcbg6202</span>
+<span class="fc" id="L461">                : null;</span>
+
+<span class="fc" id="L463">        return new OpeningCommonRecoveryRequest(</span>
+                openingReportSupplyCcjg04,
+                duknIsrsCd,
+                openingReportSupplyCcbg62,
+                isrrGmssCd,
+                onlineReportingUsually,
+<span class="fc" id="L469">                String.valueOf(knskKjnYmd),</span>
+<span class="fc" id="L470">                request.kasYmd(),</span>
+<span class="fc" id="L471">                Long.valueOf(request.gasMtstNo()),</span>
+                kyoTrkNo,
+                gmb,
+                kasJysb,
+<span class="fc" id="L475">                Long.valueOf(request.knsKkaInf().gmtShjSu()),</span>
+<span class="fc" id="L476">                request.hukkUsrId(),</span>
+<span class="fc" id="L477">                request.hukkUnmKj(),</span>
+<span class="fc" id="L478">                request.rirekiMemo(),</span>
+<span class="fc" id="L479">                request.hukkSysShbt(),</span>
+<span class="fc" id="L480">                request.systemDatetime()</span>
+        );
+    }
+
+    /**
+     * MA-054リクエスト生成。
+     *
+     * @param request リクエストDTO
+     * @param kseflRecordOpt 開栓エラーフォロー情報
+     * @param jusyomRecordOpt 住所マスター情報
+     * @return OpeningCommonNormalOtherRetailRequest MA-054リクエスト
+     */
+    private OpeningCommonNormalOtherRetailRequest createOpeningCommonNormalOtherRetailRequest(
+            OpeningReportSupplyRequest request,
+            Long kyoTrkNo,
+            String gmb,
+            LocalDate knskKjnYmd,
+            String correlationId) {
+
+<span class="fc" id="L499">        String kasJysb = request.knsKkaInf().kasJysb();</span>
+
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        String duknIsrsCd = alternativeOpening.equals(kasJysb)</span>
+<span class="fc" id="L502">                ? alternativeOpeningCcjg0402</span>
+<span class="fc" id="L503">                : newlyOpenedTapCcjg0401;</span>
+
+        // 電話1
+<span class="fc" id="L506">        OpeningCommonNormalOtherRetailTelephoneUpdateInfo tel1 =</span>
+            new OpeningCommonNormalOtherRetailTelephoneUpdateInfo(
+                new OpeningCommonNormalOtherRetailNewTelephoneInfo(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                ),
+                null
+            );
+
+        // 電話2
+<span class="fc" id="L523">        OpeningCommonNormalOtherRetailTelephoneUpdateInfo tel2 =</span>
+            new OpeningCommonNormalOtherRetailTelephoneUpdateInfo(
+                new OpeningCommonNormalOtherRetailNewTelephoneInfo(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                ),
+                null
+            );
+
+<span class="fc" id="L539">        List&lt;OpeningCommonNormalOtherRetailTelephoneUpdateInfo&gt; telList = List.of(tel1, tel2);</span>
+
+        // 連携情報
+<span class="fc" id="L542">        OpeningCommonNormalOtherRetailOpeningErrorFollowLinkInfo rnkInfo =</span>
+            new OpeningCommonNormalOtherRetailOpeningErrorFollowLinkInfo(
+                    KSENSKJUTEIFLG_BOOLEAN_FALSE
+            );
+
+        // 訂正後情報
+<span class="fc" id="L548">        OpeningCommonNormalOtherRetailCorrectionInfo tsigInfo =</span>
+            new OpeningCommonNormalOtherRetailCorrectionInfo(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+
+        // キー情報
+<span class="fc" id="L563">        OpeningCommonNormalOtherRetailOpeningErrorFollowKeyInfo keyInfo =</span>
+            new OpeningCommonNormalOtherRetailOpeningErrorFollowKeyInfo(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+            );
+
+<span class="fc" id="L573">        return new OpeningCommonNormalOtherRetailRequest(</span>
+                openingReportSupplyCcjg04,
+                duknIsrsCd,
+                null,
+                null,
+                onlineReportingUsually,
+                conduit,
+                null,
+<span class="fc" id="L581">                String.valueOf(knskKjnYmd),</span>
+<span class="fc" id="L582">                request.kasYmd(),</span>
+<span class="fc" id="L583">                Long.valueOf(request.gasMtstNo()),</span>
+                kyoTrkNo,
+                gmb,
+                kasJysb,
+<span class="fc" id="L587">                request.tkykNo(),</span>
+<span class="fc" id="L588">                Long.valueOf(request.knsKkaInf().gmtShjSu()),</span>
+                null,
+<span class="fc" id="L590">                request.hukkUsrId(),</span>
+<span class="fc" id="L591">                request.hukkUnmKj(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                telList,
+<span class="fc" id="L621">                request.rirekiMemo(),</span>
+                rnkInfo,
+                tsigInfo,
+                keyInfo,
+                null,
+<span class="fc" id="L626">                request.hukkSysShbt(),</span>
+<span class="fc" id="L627">                request.systemDatetime()</span>
+        );
+    }
+
+    /**
+     * MA-056リクエスト生成。
+     *
+     * @param request リクエストDTO
+     * @param kseflRecordOpt 開栓エラーフォロー情報
+     * @param jusyomRecordOpt 住所マスター情報
+     * @return OpeningCommonNormalTgRetailRequest MA-050リクエスト
+     */
+    private OpeningCommonResumeOtherRetailRequest createOpeningCommonResumeOtherRetailRequest(
+            OpeningReportSupplyRequest request,
+            Long kyoTrkNo,
+            String gmb,
+            LocalDate knskKjnYmd,
+            String correlationId) {
+
+<span class="fc" id="L646">        String kasJysb = request.knsKkaInf().kasJysb();</span>
+
+<span class="fc bfc" id="L648" title="All 2 branches covered.">        String duknIsrsCd = securityRestoration.equals(kasJysb)</span>
+<span class="fc" id="L649">                ? alternativeOpeningCcjg0404</span>
+<span class="fc bfc" id="L650" title="All 2 branches covered.">                : disasterRecovery.equals(kasJysb)</span>
+<span class="fc" id="L651">                ? alternativeOpeningCcjg0405</span>
+<span class="fc" id="L652">                : supplyResumedCcjg0403;</span>
+
+<span class="fc" id="L654">        return new OpeningCommonResumeOtherRetailRequest(</span>
+                openingReportSupplyCcjg04,
+                duknIsrsCd,
+                onlineReportingUsually,
+<span class="fc" id="L658">                String.valueOf(knskKjnYmd),</span>
+<span class="fc" id="L659">                request.kasYmd(),</span>
+<span class="fc" id="L660">                Long.valueOf(request.gasMtstNo()),</span>
+                kyoTrkNo,
+                gmb,
+                kasJysb,
+<span class="fc" id="L664">                request.tkykNo(),</span>
+<span class="fc" id="L665">                Long.valueOf(request.knsKkaInf().gmtShjSu()),</span>
+<span class="fc" id="L666">                request.hukkUsrId(),</span>
+<span class="fc" id="L667">                request.hukkUnmKj(),</span>
+<span class="fc" id="L668">                request.rirekiMemo(),</span>
+<span class="fc" id="L669">                request.hukkSysShbt(),</span>
+<span class="fc" id="L670">                request.systemDatetime()</span>
+        );
+    }
+
+    /**
+     * DA-033-R005取得処理
+     * 主な仕様:
+     * - ガスメーター設置場所番号、検索基準年月日を引数にガスメーター＜導管＞の検索を行う
+     * - 取得件数が0件の場合、データ不整合エラーを送出する
+     * @param gmtsetdNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return gmtsetdRecords
+     */
+    private GmtsetdRecord requireGmtsetd(Long gmtsetdNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L684">        List&lt;GmtsetdRecord&gt; gmtsetdRecords =</span>
+<span class="fc" id="L685">                gmtsetdDataAccess.findAllByGasMtstNoAndTkysYmdAndTyenYmd(gmtsetdNo, knskKjnYmd);</span>
+<span class="fc bfc" id="L686" title="All 2 branches covered.">        if (gmtsetdRecords.isEmpty()) {</span>
+<span class="fc" id="L687">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L688">            gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L689">            GmtsetdDataAccess.CallSpecs.FIND_ALL_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L691">                    .put(&quot;gasMtstNo&quot;, gmtsetdNo)</span>
+<span class="fc" id="L692">                    .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+        }
+<span class="fc" id="L694">        return gmtsetdRecords.get(0);</span>
+    }
+
+    /**
+     * DA-110-R007取得処理
+     * 主な仕様:
+     * - ガスメーター設置場所番号、検索基準年月日を引数にガスメーター＜導管＞の検索を行う
+     * - 取得件数が0件の場合、データ不整合エラーを送出する
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return gasmtrdRecords
+     */
+    private GasmtrdRecord requireGasmtrd(Long gasMtstNo, LocalDate knskKjnYmd, LocalDate gmtThkgYmd) {
+<span class="fc" id="L707">        List&lt;GasmtrdRecord&gt; gasmtrdRecords =</span>
+<span class="fc" id="L708">                gasmtrdDataAccess.findAllByTtkGmsbNoAndGmtkYmdAndGmtThkgYmd(gasMtstNo, knskKjnYmd, gmtThkgYmd);</span>
+<span class="fc bfc" id="L709" title="All 2 branches covered.">        if (gasmtrdRecords.isEmpty()) {</span>
+<span class="fc" id="L710">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L711">            gasmtrdDataAccess.tableName(),</span>
+<span class="fc" id="L712">            GasmtrdDataAccess.CallSpecs.FIND_ALL_BY_TTK_GMSB_NO_AND_GMTK_YMD_AND_GMT_THKG_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L714">                    .put(&quot;ttkGmsbNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L715">                    .put(&quot;knskKjnYmd&quot;, knskKjnYmd)</span>
+<span class="fc" id="L716">                    .put(&quot;gmtThkgYmd&quot;, gmtThkgYmd));</span>
+        }
+<span class="fc" id="L718">        return gasmtrdRecords.get(0);</span>
+    }
+
+    /**
+     * MAAPI呼出例外の独自メソッド定義
+     *
+     * @param exception MAAPI呼出時の透過例外
+     * @return MaPassthroughMaApiException MAAPI呼出時の透過例外
+     */
+    private MaPassthroughMaApiException handleError(MaPassthroughMaApiException exception) {
+<span class="fc" id="L728">        String body = exception.getResponseBody();</span>
+<span class="fc" id="L729">        String correlationId = requestContext.getCorrelationId().orElseThrow(</span>
+<span class="fc" id="L730">                () -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;));</span>
+<span class="fc" id="L731">        String mediaType = exception.getMediaType();</span>
+<span class="fc" id="L732">        int status = exception.getStatus();</span>
+<span class="fc bfc" id="L733" title="All 2 branches covered.">        if (body == null) {</span>
+<span class="fc" id="L734">            return exception;</span>
+        }
+
+<span class="fc bfc" id="L737" title="All 4 branches covered.">        if (mediaType == null || ! mediaType.contains(&quot;json&quot;)) {</span>
+<span class="fc" id="L738">            return exception;</span>
+        }
+
+<span class="fc" id="L741">        ObjectMapper mapper = new ObjectMapper();</span>
+<span class="fc" id="L742">        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);</span>
+
+        try {
+<span class="fc" id="L745">            MaPassthroughMaApiErrorResponse originErrDto =</span>
+<span class="fc" id="L746">                    mapper.readValue(body, MaPassthroughMaApiErrorResponse.class);</span>
+
+<span class="fc" id="L748">            String crsMsgId =</span>
+<span class="fc" id="L749">                    Optional.ofNullable(originErrDto.ciriusMessageId())</span>
+<span class="fc" id="L750">                            .orElse(ErrorCatalog.resolveCiriusMessageId(originErrDto.errorCode()));</span>
+
+<span class="fc" id="L752">            List&lt;String&gt; crsEmbeddedStringList = originErrDto.ciriusEmbeddedStringList();</span>
+
+<span class="fc" id="L754">            OpeningReportSupplyResponse entityDto =</span>
+                    new OpeningReportSupplyResponse(
+<span class="fc" id="L756">                            originErrDto.errorCode(),</span>
+<span class="fc" id="L757">                            originErrDto.errorDescription(),</span>
+<span class="fc" id="L758">                            originErrDto.errorDetailList(),</span>
+                            crsMsgId,
+                            crsEmbeddedStringList,
+                            null,
+                            null,
+                            correlationId);
+
+<span class="fc" id="L765">            String entityStr = mapper.writeValueAsString(entityDto);</span>
+
+<span class="fc" id="L767">            return new MaPassthroughMaApiException(</span>
+                    status,
+                    entityStr,
+                    mediaType,
+                    null,
+                    null);
+<span class="fc" id="L773">        } catch (IOException e) {</span>
+<span class="fc" id="L774">            return exception;</span>
+        }
+    }
+
+    /**
+     * 開栓時お客さま番号採番対象判定結果を基に開栓時契約お客さま取得・登録する(SV-275)
+     *
+     * @return ContractCustomerAcquisitionRegistrationAtOpeningOutput SV-275実行結果
+     */
+    @Transactional(TxType.REQUIRED)
+    public ContractCustomerAcquisitionRegistrationAtOpeningOutput callContractCustomerAcquisitionRegistrationAtOpening(
+            CustomerNumberAssignmentTargetJudgmentAtOpeningOutput customerNumberAssignmentTargetJudgmentAtOpeningOutput,
+            OpeningReportSupplyRequest request, Long kyoTrkNo, Boolean ctnmKjhkFlg,
+            JusyomRecord jusyomRecord, GmtsetdRecord gmtsetdRecord) {
+<span class="fc" id="L788">        ContractCustomerAcquisitionRegistrationAtOpeningOutput contractCustomerAcquisitionRegistrationAtOpeningOutput =</span>
+<span class="fc" id="L789">                contractCustomerAcquisitionRegistrationAtOpening.execute(</span>
+<span class="fc" id="L790">                        customerNumberAssignmentTargetJudgmentAtOpeningOutput.cstNoSibntiFlg(),</span>
+<span class="fc" id="L791">                        request.tkourKbn(),</span>
+                        kyoTrkNo,
+<span class="fc" id="L793">                        request.kiycstInf().ctnmKj1(),</span>
+<span class="fc" id="L794">                        request.kiycstInf().ctnmKn1(),</span>
+<span class="fc" id="L795">                        request.kiycstInf().ctnm1HujnShbt(),</span>
+<span class="fc" id="L796">                        request.kiycstInf().ctnm1HshiShbt(),</span>
+<span class="fc" id="L797">                        request.kiycstInf().ctnmKj2(),</span>
+<span class="fc" id="L798">                        request.kiycstInf().ctnmKn2(),</span>
+<span class="fc" id="L799">                        request.kiycstInf().ctnm2HujnShbt(),</span>
+<span class="fc" id="L800">                        request.kiycstInf().ctnm2HshiShbt(),</span>
+                        ctnmKjhkFlg,
+<span class="fc" id="L802">                        jusyomRecord.yubnNo(),</span>
+<span class="fc" id="L803">                        gmtsetdRecord.szcGkkCd(),</span>
+<span class="fc" id="L804">                        gmtsetdRecord.szcMchCd(),</span>
+<span class="fc" id="L805">                        gmtsetdRecord.szcCmazCd(),</span>
+<span class="fc" id="L806">                        gmtsetdRecord.cbgSuj1(),</span>
+<span class="fc" id="L807">                        gmtsetdRecord.cbgKn2(),</span>
+<span class="fc" id="L808">                        gmtsetdRecord.cbgKn3(),</span>
+<span class="fc" id="L809">                        gmtsetdRecord.cbgKn4(),</span>
+<span class="fc" id="L810">                        gmtsetdRecord.bldNo(),</span>
+<span class="fc" id="L811">                        gmtsetdRecord.tunoKn(),</span>
+<span class="fc" id="L812">                        gmtsetdRecord.hynKn(),</span>
+<span class="fc" id="L813">                        gmtsetdRecord.htuFlg()</span>
+                        );
+
+<span class="fc" id="L816">        return contractCustomerAcquisitionRegistrationAtOpeningOutput;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

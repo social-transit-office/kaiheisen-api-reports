@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformintegrationnecessityjudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningImpl.java</span></div><h1>BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationNecessityJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf;
+
+/**
+ * 概要:
+ * SV-251（開栓時請求回収基盤連携要否判定）の実装。
+ *
+ * 主な仕様:
+ * - 既定値として「連携なし / 連携なし」を返す。
+ * - 契約有無フラグ=true かつ閉栓事由=供給停止 に一致した場合は step 2.a として評価を打ち切る。
+ * - step 2.a のうち供給停止精算状態区分が設定済みの場合を最優先で判定する。
+ * - 継続使用かつ 4x 判定=true かつ復活判定=true の場合は、2x 判定に応じて継続復活または開栓へ分岐する。
+ * - 総合区分更新フラグ=true の場合は前契約継続 / 総合区分更新を返す。
+ *
+ * 既知の制約:
+ * - public メソッド引数の業務妥当性検証は上位層責務とする。
+ * - nested DTO は null-safe に扱い、内部判定では未設定時に false として扱う。
+ */
+public final class BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningImpl
+        implements BillingCollectionPlatformIntegrationNecessityJudgmentAtOpening {
+
+    private final String closureReasonSupplyOutage;
+
+    private final String openingReasonContinuedUse;
+
+    private final String noCoordination;
+
+    private final String opening;
+
+    private final String continuationOfPreviousContract;
+
+    private final String previousContractNoCoordination;
+
+    private final String previousContractContinuousRevival;
+
+    private final String previousContractOutOfSupply;
+
+    private final String previousContractGeneralUpdate;
+
+    /**
+     * 概要: SV-251 の判定に必要な定数値を解決して初期化する。
+     * 主な仕様:
+     * - CIRIUS 定数サービスから閉栓事由=供給停止と開栓事由=継続使用を解決する。
+     * - 開閉栓定数サービスから KH023/KH024 の戻り値区分を解決する。
+     * 既知の制約:
+     * - 必須定数未登録時はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L63">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L64">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L66">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L67">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L68">        this.closureReasonSupplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L72">        this.openingReasonContinuedUse = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L76">        this.noCoordination = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory
+                        .NO_COORDINATION);
+<span class="fc" id="L81">        this.opening = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory
+                        .OPENING);
+<span class="fc" id="L86">        this.continuationOfPreviousContract = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.BillingCollectionInfrastructureCooperationCategory
+                        .CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L91">        this.previousContractNoCoordination = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing
+                        .NO_COORDINATION);
+<span class="fc" id="L96">        this.previousContractContinuousRevival = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing
+                        .CONTINUOUS_REVIVAL);
+<span class="fc" id="L101">        this.previousContractOutOfSupply = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.OUT_OF_SUPPLY);
+<span class="fc" id="L105">        this.previousContractGeneralUpdate = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.GENERAL_UPDATE);
+<span class="fc" id="L109">    }</span>
+
+    /**
+     * 概要: 開栓時の請求回収基盤連携要否と連携パターンを判定する。
+     * 主な仕様:
+     * - 設計 step 1 に従い、既定値「連携なし / 連携なし」を基準に判定する。
+        * - 契約有無フラグ=true かつ閉栓事由=供給停止に一致した場合は、step 2.a としてその時点で評価を打ち切る。
+        * - step 2.a のうち供給停止精算状態区分が設定済みなら前契約継続 / 供給停止中、未設定なら既定値を返却する。
+        * - step 2.a に一致しない場合のみ step 2.b、2.c を順に評価し、最初に一致した結果を返却する。
+     * - どの条件にも一致しない場合は既定値を返却する。
+     * 既知の制約:
+        * - Boolean は Boolean.TRUE.equals(...) で判定する。
+        * - nested DTO は null-safe に扱い、未設定時は該当条件を不成立として扱う。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所＜導管＞情報（開栓作業日時点）
+     * @param kiyInf 契約情報
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param syoriHnt2XFlg 処理判定_2x_フラグ
+     * @param syoriHntFkktFlg 処理判定_復活_フラグ
+     * @param suguKbnUpdFlg 総合区分更新フラグ
+     * @param kiyUmFlg 契約有無フラグ
+     * @return 判定結果
+     */
+    @Override
+    public BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput execute(
+            String kasJysb,
+            GmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            KiyInf kiyInf,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHnt2XFlg,
+            Boolean syoriHntFkktFlg,
+            Boolean suguKbnUpdFlg,
+            Boolean kiyUmFlg) {
+<span class="fc" id="L143">        BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput defaultOutput =</span>
+                new BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput(
+                        noCoordination,
+                        previousContractNoCoordination);
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (isSupplyOutageBranchEligible(kiyUmFlg, gmtsetdKsenSaymdInf)) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (hasConfiguredSupplyStopPaymentStatus(kiyInf)) {</span>
+<span class="fc" id="L149">                return new BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput(</span>
+                        continuationOfPreviousContract,
+                        previousContractOutOfSupply);
+            }
+<span class="fc" id="L153">            return defaultOutput;</span>
+        }
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (shouldHandleContinuedUse(kasJysb, syoriHnt4XFlg, syoriHntFkktFlg)) {</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            if (Boolean.TRUE.equals(syoriHnt2XFlg)) {</span>
+<span class="fc" id="L157">                return new BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput(</span>
+                        continuationOfPreviousContract,
+                        previousContractContinuousRevival);
+            }
+<span class="fc" id="L161">            return new BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput(</span>
+                    opening,
+                    previousContractNoCoordination);
+        }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (Boolean.TRUE.equals(suguKbnUpdFlg)) {</span>
+<span class="fc" id="L166">            return new BillingCollectionPlatformIntegrationNecessityJudgmentAtOpeningOutput(</span>
+                    continuationOfPreviousContract,
+                    previousContractGeneralUpdate);
+        }
+<span class="fc" id="L170">        return defaultOutput;</span>
+    }
+
+    /**
+     * 概要: step 2.a の外側条件である契約有無かつ閉栓事由=供給停止を判定する。
+     * 主な仕様:
+     * - 契約有無フラグ=true を前提とする。
+     * - ガスメーター設置場所情報の閉栓事由が供給停止であることを確認する。
+     * 既知の制約:
+     * - ネスト DTO が null の場合は false とする。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所情報
+     * @return step 2.a の外側条件に一致する場合 true
+     */
+    private boolean isSupplyOutageBranchEligible(
+            Boolean kiyUmFlg,
+            GmtsetdKsenSaymdInf gmtsetdKsenSaymdInf) {
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        return Boolean.TRUE.equals(kiyUmFlg)</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                &amp;&amp; isSupplyOutageClosureReason(gmtsetdKsenSaymdInf);</span>
+    }
+
+    /**
+     * 概要: 継続使用パターンの主条件を判定する。
+     * 主な仕様:
+     * - 開栓事由=継続使用、4x 判定=true、復活判定=true のすべてを満たした場合に true を返す。
+     * 既知の制約:
+     * - 開栓事由が null の場合は false とする。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param syoriHntFkktFlg 処理判定_復活_フラグ
+     * @return step 2.b に一致する場合 true
+     */
+    private boolean shouldHandleContinuedUse(
+            String kasJysb,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        return openingReasonContinuedUse.equals(kasJysb)</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">                &amp;&amp; Boolean.TRUE.equals(syoriHnt4XFlg)</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                &amp;&amp; Boolean.TRUE.equals(syoriHntFkktFlg);</span>
+    }
+
+    /**
+     * 概要: 閉栓事由が供給停止かを判定する。
+     * 主な仕様:
+     * - DTO または閉栓事由が未設定なら false を返す。
+     * - 解決済み供給停止定数と一致する場合のみ true を返す。
+     *
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所情報
+     * @return 閉栓事由が供給停止なら true
+     */
+    private boolean isSupplyOutageClosureReason(GmtsetdKsenSaymdInf gmtsetdKsenSaymdInf) {
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        return gmtsetdKsenSaymdInf != null</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">                &amp;&amp; closureReasonSupplyOutage.equals(gmtsetdKsenSaymdInf.hesnJysb());</span>
+    }
+
+    /**
+     * 概要: 供給停止精算状態区分が設定済みかを判定する。
+     * 主な仕様:
+     * - ネスト DTO が未設定なら false を返す。
+     * - 値が null でも空白でもない場合に true を返す。
+        * - step 2.a の外側条件成立後の内側条件として使用する。
+     *
+     * @param kiyInf 契約情報
+     * @return 供給停止精算状態区分が設定済みなら true
+     */
+    private boolean hasConfiguredSupplyStopPaymentStatus(KiyInf kiyInf) {
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (kiyInf == null) {</span>
+<span class="nc" id="L239">            return false;</span>
+        }
+<span class="fc" id="L241">        SvckyaInf svckyaInf = kiyInf.svckyaInf();</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        return svckyaInf != null</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">                &amp;&amp; svckyaInf.kkysSisnJtkb() != null</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">                &amp;&amp; !svckyaInf.kkysSisnJtkb().isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,383 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FollowCaseRetailRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-followcaseretailregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">FollowCaseRetailRegistrationImpl.java</span></div><h1>FollowCaseRetailRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.flknmei.FlknmeiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.flknmei.write.FlknmeiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gymykiy.GymykiyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gymykiy.GymykiyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GrkKsbHnsb;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GrkKsbHwsb;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.FollowCaseRetailRegistration;
+
+/**
+ * 概要: SV-128（フォロー件名＜小売＞登録）のサービス実装。
+ * 主な仕様:
+ * - SV-259 で判定し、対象時のみ DA-058-R001、DA-060-R001 を取得して DA-024-C001 を登録する。
+ * - 報告システム種別、相関ID、システム日時は RequestContext から取得する。
+ * 既知の制約:
+ * - ガスメーター設置場所番号の全角化は ASCII 半角文字の全角変換で実施する。
+ */
+public class FollowCaseRetailRegistrationImpl implements FollowCaseRetailRegistration {
+
+    static final String SERVICE_USER_ID = &quot;KHSS128&quot;;
+
+    private static final String TYPE_CODE_GAS_FEE_CONTRACT_TYPE_SORTING =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType.TYPE;
+
+    private static final String TYPE_CODE_CONTRACT_TYPE_SORTING_CONTENT =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType.TYPE;
+
+    private static final String TYPE_CODE_FOLLOW_TEAM =
+            ConstantLookupKeys.Cirius.FollowUpWorkTeamCodeRetail.TYPE;
+
+    private static final String TYPE_CODE_FOLLOW_TASK =
+            ConstantLookupKeys.Cirius.FollowUpBusinessTypeRetail.TYPE;
+
+    private static final String TYPE_CODE_FOLLOW_REASON =
+            ConstantLookupKeys.Cirius.FollowUpCauseCodeRetail.TYPE;
+
+    private static final String TYPE_CODE_FOLLOW_STATUS =
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE;
+
+    private static final String TARGET_CLOSING_CANCELLATION =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType.CANCELLATION_WHEN_CLOSED_TARGET;
+
+    private static final String LARGE_CONTRACT =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType
+                    .BUSINESS_USE_LARGE_SCALE_FOLLOW_UP_LIST_DISPLAY_DIVISION_LARGE_SCALE_CONTRACT;
+
+    private static final String LARGE_GENERAL =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType
+                    .BUSINESS_USE_LARGE_SCALE_FOLLOW_UP_LIST_DISPLAY_CATEGORY_LARGE_SCALE_GENERAL;
+
+    private static final String OPTIONAL_CLAUSE =
+            ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType
+                    .COMMERCIAL_LARGE_SCALE_FOLLOW_UP_LIST_DISPLAY_CATEGORY_SELECTED_TERMS_AND_CONDITIONS;
+
+    private static final String TEAM_LARGE =
+            ConstantLookupKeys.Cirius.FollowUpWorkTeamCodeRetail.LARGE_LOT_EXCLUDING_GENERAL_LARGE_LOT_TEAM_3801;
+
+    private static final String TEAM_LARGE_GENERAL =
+            ConstantLookupKeys.Cirius.FollowUpWorkTeamCodeRetail.OGUCHI_GENERAL_TEAM_3803;
+
+    private static final String TEAM_OPTIONAL_CLAUSE =
+            ConstantLookupKeys.Cirius.FollowUpWorkTeamCodeRetail.SELECTED_TERMS_AND_CONDITIONS_TEAM_3802;
+
+    private static final String FOLLOW_TASK_TYPE =
+            ConstantLookupKeys.Cirius.FollowUpBusinessTypeRetail.COMMERCIAL_LARGE_MOUTH_CLOSURE_CONFIRMATION_FOLLOW_UP;
+
+    private static final String FOLLOW_REASON =
+            ConstantLookupKeys.Cirius.FollowUpCauseCodeRetail.CONFIRMATION_OF_CLOSURE_CONTRACT;
+
+    private static final String FOLLOW_STATUS_NOT_STARTED =
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED;
+
+    private final GasFeeContractTypeSortingContentAcquisition gasFeeContractTypeSortingContentAcquisition;
+
+    private final GymykiyDataAccess gymykiyDataAccess;
+
+    private final KiycstkDataAccess kiycstkDataAccess;
+
+    private final FlknmeiDataAccess flknmeiDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String j0528ClosingTarget;
+
+    private final String j0528FollowTeamType;
+
+    private final String j0529TargetCode;
+
+    private final String j0529LargeContract;
+
+    private final String j0529LargeGeneral;
+
+    private final String j0529OptionalClause;
+
+    private final String teamLarge;
+
+    private final String teamLargeGeneral;
+
+    private final String teamOptionalClause;
+
+    private final String followTaskType;
+
+    private final String followReason;
+
+    private final String followStatusNotStarted;
+
+    /**
+     * 概要: SV-128 に必要な依存オブジェクトと必須定数を初期化する。
+     *
+     * @param gasFeeContractTypeSortingContentAcquisition ガス料金契約種別振分内容取得サービス
+     * @param gymykiyDataAccess 業務用契約データアクセス
+     * @param kiycstkDataAccess 契約お客さま＜小売＞データアクセス
+     * @param flknmeiDataAccess フォロー件名＜小売＞データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public FollowCaseRetailRegistrationImpl(
+            GasFeeContractTypeSortingContentAcquisition gasFeeContractTypeSortingContentAcquisition,
+            GymykiyDataAccess gymykiyDataAccess,
+            KiycstkDataAccess kiycstkDataAccess,
+            FlknmeiDataAccess flknmeiDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L147">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L148">        this.gasFeeContractTypeSortingContentAcquisition = Objects.requireNonNull(</span>
+                gasFeeContractTypeSortingContentAcquisition,
+                &quot;gasFeeContractTypeSortingContentAcquisition&quot;);
+<span class="fc" id="L151">        this.gymykiyDataAccess = Objects.requireNonNull(gymykiyDataAccess, &quot;gymykiyDataAccess&quot;);</span>
+<span class="fc" id="L152">        this.kiycstkDataAccess = Objects.requireNonNull(kiycstkDataAccess, &quot;kiycstkDataAccess&quot;);</span>
+<span class="fc" id="L153">        this.flknmeiDataAccess = Objects.requireNonNull(flknmeiDataAccess, &quot;flknmeiDataAccess&quot;);</span>
+<span class="fc" id="L154">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L155">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L156">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L157">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L159">        this.j0528ClosingTarget = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_GAS_FEE_CONTRACT_TYPE_SORTING,
+                ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType.SUBJECT_TO_CONTRACT_CONFIRMATION_WHEN_CLOSED);
+<span class="fc" id="L163">        this.j0528FollowTeamType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_GAS_FEE_CONTRACT_TYPE_SORTING,
+                ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType.BUSINESS_USE_LARGE_FOLLOW_UP_LIST_DISPLAY_DIVISION);
+<span class="fc" id="L167">        this.j0529TargetCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_CONTRACT_TYPE_SORTING_CONTENT,
+                TARGET_CLOSING_CANCELLATION);
+<span class="fc" id="L171">        this.j0529LargeContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_CONTRACT_TYPE_SORTING_CONTENT,
+                LARGE_CONTRACT);
+<span class="fc" id="L175">        this.j0529LargeGeneral = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_CONTRACT_TYPE_SORTING_CONTENT,
+                LARGE_GENERAL);
+<span class="fc" id="L179">        this.j0529OptionalClause = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_CONTRACT_TYPE_SORTING_CONTENT,
+                OPTIONAL_CLAUSE);
+<span class="fc" id="L183">        this.teamLarge = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_TEAM,
+                TEAM_LARGE);
+<span class="fc" id="L187">        this.teamLargeGeneral = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_TEAM,
+                TEAM_LARGE_GENERAL);
+<span class="fc" id="L191">        this.teamOptionalClause = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_TEAM,
+                TEAM_OPTIONAL_CLAUSE);
+<span class="fc" id="L195">        this.followTaskType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_TASK,
+                FOLLOW_TASK_TYPE);
+<span class="fc" id="L199">        this.followReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_REASON,
+                FOLLOW_REASON);
+<span class="fc" id="L203">        this.followStatusNotStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                TYPE_CODE_FOLLOW_STATUS,
+                FOLLOW_STATUS_NOT_STARTED);
+<span class="fc" id="L207">    }</span>
+
+    /**
+     * 概要: フォロー件名＜小売＞登録を実行する。
+     *
+     * @param kiyShbt 契約種別
+     * @param svkyNo サービス契約番号
+     * @param kyttSkno 契約特定世代管理番号
+     * @param kyttTsno 契約特定通し番号
+     * @param kysKyoTrno 契約者契約お客さま登録番号
+     * @param flttCktkCd フォロー担当地域統括コード
+     * @param flttKtnCd フォロー担当拠点コード
+     * @param gasMtstNo ガスメーター設置場所番号
+     */
+    @Override
+    public void execute(
+            String kiyShbt,
+            Long svkyNo,
+            Integer kyttSkno,
+            Integer kyttTsno,
+            Long kysKyoTrno,
+            String flttCktkCd,
+            String flttKtnCd,
+            Long gasMtstNo) {
+<span class="fc" id="L231">        LocalDateTime systemDatetime = requireRequestContext();</span>
+<span class="fc" id="L232">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+
+<span class="fc" id="L234">        GasFeeContractTypeSortingContentAcquisitionOutput sortingOutput =</span>
+<span class="fc" id="L235">                gasFeeContractTypeSortingContentAcquisition.execute(</span>
+                        kiyShbt,
+<span class="fc" id="L237">                        List.of(</span>
+                                new GrkKsbHwsb(j0528ClosingTarget, null),
+                                new GrkKsbHwsb(j0528FollowTeamType, null)),
+<span class="fc" id="L240">                        systemDatetime.toLocalDate());</span>
+
+<span class="fc" id="L242">        Optional&lt;String&gt; targetResult = findSortingCode(sortingOutput, 0);</span>
+<span class="pc bpc" id="L243" title="1 of 4 branches missed.">        if (targetResult.isEmpty() || !j0529TargetCode.equals(targetResult.get())) {</span>
+<span class="fc" id="L244">            return;</span>
+        }
+
+<span class="fc" id="L247">        GymykiyRecord gymykiyRecord = gymykiyDataAccess.findBySvkyNoAndKyttSknoAndKyttTsno(svkyNo, kyttSkno, kyttTsno)</span>
+<span class="fc" id="L248">                .orElse(null);</span>
+<span class="fc" id="L249">        KiycstkRecord kiycstkRecord = kiycstkDataAccess.findByKyoTrkNo(kysKyoTrno)</span>
+<span class="fc" id="L250">                .orElse(null);</span>
+
+<span class="fc" id="L252">        String teamCode = resolveFollowTeamCode(findSortingCode(sortingOutput, 1).orElse(null));</span>
+<span class="fc" id="L253">        String fullWidthGasMeterNo = toFullWidth(String.valueOf(gasMtstNo)) + &quot;閉栓&quot;;</span>
+<span class="fc" id="L254">        FlknmeiWriteRecord insertRecord = new FlknmeiWriteRecord(</span>
+                followTaskType,
+<span class="fc" id="L256">                systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L257">                toHhmmss(systemDatetime),</span>
+                svkyNo,
+                svkyNo,
+                flttCktkCd,
+                flttKtnCd,
+<span class="fc" id="L262">                getNullable(gymykiyRecord, GymykiyRecord::kiyKnrkCd),</span>
+<span class="fc" id="L263">                getNullable(gymykiyRecord, GymykiyRecord::kiyKtnCd),</span>
+<span class="fc" id="L264">                getNullable(gymykiyRecord, GymykiyRecord::kiySsyCd),</span>
+                null,
+                teamCode,
+                followReason,
+                fullWidthGasMeterNo,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                &quot;CBGG1357&quot;,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                followStatusNotStarted,
+<span class="fc" id="L286">                getNullable(kiycstkRecord, KiycstkRecord::ctnmKn1),</span>
+<span class="fc" id="L287">                getNullable(kiycstkRecord, KiycstkRecord::ctnmKj1),</span>
+<span class="fc" id="L288">                getNullable(kiycstkRecord, KiycstkRecord::ctnm1HujnShbt),</span>
+<span class="fc" id="L289">                getNullable(kiycstkRecord, KiycstkRecord::ctnm1HshiShbt),</span>
+<span class="fc" id="L290">                getNullable(kiycstkRecord, KiycstkRecord::ctnmKn2),</span>
+<span class="fc" id="L291">                getNullable(kiycstkRecord, KiycstkRecord::ctnmKj2),</span>
+<span class="fc" id="L292">                getNullable(kiycstkRecord, KiycstkRecord::ctnm2HujnShbt),</span>
+<span class="fc" id="L293">                getNullable(kiycstkRecord, KiycstkRecord::ctnm2HshiShbt),</span>
+<span class="fc" id="L294">                getNullable(kiycstkRecord, KiycstkRecord::ctnmKjhkFlg),</span>
+<span class="fc" id="L295">                getNullable(kiycstkRecord, KiycstkRecord::yubnNo),</span>
+<span class="fc" id="L296">                getNullable(kiycstkRecord, KiycstkRecord::gkkCd),</span>
+<span class="fc" id="L297">                getNullable(kiycstkRecord, KiycstkRecord::mchCd),</span>
+<span class="fc" id="L298">                getNullable(kiycstkRecord, KiycstkRecord::cmazCd),</span>
+<span class="fc" id="L299">                getNullable(kiycstkRecord, KiycstkRecord::cbgSuj1),</span>
+<span class="fc" id="L300">                getNullable(kiycstkRecord, KiycstkRecord::cbgKn2),</span>
+<span class="fc" id="L301">                getNullable(kiycstkRecord, KiycstkRecord::cbgKn3),</span>
+<span class="fc" id="L302">                getNullable(kiycstkRecord, KiycstkRecord::cbgKn4),</span>
+<span class="fc" id="L303">                getNullable(kiycstkRecord, KiycstkRecord::bldnKj),</span>
+<span class="fc" id="L304">                getNullable(kiycstkRecord, KiycstkRecord::bldnKn),</span>
+<span class="fc" id="L305">                getNullable(kiycstkRecord, KiycstkRecord::tunoKn),</span>
+<span class="fc" id="L306">                getNullable(kiycstkRecord, KiycstkRecord::hynKn),</span>
+<span class="fc" id="L307">                getNullable(kiycstkRecord, KiycstkRecord::htuFlg),</span>
+<span class="fc" id="L308">                getNullable(kiycstkRecord, KiycstkRecord::bldnKjhkFlg),</span>
+<span class="fc" id="L309">                getNullable(kiycstkRecord, KiycstkRecord::jutKbn),</span>
+                null);
+<span class="fc" id="L311">        flknmeiDataAccess.insert(</span>
+                insertRecord,
+<span class="fc" id="L313">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L314">    }</span>
+
+    private &lt;T, R&gt; R getNullable(T record, Function&lt;T, R&gt; accessor) {
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L318">            return null;</span>
+        }
+<span class="fc" id="L320">        return accessor.apply(record);</span>
+    }
+
+    private Optional&lt;String&gt; findSortingCode(
+            GasFeeContractTypeSortingContentAcquisitionOutput output,
+            int index) {
+<span class="pc bpc" id="L326" title="2 of 6 branches missed.">        if (output == null || output.grkKsbHnsbList() == null || output.grkKsbHnsbList().size() &lt;= index) {</span>
+<span class="fc" id="L327">            return Optional.empty();</span>
+        }
+<span class="fc" id="L329">        GrkKsbHnsb item = output.grkKsbHnsbList().get(index);</span>
+<span class="pc bpc" id="L330" title="1 of 4 branches missed.">        if (item == null || item.grkKsbHnsb() == null) {</span>
+<span class="fc" id="L331">            return Optional.empty();</span>
+        }
+<span class="fc" id="L333">        return Optional.of(item.grkKsbHnsb());</span>
+    }
+
+    private String resolveFollowTeamCode(String followTeamType) {
+<span class="fc bfc" id="L337" title="All 2 branches covered.">        if (j0529LargeContract.equals(followTeamType)) {</span>
+<span class="fc" id="L338">            return teamLarge;</span>
+        }
+<span class="fc bfc" id="L340" title="All 2 branches covered.">        if (j0529LargeGeneral.equals(followTeamType)) {</span>
+<span class="fc" id="L341">            return teamLargeGeneral;</span>
+        }
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (j0529OptionalClause.equals(followTeamType)) {</span>
+<span class="fc" id="L344">            return teamOptionalClause;</span>
+        }
+<span class="fc" id="L346">        throw new KaiheisenException(</span>
+                &quot;ガス料金契約種別振分内容種別の値が不正のため、処理を終了しました。&quot;);
+    }
+
+    private LocalDateTime requireRequestContext() {
+<span class="fc" id="L351">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L352">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L356">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L358">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L359">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+
+    private int toHhmmss(LocalDateTime datetime) {
+<span class="fc" id="L363">        return datetime.getHour() * 10000</span>
+<span class="fc" id="L364">                + datetime.getMinute() * 100</span>
+<span class="fc" id="L365">                + datetime.getSecond();</span>
+    }
+
+    private String toFullWidth(String value) {
+<span class="fc" id="L369">        StringBuilder builder = new StringBuilder(value.length());</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        for (int index = 0; index &lt; value.length(); index++) {</span>
+<span class="fc" id="L371">            char ch = value.charAt(index);</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">            if (ch == ' ') {</span>
+<span class="nc" id="L373">                builder.append('　');</span>
+<span class="pc bpc" id="L374" title="2 of 4 branches missed.">            } else if (ch &gt;= '!' &amp;&amp; ch &lt;= '~') {</span>
+<span class="fc" id="L375">                builder.append((char) (ch + 0xFEE0));</span>
+            } else {
+<span class="nc" id="L377">                builder.append(ch);</span>
+            }
+        }
+<span class="fc" id="L380">        return builder.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TgPipelineGasUsageBetweenReadingsAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-tgpipelinegasusagebetweenreadingsacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">TgPipelineGasUsageBetweenReadingsAcquisitionImpl.java</span></div><h1>TgPipelineGasUsageBetweenReadingsAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.TgPipelineGasUsageBetweenReadingsAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.TgPipelineGasUsageBetweenReadingsAcquisitionOutput;
+
+/**
+ * TG導管ガス使用量_指針間取得サービス実装。
+ */
+public class TgPipelineGasUsageBetweenReadingsAcquisitionImpl
+        implements TgPipelineGasUsageBetweenReadingsAcquisition {
+
+<span class="fc" id="L17">    private static final BigDecimal TWO = BigDecimal.valueOf(2L);</span>
+
+<span class="fc" id="L19">    private static final BigDecimal STANDARD_ATMOSPHERIC_PRESSURE = BigDecimal.valueOf(101325L);</span>
+
+<span class="fc" id="L21">    private static final BigDecimal STANDARD_PRESSURE_DIVISOR = BigDecimal.valueOf(102306L);</span>
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    /**
+     * 概要: 依存する内部サービスを初期化する。
+     * 主な仕様:
+     * - 指示数回帰区分の存在確認には SV-089 を利用する。
+     * 既知の制約:
+     * - 引数 null の明示ガードは行わず、呼出し元規約に委ねる。
+     * @param constantMasterInfoAcquisition コンスタントマスタ情報取得サービス
+     */
+    public TgPipelineGasUsageBetweenReadingsAcquisitionImpl(
+<span class="fc" id="L34">            ConstantMasterInfoAcquisition constantMasterInfoAcquisition) {</span>
+<span class="fc" id="L35">        this.constantMasterInfoAcquisition = constantMasterInfoAcquisition;</span>
+<span class="fc" id="L36">    }</span>
+
+    /**
+     * 概要: 前回、今回の指示数間のガス使用量と換算後ガス使用量を返却する。
+     * 主な仕様:
+     * - 指示数回帰区分が未指定の場合は設計条件に従って回帰区分を判定する。
+     * - 実供給圧力数が 0 より大きい場合は換算式で換算後ガス使用量を算出する。
+     * @param sjskKbn 指示数回帰区分
+     * @param kokiShjSu 今回指示数
+     * @param znkiShjSu 前回指示数
+     * @param sjskHticSu 指示数回帰判定値数
+     * @param sjsuMincSu 指示数最小値数
+     * @param sgyjKytiSyry 作業時協定使用量
+     * @param jkarSu 実供給圧力数
+     * @return TG導管ガス使用量_指針間取得結果
+     */
+    @Override
+    public TgPipelineGasUsageBetweenReadingsAcquisitionOutput execute(
+            String sjskKbn,
+            Long kokiShjSu,
+            Long znkiShjSu,
+            Long sjskHticSu,
+            BigDecimal sjsuMincSu,
+            BigDecimal sgyjKytiSyry,
+            Integer jkarSu) {
+<span class="fc" id="L61">        String resolvedRegressionSegment = resolveIndicatedNumberRegressionSegment(</span>
+                sjskKbn,
+                kokiShjSu,
+                znkiShjSu,
+                sjskHticSu,
+                sjsuMincSu);
+<span class="fc" id="L67">        BigDecimal usageBetweenReadings = calculateUsageBetweenReadings(</span>
+                resolvedRegressionSegment,
+                kokiShjSu,
+                znkiShjSu,
+                sjskHticSu,
+                sjsuMincSu);
+<span class="fc" id="L73">        BigDecimal gasUsage = usageBetweenReadings.add(sgyjKytiSyry);</span>
+<span class="fc" id="L74">        BigDecimal convertedGasUsage = calculateConvertedGasUsage(usageBetweenReadings, jkarSu);</span>
+
+<span class="fc" id="L76">        return new TgPipelineGasUsageBetweenReadingsAcquisitionOutput(</span>
+                gasUsage,
+                convertedGasUsage,
+                resolvedRegressionSegment);
+    }
+
+    /**
+     * 概要: 指示数回帰区分を入力値または算出値で確定する。
+     * 主な仕様:
+     * - 指示数回帰区分が空白でなければ SV-089 を呼び出して存在確認したうえで入力値を採用する。
+     * - 未指定時は今回使用量と回帰上限値/下限値から回帰区分を判定する。
+     * 既知の制約:
+     * - SV-089 の戻り値項目は利用せず、存在確認のみを目的とする。
+     * - 存在確認は SV-089 の未存在時例外送出契約に依存する。
+     * @param sjskKbn 指示数回帰区分
+     * @param kokiShjSu 今回指示数
+     * @param znkiShjSu 前回指示数
+     * @param sjskHticSu 指示数回帰判定値数
+     * @param sjsuMincSu 指示数最小値数
+     * @return 確定した指示数回帰区分
+     */
+    private String resolveIndicatedNumberRegressionSegment(
+            String sjskKbn,
+            Long kokiShjSu,
+            Long znkiShjSu,
+            Long sjskHticSu,
+            BigDecimal sjsuMincSu) {
+<span class="fc" id="L103">        String normalizedRegressionSegment = normalize(sjskKbn);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (normalizedRegressionSegment != null) {</span>
+<span class="fc" id="L105">            constantMasterInfoAcquisition.execute(</span>
+                    ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.TYPE,
+                    normalizedRegressionSegment);
+<span class="fc" id="L108">            return normalizedRegressionSegment;</span>
+        }
+
+<span class="fc" id="L111">        long currentUsage = calculateCurrentUsage(kokiShjSu, znkiShjSu);</span>
+<span class="fc" id="L112">        long regressionUpperLimit = calculateRegressionUpperLimit(sjskHticSu, sjsuMincSu);</span>
+<span class="fc" id="L113">        long regressionLowerLimit = regressionUpperLimit * -1L;</span>
+
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (currentUsage &gt; regressionUpperLimit) {</span>
+<span class="fc" id="L116">            return ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.REVERSE_REGRESSION;</span>
+        }
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (currentUsage &lt;= regressionLowerLimit) {</span>
+<span class="fc" id="L119">            return ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.REGRESSION;</span>
+        }
+<span class="fc" id="L121">        return ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.NONE;</span>
+    }
+
+    /**
+     * 概要: 指示数回帰区分に応じた指示数間使用量を算出する。
+     * 主な仕様:
+     * - 回帰の場合は今回指示数へ回帰判定値数×最小値数を加算して差分を求める。
+     * - 逆回帰の場合は前回指示数側へ回帰判定値数×最小値数を加算して差分を求める。
+     * - 上記以外は今回使用量をそのまま採用する。
+     * 既知の制約:
+     * - 比較対象の回帰区分は trim 後の値を前提とする。
+     * @param sjskKbn 指示数回帰区分
+     * @param kokiShjSu 今回指示数
+     * @param znkiShjSu 前回指示数
+     * @param sjskHticSu 指示数回帰判定値数
+     * @param sjsuMincSu 指示数最小値数
+     * @return 指示数間使用量
+     */
+    private BigDecimal calculateUsageBetweenReadings(
+            String sjskKbn,
+            Long kokiShjSu,
+            Long znkiShjSu,
+            Long sjskHticSu,
+            BigDecimal sjsuMincSu) {
+<span class="fc" id="L145">        BigDecimal regressionAmount = BigDecimal.valueOf(sjskHticSu).multiply(sjsuMincSu);</span>
+<span class="fc" id="L146">        BigDecimal currentReading = BigDecimal.valueOf(kokiShjSu);</span>
+<span class="fc" id="L147">        BigDecimal previousReading = BigDecimal.valueOf(znkiShjSu);</span>
+
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.REGRESSION.equals(sjskKbn)) {</span>
+<span class="fc" id="L150">            return currentReading.add(regressionAmount).subtract(previousReading);</span>
+        }
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.REVERSE_REGRESSION.equals(sjskKbn)) {</span>
+<span class="fc" id="L153">            return currentReading.subtract(previousReading.add(regressionAmount));</span>
+        }
+<span class="fc" id="L155">        return BigDecimal.valueOf(calculateCurrentUsage(kokiShjSu, znkiShjSu));</span>
+    }
+
+    /**
+     * 概要: 実供給圧力数に応じて換算後ガス使用量を算出する。
+     * 主な仕様:
+     * - 実供給圧力数が 0 より大きい場合は標準圧力換算式を適用する。
+     * - それ以外は指示数間使用量をそのまま返却する。
+     * 既知の制約:
+     * - 非終端小数になり得るため除算は DECIMAL128 精度で実施する。
+     * @param usageBetweenReadings 指示数間使用量
+     * @param jkarSu 実供給圧力数
+     * @return 換算後ガス使用量
+     */
+    private BigDecimal calculateConvertedGasUsage(BigDecimal usageBetweenReadings, Integer jkarSu) {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (jkarSu &gt; 0) {</span>
+<span class="fc" id="L171">            BigDecimal pressureFactor = STANDARD_ATMOSPHERIC_PRESSURE.add(BigDecimal.valueOf(jkarSu.longValue()));</span>
+<span class="fc" id="L172">            return usageBetweenReadings</span>
+<span class="fc" id="L173">                    .multiply(pressureFactor)</span>
+<span class="fc" id="L174">                    .divide(STANDARD_PRESSURE_DIVISOR, MathContext.DECIMAL128);</span>
+        }
+<span class="fc" id="L176">        return usageBetweenReadings;</span>
+    }
+
+    /**
+     * 概要: 今回使用量を今回指示数と前回指示数の差で算出する。
+     * 主な仕様:
+     * - 今回指示数から前回指示数を減算した値を返す。
+     * 既知の制約:
+     * - 負値もそのまま返却する。
+     * @param kokiShjSu 今回指示数
+     * @param znkiShjSu 前回指示数
+     * @return 今回使用量
+     */
+    private static long calculateCurrentUsage(Long kokiShjSu, Long znkiShjSu) {
+<span class="fc" id="L190">        return kokiShjSu - znkiShjSu;</span>
+    }
+
+    /**
+     * 概要: 指示数回帰上限値を算出する。
+     * 主な仕様:
+     * - 指示数回帰判定値数×指示数最小値数÷2 を小数点以下切り捨てで算出する。
+     * - 算出結果は long へ変換して返却する。
+     * 既知の制約:
+     * - long に収まらない値は longValueExact で例外となる。
+     * @param sjskHticSu 指示数回帰判定値数
+     * @param sjsuMincSu 指示数最小値数
+     * @return 指示数回帰上限値
+     */
+    private static long calculateRegressionUpperLimit(Long sjskHticSu, BigDecimal sjsuMincSu) {
+<span class="fc" id="L205">        return BigDecimal.valueOf(sjskHticSu)</span>
+<span class="fc" id="L206">                .multiply(sjsuMincSu)</span>
+<span class="fc" id="L207">                .divide(TWO, 0, RoundingMode.DOWN)</span>
+<span class="fc" id="L208">                .longValueExact();</span>
+    }
+
+    /**
+     * 概要: 文字列を trim し、空値を null に正規化する。
+     * 主な仕様:
+     * - null は null のまま返す。
+     * - trim 後に空文字の場合は null を返す。
+     * 既知の制約:
+     * - 空白除去の挙動は Java 標準の trim に依存する。
+     * @param value 正規化対象
+     * @return 正規化後の値
+     */
+    private static String normalize(String value) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L223">            return null;</span>
+        }
+<span class="fc" id="L225">        String normalized = value.trim();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

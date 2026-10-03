@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasUsageCodeRegistrationAvailabilityJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-gasusagecoderegistrationavailabilityjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">GasUsageCodeRegistrationAvailabilityJudgmentImpl.java</span></div><h1>GasUsageCodeRegistrationAvailabilityJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.cstkism.CstkismDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.GasUsageCodeRegistrationAvailabilityJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.GasUsageCodeRegistrationAvailabilityJudgmentOutput;
+
+/**
+ * 概要: SV-274（ガス用途コード登録可否判定）の実装クラス。
+ * 主な仕様:
+ * - ガス用途コードが `null` または空文字の場合は、業務エラー `020000091` をスローする。
+ * - SV-089 の例外時は、業務エラー `020000092` をスローする。
+ * - SV-089 で取得したコンスタント名ミクスを `cntnMix` として返却する。
+ * - SV-089 が正常終了し、かつ DA-162-R001 が 0 件を返した場合のみ登録可を返却する。
+ * - DA-162-R001 の例外は呼出元へ伝播せず、登録不可へ吸収する。
+ * 既知の制約:
+ * - `hukkSysShbt`、`correlationId`、`systemDatetime` は public 引数で扱わない。
+ * - blank 補完や trim は行わず、空判定は空文字との完全一致のみを対象とする。
+ */
+public final class GasUsageCodeRegistrationAvailabilityJudgmentImpl
+        implements GasUsageCodeRegistrationAvailabilityJudgment {
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    private final CstkismDataAccess cstkismDataAccess;
+
+    /**
+     * 概要: 判定に必要な下位依存を保持して初期化する。
+     * 主な仕様:
+     * - SV-089 と DA-162-R001 を必須依存として受け取る。
+     * - 依存不足時はコンストラクタで fail-fast する。
+     *
+     * @param constantMasterInfoAcquisition SV-089 コンスタントマスタ情報取得
+     * @param cstkismDataAccess DA-162-R001 コンスタント階層構造マスター取得
+     */
+    public GasUsageCodeRegistrationAvailabilityJudgmentImpl(
+            ConstantMasterInfoAcquisition constantMasterInfoAcquisition,
+<span class="fc" id="L43">            CstkismDataAccess cstkismDataAccess) {</span>
+<span class="fc" id="L44">        this.constantMasterInfoAcquisition = Objects.requireNonNull(</span>
+                constantMasterInfoAcquisition,
+                &quot;constantMasterInfoAcquisition&quot;);
+<span class="fc" id="L47">        this.cstkismDataAccess = Objects.requireNonNull(cstkismDataAccess, &quot;cstkismDataAccess&quot;);</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * 概要: ガス用途コードの登録可否を判定する。
+     * 主な仕様:
+     * - 入力が `null` または空文字の場合は業務エラー `020000091` をスローする。
+     * - SV-089 の例外時は業務エラー `020000092` をスローする。
+     * - DA-162-R001 の例外、既存階層構造ありのいずれでも `false` を返却する。
+     * - SV-089 正常終了かつ DA-162-R001 が 0 件の場合のみ `true` を返却する。
+     *
+     * @param gasYtCd ガス用途コード
+     * @return 判定結果 DTO
+     * @throws BusinessRuleException ガス用途コードが `null` または空文字の場合、または SV-089 が例外を送出した場合
+     */
+    @Override
+    public GasUsageCodeRegistrationAvailabilityJudgmentOutput execute(String gasYtCd) {
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        if (gasYtCd == null || gasYtCd.isEmpty()) {</span>
+<span class="fc" id="L65">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000091);</span>
+        }
+
+        ConstantMasterInfoAcquisitionOutput constantMasterOutput;
+        try {
+<span class="fc" id="L70">            constantMasterOutput = constantMasterInfoAcquisition.execute(</span>
+                    ConstantLookupKeys.Cirius.GasUsageCode.TYPE,
+                    gasYtCd);
+<span class="fc" id="L73">        } catch (RuntimeException ignored) {</span>
+<span class="fc" id="L74">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000092);</span>
+<span class="fc" id="L75">        }</span>
+
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        String cntnMix = constantMasterOutput == null ? null : constantMasterOutput.cntn();</span>
+<span class="fc" id="L78">        return output(isRegisterable(gasYtCd), cntnMix);</span>
+    }
+
+    /**
+     * 概要: DA-162-R001 を使って登録可否を判定する。
+     * 主な仕様:
+     * - `J0526` / 入力ガス用途コード / `17300` で階層構造マスタを検索する。
+     * - 取得結果が 0 件なら登録可、1 件以上なら登録不可と判定する。
+     * - DA 例外時は登録不可と判定する。
+     *
+     * @param gasYtCd ガス用途コード
+     * @return 登録可能な場合 true
+     */
+    private boolean isRegisterable(String gasYtCd) {
+        try {
+<span class="fc" id="L93">            return cstkismDataAccess.findByJiCtshCdAndJiCnstCdAndKaiCtshCd(</span>
+                    ConstantLookupKeys.Cirius.GasUsageCodeHierarchyType.TYPE,
+                    gasYtCd,
+                    ConstantLookupKeys.Cirius.GasUsageCode.TYPE)
+<span class="fc" id="L97">                    .isEmpty();</span>
+<span class="fc" id="L98">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L99">            return false;</span>
+        }
+    }
+
+    private static GasUsageCodeRegistrationAvailabilityJudgmentOutput output(
+            boolean gasYtCdTkhFlg, String cntnMix) {
+<span class="fc" id="L105">        return new GasUsageCodeRegistrationAvailabilityJudgmentOutput(gasYtCdTkhFlg, cntnMix);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

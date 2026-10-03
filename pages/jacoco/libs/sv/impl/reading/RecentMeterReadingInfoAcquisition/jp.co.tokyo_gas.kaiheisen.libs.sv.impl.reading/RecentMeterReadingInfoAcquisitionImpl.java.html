@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecentMeterReadingInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-recentmeterreadinginfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">RecentMeterReadingInfoAcquisitionImpl.java</span></div><h1>RecentMeterReadingInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DateCalculationUtil;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentMeterReadingInfoAcquisitionOutput;
+
+/** 直近検針情報取得サービス実装。 */
+public class RecentMeterReadingInfoAcquisitionImpl implements RecentMeterReadingInfoAcquisition {
+
+<span class="fc" id="L27">    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String excludedRegularReasonType;
+
+    private final String supplyOutageReasonType;
+
+    private final String supplyStopPaymentPendingStatus;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param gmkskkdDataAccess ガスメーター検針結果データアクセス
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果データアクセス
+     * @param kkytskrDataAccess 供給停止管理データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public RecentMeterReadingInfoAcquisitionImpl(
+            GmkskkdDataAccess gmkskkdDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            KkytskrDataAccess kkytskrDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L58">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L59">        this.gmkskkdDataAccess = gmkskkdDataAccess;</span>
+<span class="fc" id="L60">        this.ktmgmkkDataAccess = ktmgmkkDataAccess;</span>
+<span class="fc" id="L61">        this.kkytskrDataAccess = kkytskrDataAccess;</span>
+<span class="fc" id="L62">        this.requestContext = requestContext;</span>
+<span class="fc" id="L63">        this.excludedRegularReasonType =</span>
+<span class="fc" id="L64">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR);
+<span class="fc" id="L68">        this.supplyOutageReasonType =</span>
+<span class="fc" id="L69">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .SUPPLY_OUTAGE);
+<span class="fc" id="L74">        this.supplyStopPaymentPendingStatus =</span>
+<span class="fc" id="L75">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SupplyStopPaymentStatus
+                                .SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L80">    }</span>
+
+    @Override
+    public RecentMeterReadingInfoAcquisitionOutput execute(Long gasMtstNo) {
+<span class="fc" id="L84">        LocalDateTime systemDatetime =</span>
+                requestContext
+<span class="fc" id="L86">                        .getSystemDatetime()</span>
+<span class="fc" id="L87">                .orElseThrow(</span>
+                    () -&gt;
+<span class="fc" id="L89">                        new IllegalStateException(</span>
+                            &quot;RequestContext.systemDatetime is required&quot;));
+<span class="fc" id="L91">        LocalDate systemDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L92">        LocalDate fromDate = DateCalculationUtil.firstDayMonthsAgo(systemDate, 6);</span>
+
+<span class="fc" id="L94">        Optional&lt;KtmgmkkRecord&gt; preConfirmation = findLatestPreConfirmation(gasMtstNo);</span>
+<span class="fc" id="L95">        Optional&lt;GmkskkdRecord&gt; pipeline =</span>
+<span class="fc" id="L96">                findLatestDoukanInSearchWindows(gasMtstNo, fromDate, systemDate);</span>
+<span class="fc" id="L97">        String pipelineTableName = gmkskkdDataAccess.tableName();</span>
+
+<span class="fc" id="L99">        LocalDate knsYmd = null;</span>
+<span class="fc" id="L100">        Long gmtShjSu = null;</span>
+<span class="fc" id="L101">        String knkkSksiJysb = null;</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (preConfirmation.isPresent()) {</span>
+<span class="fc" id="L104">            KtmgmkkRecord preConfirmationRecord = preConfirmation.get();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (pipeline.isPresent()) {</span>
+<span class="fc" id="L106">                GmkskkdRecord pipelineRecord = pipeline.get();</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                if (preConfirmationRecord.knsYmd().isBefore(pipelineRecord.knsYmd())) {</span>
+<span class="fc" id="L108">                    knsYmd = pipelineRecord.knsYmd();</span>
+<span class="fc" id="L109">                    gmtShjSu = pipelineRecord.gmtShjSu();</span>
+<span class="fc" id="L110">                    knkkSksiJysb = pipelineRecord.knkkSksiJysb();</span>
+                } else {
+<span class="fc" id="L112">                    knsYmd = preConfirmationRecord.knsYmd();</span>
+<span class="fc" id="L113">                    gmtShjSu = preConfirmationRecord.gmtShjSu();</span>
+<span class="fc" id="L114">                    knkkSksiJysb = preConfirmationRecord.knkkSksiJysb();</span>
+                }
+<span class="fc" id="L116">            } else {</span>
+<span class="fc" id="L117">                knsYmd = preConfirmationRecord.knsYmd();</span>
+<span class="fc" id="L118">                gmtShjSu = preConfirmationRecord.gmtShjSu();</span>
+<span class="fc" id="L119">                knkkSksiJysb = preConfirmationRecord.knkkSksiJysb();</span>
+            }
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        } else if (pipeline.isPresent()) {</span>
+<span class="fc" id="L122">            GmkskkdRecord pipelineRecord = pipeline.get();</span>
+<span class="fc" id="L123">            knsYmd = pipelineRecord.knsYmd();</span>
+<span class="fc" id="L124">            gmtShjSu = pipelineRecord.gmtShjSu();</span>
+<span class="fc" id="L125">            knkkSksiJysb = pipelineRecord.knkkSksiJysb();</span>
+<span class="fc" id="L126">        } else {</span>
+<span class="fc" id="L127">            throw new DataNotFoundException(pipelineTableName);</span>
+        }
+
+<span class="fc" id="L130">        Optional&lt;KkytskrRecord&gt; supplyStopData = findSupplyStopData(gasMtstNo);</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (supplyStopData.isPresent() &amp;&amp; supplyStopData.get().hesnYmd() != null) {</span>
+<span class="fc" id="L132">            KkytskrRecord supplyStopRecord = supplyStopData.get();</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">            if (knsYmd == null || !knsYmd.isAfter(supplyStopRecord.hesnYmd())) {</span>
+<span class="fc" id="L134">                knsYmd = supplyStopRecord.hesnYmd();</span>
+<span class="fc" id="L135">                gmtShjSu = supplyStopRecord.gmtShjSu();</span>
+<span class="fc" id="L136">                knkkSksiJysb = supplyOutageReasonType;</span>
+            }
+        }
+
+<span class="fc" id="L140">        return new RecentMeterReadingInfoAcquisitionOutput(knsYmd, gmtShjSu, knkkSksiJysb);</span>
+    }
+
+    /**
+     * 概要: 確定前ガスメーター検針結果を取得する。 主な仕様: - DA-052-R006 を呼び出し、定例以外の最新 1 件を取得する。 既知の制約: - 検索期間の絞り込みは
+     * DA-052-R006 の契約外のため行わない。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 確定前最新候補
+     */
+    private Optional&lt;KtmgmkkRecord&gt; findLatestPreConfirmation(Long gasMtstNo) {
+<span class="fc" id="L151">        return ktmgmkkDataAccess.findByGasMtstNoAndKnkkSksiJysb(</span>
+                gasMtstNo, excludedRegularReasonType);
+    }
+
+    /**
+     * 概要: 導管データの探索ウィンドウ（6か月、17か月、27か月）で最新候補を取得する。 主な仕様: - 6か月範囲で導管データが見つかれば返却する。 -
+     * 見つからない場合は17か月範囲、さらに見つからない場合は27か月範囲で探索する。 既知の制約: - 探索開始日は systemDatetime 基準の月初日を利用する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param fromDate 初回探索開始日
+     * @param systemDate システム日付
+     * @return 導管最新候補
+     */
+    private Optional&lt;GmkskkdRecord&gt; findLatestDoukanInSearchWindows(
+            Long gasMtstNo, LocalDate fromDate, LocalDate systemDate) {
+<span class="fc" id="L166">        Optional&lt;GmkskkdRecord&gt; firstWindow = findLatest(gasMtstNo, fromDate, MAX_DATE);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (firstWindow.isPresent()) {</span>
+<span class="fc" id="L168">            return firstWindow;</span>
+        }
+
+<span class="fc" id="L171">        LocalDate secondWindowStart = DateCalculationUtil.firstDayMonthsAgo(systemDate, 17);</span>
+<span class="fc" id="L172">        LocalDate secondWindowEnd =</span>
+<span class="fc" id="L173">                DateCalculationUtil.firstDayMonthsAgo(systemDate, 6).minusDays(1);</span>
+<span class="fc" id="L174">        Optional&lt;GmkskkdRecord&gt; secondWindow =</span>
+<span class="fc" id="L175">                findLatest(gasMtstNo, secondWindowStart, secondWindowEnd);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (secondWindow.isPresent()) {</span>
+<span class="fc" id="L177">            return secondWindow;</span>
+        }
+
+<span class="fc" id="L180">        LocalDate thirdWindowStart = DateCalculationUtil.firstDayMonthsAgo(systemDate, 27);</span>
+<span class="fc" id="L181">        LocalDate thirdWindowEnd =</span>
+<span class="fc" id="L182">                DateCalculationUtil.firstDayMonthsAgo(systemDate, 17).minusDays(1);</span>
+<span class="fc" id="L183">        return findLatest(gasMtstNo, thirdWindowStart, thirdWindowEnd);</span>
+    }
+
+    /**
+     * 概要: 指定範囲の検針結果から最新候補を取得する。 主な仕様: - DA-027-R003 を呼び出す。 - 検針年月日、検針結果通し番号の降順で最新候補を選択する。 既知の制約: -
+     * 取得対象は gmkskkdDataAccess の提供範囲に依存する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param fromDate 検索開始日
+     * @param toDate 検索終了日
+     * @return 最新候補
+     */
+    private Optional&lt;GmkskkdRecord&gt; findLatest(
+            Long gasMtstNo, LocalDate fromDate, LocalDate toDate) {
+<span class="fc" id="L197">        List&lt;GmkskkdRecord&gt; records =</span>
+<span class="fc" id="L198">                gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmd(gasMtstNo, fromDate, toDate);</span>
+<span class="fc" id="L199">        return records.stream()</span>
+<span class="fc" id="L200">                .max(</span>
+<span class="fc" id="L201">                        Comparator.comparing(GmkskkdRecord::knsYmd)</span>
+<span class="fc" id="L202">                                .thenComparing(GmkskkdRecord::knsKkaTsno));</span>
+    }
+
+    /**
+     * 概要: 供給停止情報を取得する。 主な仕様: - DA-055-R003 を呼び出す。 - `kasYmd` は {@code null} を渡し、DA 側で 0
+     * 相当へ補完して検索する。 既知の制約: - 供給停止精算状態区分は定数マスタに登録された値を前提とする。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 供給停止情報
+     */
+    private Optional&lt;KkytskrRecord&gt; findSupplyStopData(Long gasMtstNo) {
+<span class="fc" id="L213">        return kkytskrDataAccess.findByGasMtstNoAndKasYmdAndKkysSisnJtkb(</span>
+                gasMtstNo, null, supplyStopPaymentPendingStatus);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

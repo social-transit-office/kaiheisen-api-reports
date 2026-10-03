@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApplicationEndStartDateConfirmationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-applicationendstartdateconfirmation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ApplicationEndStartDateConfirmationImpl.java</span></div><h1>ApplicationEndStartDateConfirmationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ApplicationEndStartDateConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ApplicationEndStartDateConfirmationOutput;
+
+/**
+ * 概要: 適用終了・開始日確定サービス（SV-214）の実装。
+ * 主な仕様:
+ * - 代替判定結果フラグと下位DA取得結果に応じて適用終了年月日を決定する。
+ * - 検針結果作成事由種別の対象集合は CIRIUS 定数ライブラリから解決する。
+ * - 下位層例外は握りつぶさずに上位へ伝播する。
+ * 既知の制約:
+ * - 入力値の妥当性検証と HTTP 変換は本クラスでは行わない。
+ */
+public class ApplicationEndStartDateConfirmationImpl
+        implements ApplicationEndStartDateConfirmation {
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final Set&lt;String&gt; sameDayReasonTypes;
+
+    /**
+     * 概要: SV-214 実行に必要な依存を受け取り初期化する。
+     * 主な仕様:
+     * - 3 件の下位DAと CIRIUS 定数サービスを保持する。
+     * - 検針結果作成事由種別の対象集合を初期化時に解決し、以後の execute で再利用する。
+     * 既知の制約:
+     * - 必須定数が未登録の場合はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param kkytskrDataAccess 供給停止管理データアクセス
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果データアクセス
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public ApplicationEndStartDateConfirmationImpl(
+            KkytskrDataAccess kkytskrDataAccess,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            GmkskkdDataAccess gmkskkdDataAccess,
+<span class="fc" id="L54">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L55">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L56">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L57">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L58">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L59">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L60">        this.sameDayReasonTypes = Set.of(</span>
+<span class="fc" id="L61">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR),
+<span class="fc" id="L64">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR_SW_CANCELLATION),
+<span class="fc" id="L67">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY),
+<span class="fc" id="L70">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.CONTRACT_TYPE_CHANGE),
+<span class="fc" id="L73">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.RELOCATION_CLOSURE),
+<span class="fc" id="L76">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_OUTAGE),
+<span class="fc" id="L79">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.UNUSED_CLOSURE),
+<span class="fc" id="L82">                requireReasonType(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.FIRED_AND_LOST_CAP));
+<span class="fc" id="L85">    }</span>
+
+    @Override
+    public ApplicationEndStartDateConfirmationOutput execute(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            Long tksuSvkyNo,
+            Boolean digwrHntFlg) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L94">            return buildOutput(kasgYmd.minusDays(1), kasgYmd);</span>
+        }
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (kkytskrDataAccess.findByGasMtstNoAndHesnYmd(gasMtstNo, kasgYmd).isPresent()) {</span>
+<span class="fc" id="L97">            return buildOutput(kasgYmd, kasgYmd);</span>
+        }
+<span class="fc" id="L99">        Optional&lt;String&gt; reasonType = resolveMeterReadingReasonType(gasMtstNo, kasgYmd, tksuSvkyNo);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (reasonType.filter(sameDayReasonTypes::contains).isPresent()) {</span>
+<span class="fc" id="L101">            return buildOutput(kasgYmd, kasgYmd);</span>
+        }
+<span class="fc" id="L103">        return buildOutput(kasgYmd.minusDays(1), kasgYmd);</span>
+    }
+
+    /**
+     * 概要: 確定前ガスメーター検針結果情報またはガスメーター検針結果＜導管＞情報から検針結果作成事由種別を解決する。
+     * 主な仕様:
+     * - まず DA-052-R003 を参照し、未取得時のみ DA-027-R002 を参照する。
+     * - いずれも未取得時は空を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kasgYmd 開栓作業年月日
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @return 解決した検針結果作成事由種別
+     */
+    private Optional&lt;String&gt; resolveMeterReadingReasonType(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            Long tksuSvkyNo) {
+<span class="fc" id="L121">        Optional&lt;KtmgmkkRecord&gt; ktmgmkkRecord =</span>
+<span class="fc" id="L122">                ktmgmkkDataAccess.findByGasMtstNoAndKnsYmdAndTksuSvkyNo(gasMtstNo, kasgYmd, tksuSvkyNo);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (ktmgmkkRecord.isPresent()) {</span>
+<span class="fc" id="L124">            return ktmgmkkRecord.flatMap(record -&gt; Optional.ofNullable(record.knkkSksiJysb()));</span>
+        }
+<span class="fc" id="L126">        return gmkskkdDataAccess.findByGasMtstNoAndKnsYmdAndTksuSvkyNo(gasMtstNo, kasgYmd, tksuSvkyNo)</span>
+<span class="fc" id="L127">                .flatMap(record -&gt; Optional.ofNullable(record.knkkSksiJysb()));</span>
+    }
+
+    private static ApplicationEndStartDateConfirmationOutput buildOutput(
+            LocalDate kktTyenYmd,
+            LocalDate kktTkysYmd) {
+<span class="fc" id="L133">        return new ApplicationEndStartDateConfirmationOutput(kktTyenYmd, kktTkysYmd);</span>
+    }
+
+    private static String requireReasonType(
+            CiriusConstantService ciriusConstantService,
+            String code) {
+<span class="fc" id="L139">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                code);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

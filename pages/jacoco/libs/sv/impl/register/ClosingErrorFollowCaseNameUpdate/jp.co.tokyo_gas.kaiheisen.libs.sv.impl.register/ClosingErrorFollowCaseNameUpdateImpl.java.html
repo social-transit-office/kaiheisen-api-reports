@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingErrorFollowCaseNameUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-closingerrorfollowcasenameupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">ClosingErrorFollowCaseNameUpdateImpl.java</span></div><h1>ClosingErrorFollowCaseNameUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ClosingErrorFollowCaseNameUpdate;
+
+/**
+ * 概要: SV-158（閉栓エラーフォロー件名更新）のサービス実装。
+ * 主な仕様:
+ * - 託送供給依頼事業者コードに応じて、HSEFL 更新に使用するサービス契約番号を切り替える。
+ * - HSEFL のフォロー状態コードを完了に更新し、フォロー対応年月日には RequestContext のシステム日付を設定する。
+ * - 更新件数が 0 件の場合はデータ不整合例外を送出する。
+ * 既知の制約:
+ * - 実行時には RequestContext の correlationId、hukkSysShbt、systemDatetime が必須である。
+ * - regTsno は SV 入力では Long だが、DA 呼び出し時に Integer へ変換する。
+ */
+public class ClosingErrorFollowCaseNameUpdateImpl implements ClosingErrorFollowCaseNameUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS158&quot;;
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String followCompletedStatus;
+
+    /**
+     * 概要: 閉栓エラーフォロー件名更新に必要な依存オブジェクトと定数を初期化する。
+     * 主な仕様:
+     * - HSEFL 更新、RequestContext、開閉栓定数サービスを保持する。
+          * - フォロー完了コードを初期化時に解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+          * - 必須 CIRIUS 定数が不足している場合はコンストラクタ初期化時点で失敗する。
+     *
+     * @param hseflDataAccess HSEFL データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public ClosingErrorFollowCaseNameUpdateImpl(
+            HseflDataAccess hseflDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L63">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L64">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L65">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L66">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L69">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L70">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L71">        this.followCompletedStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_FOLLOW_COMPLETED);
+<span class="fc" id="L75">    }</span>
+
+    @Override
+        public void execute(
+            String tksuKijsCd,
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            Long regTsno,
+            LocalDate hesnHukkYmd,
+            Integer recUpdJnjNo,
+            LocalDate tsigHesnSgyYmd,
+            String tsigGmb,
+            Long sihKiyNo,
+            Long svkyNo,
+            Long tksuSvkyNo,
+            Long hsnjGmsSu,
+            BigDecimal hsnjGasSyry,
+            String sjskKbn) {
+<span class="fc" id="L93">        LocalDateTime systemDatetime = requireRequestContext();</span>
+
+<span class="fc" id="L95">        Integer safeRegTsno = toRegTsno(regTsno);</span>
+<span class="fc" id="L96">        Long resolvedServiceContractNo = resolveServiceContractNumber(tksuKijsCd, svkyNo, tksuSvkyNo);</span>
+<span class="fc" id="L97">        LocalDate followDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L98">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+
+<span class="fc" id="L100">        HseflWriteRecord record = buildWriteRecord(</span>
+                gasMtstNo,
+                hssgYmd,
+                hesnHukkYmd,
+                safeRegTsno,
+                tsigHesnSgyYmd,
+                tsigGmb,
+                sihKiyNo,
+                resolvedServiceContractNo,
+                hsnjGmsSu,
+                hsnjGasSyry,
+                sjskKbn,
+                followDate);
+
+<span class="fc" id="L114">        int updatedCount = hseflDataAccess.updateByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(</span>
+                record,
+<span class="fc" id="L116">                Set.of(</span>
+                        HseflColumn.TSIG_HESN_SGY_YMD,
+                        HseflColumn.TSIG_GMB,
+                        HseflColumn.FLW_ST_CD,
+                        HseflColumn.FLTK_YMD,
+                        HseflColumn.SIH_KIY_NO,
+                        HseflColumn.SVKY_NO,
+                        HseflColumn.HSNJ_GMS_SU,
+                        HseflColumn.HSNJ_GAS_SYRY,
+                        HseflColumn.SJSK_KBN),
+                new HseflU001UpdateKey(gasMtstNo, hssgYmd, hesnHukkYmd, safeRegTsno, recUpdJnjNo),
+<span class="fc" id="L127">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L130">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L131">                    hseflDataAccess.tableName(),</span>
+                    HseflDataAccess.CallSpecs
+                            .UPDATE_BY_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L134">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L136">                            .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L137">                            .put(&quot;hssgYmd&quot;, hssgYmd)</span>
+<span class="fc" id="L138">                            .put(&quot;hesnHukkYmd&quot;, hesnHukkYmd)</span>
+<span class="fc" id="L139">                            .put(&quot;regTsno&quot;, safeRegTsno)</span>
+<span class="fc" id="L140">                            .put(&quot;recUpdJnjNo&quot;, recUpdJnjNo)</span>
+<span class="fc" id="L141">                            .put(&quot;tsigHesnSgyYmd&quot;, tsigHesnSgyYmd)</span>
+<span class="fc" id="L142">                            .put(&quot;tsigGmb&quot;, tsigGmb)</span>
+<span class="fc" id="L143">                            .put(&quot;flwStCd&quot;, followCompletedStatus)</span>
+<span class="fc" id="L144">                            .put(&quot;fltkYmd&quot;, followDate)</span>
+<span class="fc" id="L145">                            .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L146">                            .put(&quot;svkyNo&quot;, resolvedServiceContractNo)</span>
+<span class="fc" id="L147">                            .put(&quot;hsnjGmsSu&quot;, hsnjGmsSu)</span>
+<span class="fc" id="L148">                            .put(&quot;hsnjGasSyry&quot;, hsnjGasSyry)</span>
+<span class="fc" id="L149">                            .put(&quot;sjskKbn&quot;, sjskKbn)</span>
+<span class="fc" id="L150">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L151">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L153">    }</span>
+
+    /**
+     * 概要: HSEFL 更新用の write record を組み立てる。
+     * 主な仕様:
+     * - 更新対象列に対応する値のみを設定し、その他は null のまま渡す。
+     * - フォロー状態コードにはコンストラクタで解決した完了コードを設定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param hssgYmd 閉栓作業年月日
+     * @param hesnHukkYmd 閉栓報告年月日
+     * @param regTsno 登録通し番号
+     * @param tsigHesnSgyYmd 訂正後閉栓作業年月日
+     * @param tsigGmb 訂正後ガスメーター社番
+     * @param sihKiyNo 支払契約番号
+     * @param resolvedServiceContractNo 更新対象のサービス契約番号
+     * @param hsnjGmsSu 閉栓時ガスメーター指示数
+     * @param hsnjGasSyry 閉栓時ガス使用量
+     * @param sjskKbn 指示数回帰区分
+     * @param followDate フォロー対応年月日
+     * @return HSEFL 更新用レコード
+     */
+    private HseflWriteRecord buildWriteRecord(
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            LocalDate hesnHukkYmd,
+            Integer regTsno,
+            LocalDate tsigHesnSgyYmd,
+            String tsigGmb,
+            Long sihKiyNo,
+            Long resolvedServiceContractNo,
+            Long hsnjGmsSu,
+            BigDecimal hsnjGasSyry,
+            String sjskKbn,
+            LocalDate followDate) {
+<span class="fc" id="L188">        return new HseflWriteRecord(</span>
+                                /* gasMtstNo */ gasMtstNo,
+                                /* hssgYmd */ hssgYmd,
+                                /* hesnHukkYmd */ hesnHukkYmd,
+                                /* regTsno */ regTsno,
+                                /* hukkSysShbt */ null,
+                                /* sgyAnknNo */ null,
+                                /* flwStCd */ followCompletedStatus,
+                                /* fltkYmd */ followDate,
+                                /* syoKyoTrno */ null,
+                                /* gmb */ null,
+                                /* hesnJysb */ null,
+                                /* hesnErryCd */ null,
+                                /* flttCktkCd */ null,
+                                /* flttKtnCd */ null,
+                                /* hssgNwkCd */ null,
+                                /* sgytSinNo */ null,
+                                /* sgytSinnKj */ null,
+                                /* hsnjGmsSu */ hsnjGmsSu,
+                                /* hsnjGasSyry */ hsnjGasSyry,
+                                /* sjskKbn */ sjskKbn,
+                                /* rshhSjsb */ null,
+                                /* hkshHshhShbt */ null,
+                                /* hesnSdnShbt */ null,
+                                /* utidxNo */ null,
+                                /* ctnmKn1 */ null,
+                                /* ctnmKj1 */ null,
+                                /* ctnmKjhkFlg */ null,
+                                /* ctnm1HujnShbt */ null,
+                                /* ctnm1HshiShbt */ null,
+                                /* tsigHesnSgyYmd */ tsigHesnSgyYmd,
+                                /* tsigGmb */ tsigGmb,
+                                /* sihKiyNo */ sihKiyNo,
+                                /* svkyNo */ resolvedServiceContractNo,
+                                /* tkjMem */ null);
+    }
+
+    /**
+     * 概要: 託送供給依頼事業者コードに応じて更新対象のサービス契約番号を解決する。
+     * 主な仕様:
+     * - 東京ガス株式会社の場合は `svkyNo` を返す。
+     * - それ以外の場合は `tksuSvkyNo` を返す。
+     *
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param svkyNo サービス契約番号
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @return 更新対象のサービス契約番号
+     */
+    private Long resolveServiceContractNumber(String tksuKijsCd, Long svkyNo, Long tksuSvkyNo) {
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        if (ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD.equals(tksuKijsCd)) {</span>
+<span class="fc" id="L238">            return svkyNo;</span>
+        }
+<span class="fc" id="L240">        return tksuSvkyNo;</span>
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+     * 主な仕様:
+     * - correlationId、hukkSysShbt、systemDatetime の存在を確認する。
+     * - 欠落がある場合は最初に検出した項目で処理を中断する。
+     */
+    private LocalDateTime requireRequestContext() {
+<span class="fc" id="L250">        requestContext.getCorrelationId()</span>
+<span class="fc" id="L251">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L252">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L253">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L254">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L255">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別から監査用の機能 ID を取得する。
+     * 主な仕様:
+     * - RequestContext から hukkSysShbt を取得し、開閉栓定数サービスで名称へ変換する。
+     * - 返却値は監査情報の updKtnKinoId に設定する。
+     *
+     * @return 監査用の報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L267">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L268">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L269">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (decodedOriginFunctionId == null) {</span>
+<span class="fc" id="L273">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L278">        return decodedOriginFunctionId;</span>
+    }
+
+    /**
+     * 概要: SV 入力の登録通し番号を DA 用の Integer へ変換する。
+     * 主な仕様:
+     * - Long から Integer へ `Math.toIntExact` で変換する。
+     * - 範囲外値は ArithmeticException とする。
+     *
+     * @param regTsno 登録通し番号
+     * @return DA 用の登録通し番号
+     */
+    private Integer toRegTsno(Long regTsno) {
+<span class="fc" id="L291">        return Math.toIntExact(regTsno);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
