@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InternalConstantDataLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal</a> &gt; <span class="el_source">InternalConstantDataLoader.java</span></div><h1>InternalConstantDataLoader.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDataDuplicateException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDataFormatException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDataLoadException;
+
+/**
+ * TSV からコンスタント定義を読み込むローダ。
+ */
+final class InternalConstantDataLoader {
+
+<span class="fc" id="L22">    private static final DateTimeFormatter BASIC_DATE = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private InternalConstantDataLoader() {
+    }
+
+    static List&lt;CiriusDefinition&gt; loadCiriusDefinitions(String resourcePath, ClassLoader classLoader) {
+<span class="fc" id="L28">        List&lt;List&lt;String&gt;&gt; rows = loadRows(resourcePath, classLoader);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (rows.size() &lt; 2) {</span>
+<span class="nc" id="L30">            throw new ConstantDataFormatException(&quot;CIRIUS constants TSV has no data: resource=&quot; + resourcePath);</span>
+        }
+
+<span class="fc" id="L33">        List&lt;String&gt; header = rows.getFirst();</span>
+<span class="fc" id="L34">        validateHeader(header, 8, resourcePath);</span>
+
+<span class="fc" id="L36">        List&lt;CiriusDefinition&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L37">        Set&lt;String&gt; duplicateChecker = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (int i = 1; i &lt; rows.size(); i++) {</span>
+<span class="fc" id="L40">            List&lt;String&gt; row = rows.get(i);</span>
+<span class="fc" id="L41">            int lineNo = i + 1;</span>
+
+<span class="fc" id="L43">            String typeCode = requiredField(row, 1, &quot;コンスタント種別コード&quot;, resourcePath, lineNo);</span>
+<span class="fc" id="L44">            String code = requiredField(row, 3, &quot;コンスタントコード&quot;, resourcePath, lineNo);</span>
+            // 実データではコンスタント名が空欄の行も存在するため、名称は任意として扱う。
+<span class="fc" id="L46">            String name = optionalField(row, 4);</span>
+<span class="fc" id="L47">            String shortName = optionalField(row, 5);</span>
+
+<span class="fc" id="L49">            int displayOrder = parseIntField(</span>
+<span class="fc" id="L50">                    requiredField(row, 6, &quot;表示順番号&quot;, resourcePath, lineNo),</span>
+                    &quot;表示順番号&quot;,
+                    resourcePath,
+                    lineNo);
+<span class="fc" id="L54">            boolean registrationAvailable = parseBooleanFlag(</span>
+<span class="fc" id="L55">                    requiredField(row, 7, &quot;登録時利用可否フラグ&quot;, resourcePath, lineNo),</span>
+                    &quot;登録時利用可否フラグ&quot;,
+                    resourcePath,
+                    lineNo);
+
+<span class="fc" id="L60">            LocalDate startDate = parseOptionalDate(optionalField(row, 9), &quot;適用開始年月日&quot;, resourcePath, lineNo);</span>
+<span class="fc" id="L61">            LocalDate endDate = parseOptionalDate(optionalField(row, 10), &quot;適用終了年月日&quot;, resourcePath, lineNo);</span>
+
+<span class="pc bpc" id="L63" title="1 of 6 branches missed.">            if (startDate != null &amp;&amp; endDate != null &amp;&amp; startDate.isAfter(endDate)) {</span>
+<span class="nc" id="L64">                throw new ConstantDataFormatException(</span>
+                        &quot;Date range is invalid: resource=&quot; + resourcePath
+                                + &quot;, line=&quot; + lineNo
+                                + &quot;, 適用開始年月日=&quot; + startDate
+                                + &quot;, 適用終了年月日=&quot; + endDate);
+            }
+
+<span class="fc" id="L71">            String duplicateKey = typeCode + &quot;\u0000&quot; + code;</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (!duplicateChecker.add(duplicateKey)) {</span>
+<span class="fc" id="L73">                throw new ConstantDataDuplicateException(</span>
+                        &quot;Duplicate CIRIUS constant key: resource=&quot; + resourcePath
+                                + &quot;, line=&quot; + lineNo
+                                + &quot;, typeCode=&quot; + typeCode
+                                + &quot;, code=&quot; + code);
+            }
+
+<span class="fc" id="L80">            result.add(new CiriusDefinition(typeCode, code, name, shortName, displayOrder, registrationAvailable, startDate, endDate));</span>
+        }
+
+<span class="fc" id="L83">        return List.copyOf(result);</span>
+    }
+
+    static List&lt;KaiheisenDefinition&gt; loadKaiheisenDefinitions(String resourcePath, ClassLoader classLoader) {
+<span class="fc" id="L87">        List&lt;List&lt;String&gt;&gt; rows = loadRows(resourcePath, classLoader);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (rows.size() &lt; 2) {</span>
+<span class="nc" id="L89">            throw new ConstantDataFormatException(&quot;Kaiheisen constants TSV has no data: resource=&quot; + resourcePath);</span>
+        }
+
+<span class="fc" id="L92">        List&lt;String&gt; header = rows.getFirst();</span>
+<span class="fc" id="L93">        validateHeader(header, 4, resourcePath);</span>
+
+<span class="fc" id="L95">        List&lt;KaiheisenDefinition&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L96">        Set&lt;String&gt; duplicateChecker = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (int i = 1; i &lt; rows.size(); i++) {</span>
+<span class="fc" id="L99">            List&lt;String&gt; row = rows.get(i);</span>
+<span class="fc" id="L100">            int lineNo = i + 1;</span>
+
+<span class="fc" id="L102">            String type = requiredField(row, 0, &quot;コンスタント種別&quot;, resourcePath, lineNo);</span>
+<span class="fc" id="L103">            String name = requiredField(row, 3, &quot;コンスタント名&quot;, resourcePath, lineNo);</span>
+<span class="fc" id="L104">            String value = optionalField(row, 2);</span>
+
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">            if (value.isEmpty() &amp;&amp; !isAllowedBlankKaiheisenValue(type, name)) {</span>
+<span class="fc" id="L107">                throw new ConstantDataFormatException(</span>
+                        &quot;Required field is blank: resource=&quot; + resourcePath
+                                + &quot;, line=&quot; + lineNo
+                                + &quot;, field=コンスタント値&quot;);
+            }
+
+<span class="fc" id="L113">            String duplicateKey = type + &quot;\u0000&quot; + value;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (!duplicateChecker.add(duplicateKey)) {</span>
+<span class="fc" id="L115">                throw new ConstantDataDuplicateException(</span>
+                        &quot;Duplicate Kaiheisen constant key: resource=&quot; + resourcePath
+                                + &quot;, line=&quot; + lineNo
+                                + &quot;, type=&quot; + type
+                                + &quot;, value=&quot; + value);
+            }
+
+<span class="fc" id="L122">            result.add(new KaiheisenDefinition(type, value, name));</span>
+        }
+
+<span class="fc" id="L125">        return List.copyOf(result);</span>
+    }
+
+    private static List&lt;List&lt;String&gt;&gt; loadRows(String resourcePath, ClassLoader classLoader) {
+<span class="fc" id="L129">        Objects.requireNonNull(classLoader, &quot;classLoader&quot;);</span>
+<span class="fc" id="L130">        String normalizedResourcePath = ConstantKeyNormalizer.normalizeRequiredTrimmed(resourcePath, &quot;resourcePath&quot;);</span>
+
+<span class="fc" id="L132">        try (InputStream inputStream = classLoader.getResourceAsStream(normalizedResourcePath)) {</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            if (inputStream == null) {</span>
+<span class="nc" id="L134">                throw new ConstantDataLoadException(&quot;Constant resource not found: path=&quot; + normalizedResourcePath);</span>
+            }
+<span class="fc" id="L136">            return TabSeparatedValuesParser.parse(inputStream, normalizedResourcePath);</span>
+<span class="nc" id="L137">        } catch (ConstantDataLoadException ex) {</span>
+<span class="nc" id="L138">            throw ex;</span>
+<span class="nc" id="L139">        } catch (IOException ex) {</span>
+<span class="nc" id="L140">            throw new ConstantDataLoadException(</span>
+                    &quot;Failed to load constant resource: path=&quot; + normalizedResourcePath,
+                    ex);
+        }
+    }
+
+    private static void validateHeader(List&lt;String&gt; header, int requiredSize, String resourcePath) {
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (header.size() &lt; requiredSize) {</span>
+<span class="nc" id="L148">            throw new ConstantDataFormatException(</span>
+<span class="nc" id="L149">                    &quot;TSV header is invalid: resource=&quot; + resourcePath + &quot;, headerColumns=&quot; + header.size());</span>
+        }
+<span class="fc" id="L151">    }</span>
+
+    private static boolean isAllowedBlankKaiheisenValue(
+            String type,
+            String name) {
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        return &quot;KH005&quot;.equals(type)</span>
+<span class="pc bnc" id="L157" title="All 2 branches missed.">                &amp;&amp; &quot;ＴＧ小売&quot;.equals(name);</span>
+    }
+
+    private static String requiredField(
+            List&lt;String&gt; row,
+            int index,
+            String fieldName,
+            String resourcePath,
+            int lineNo) {
+<span class="fc" id="L166">        String value = optionalField(row, index);</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (value.isEmpty()) {</span>
+<span class="nc" id="L168">            throw new ConstantDataFormatException(</span>
+                    &quot;Required field is blank: resource=&quot; + resourcePath
+                            + &quot;, line=&quot; + lineNo
+                            + &quot;, field=&quot; + fieldName);
+        }
+<span class="fc" id="L173">        return value;</span>
+    }
+
+    private static String optionalField(List&lt;String&gt; row, int index) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (index &gt;= row.size()) {</span>
+<span class="nc" id="L178">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L180">        return ConstantKeyNormalizer.normalizeOptionalTrimmed(row.get(index));</span>
+    }
+
+    private static int parseIntField(String value, String fieldName, String resourcePath, int lineNo) {
+        try {
+<span class="fc" id="L185">            return Integer.parseInt(value);</span>
+<span class="fc" id="L186">        } catch (NumberFormatException ex) {</span>
+<span class="fc" id="L187">            throw new ConstantDataFormatException(</span>
+                    &quot;Numeric field is invalid: resource=&quot; + resourcePath
+                            + &quot;, line=&quot; + lineNo
+                            + &quot;, field=&quot; + fieldName
+                            + &quot;, value=&quot; + value,
+                    ex);
+        }
+    }
+
+    private static boolean parseBooleanFlag(String value, String fieldName, String resourcePath, int lineNo) {
+<span class="pc bpc" id="L197" title="1 of 3 branches missed.">        return switch (value) {</span>
+<span class="fc" id="L198">            case &quot;1&quot; -&gt; true;</span>
+<span class="fc" id="L199">            case &quot;0&quot; -&gt; false;</span>
+<span class="nc" id="L200">            default -&gt; throw new ConstantDataFormatException(</span>
+                    &quot;Flag field is invalid: resource=&quot; + resourcePath
+                            + &quot;, line=&quot; + lineNo
+                            + &quot;, field=&quot; + fieldName
+                            + &quot;, value=&quot; + value);
+        };
+    }
+
+    private static LocalDate parseOptionalDate(String value, String fieldName, String resourcePath, int lineNo) {
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (value.isEmpty()) {</span>
+<span class="fc" id="L210">            return null;</span>
+        }
+        try {
+<span class="fc" id="L213">            return LocalDate.parse(value, BASIC_DATE);</span>
+<span class="nc" id="L214">        } catch (DateTimeParseException ex) {</span>
+<span class="nc" id="L215">            throw new ConstantDataFormatException(</span>
+                    &quot;Date field is invalid: resource=&quot; + resourcePath
+                            + &quot;, line=&quot; + lineNo
+                            + &quot;, field=&quot; + fieldName
+                            + &quot;, value=&quot; + value,
+                    ex);
+        }
+    }
+
+<span class="fc" id="L224">    record CiriusDefinition(</span>
+            String typeCode,
+            String code,
+            String name,
+            String shortName,
+            int displayOrder,
+            boolean registrationAvailable,
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        boolean isActiveOn(LocalDate baseDate) {
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">            boolean started = startDate == null || !baseDate.isBefore(startDate);</span>
+<span class="fc bfc" id="L236" title="All 4 branches covered.">            boolean notEnded = endDate == null || !baseDate.isAfter(endDate);</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">            return started &amp;&amp; notEnded;</span>
+        }
+    }
+
+<span class="fc" id="L241">    record KaiheisenDefinition(String type, String value, String name) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

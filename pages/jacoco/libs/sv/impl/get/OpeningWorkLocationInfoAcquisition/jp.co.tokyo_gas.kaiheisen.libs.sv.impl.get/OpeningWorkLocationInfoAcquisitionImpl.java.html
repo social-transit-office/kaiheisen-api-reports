@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningWorkLocationInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-openingworklocationinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">OpeningWorkLocationInfoAcquisitionImpl.java</span></div><h1>OpeningWorkLocationInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasValveConfirmationWorkResultCodeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasValveConfirmationWorkResultCodeAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.OpeningWorkLocationInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.OpeningWorkLocationInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasMtrkResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GmtSetkResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.MtSetkResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.Sv022ResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.Sv027ResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.Sv290ResInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.TatemonInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisitionOutput;
+
+/** SV-023 の実装。 */
+public class OpeningWorkLocationInfoAcquisitionImpl implements OpeningWorkLocationInfoAcquisition {
+
+    private static final String ERROR_CODE_TARGET_SV023 = ErrorCodeConstants.ERROR_CODE_020100012;
+
+    private final MtsetkDataAccess mtsetkDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final GasmtrkDataAccess gasmtrkDataAccess;
+
+    private final TatemonDataAccess tatemonDataAccess;
+
+    private final KenssieDataAccess kenssieDataAccess;
+
+    private final MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening;
+
+    private final GasValveConfirmationWorkResultCodeAcquisition gasValveConfirmationWorkResultCodeAcquisition;
+
+    private final NextMeterReadingScheduledDateAcquisition nextMeterReadingScheduledDateAcquisition;
+
+    private final String holdingMeterState;
+
+    private final String kenshinSupportCategoryCode;
+
+    private final String noConceptMeterReadingMethod;
+
+    /** コンストラクタ。 */
+    public OpeningWorkLocationInfoAcquisitionImpl(
+            MtsetkDataAccess mtsetkDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            GasmtrkDataAccess gasmtrkDataAccess,
+            TatemonDataAccess tatemonDataAccess,
+            KenssieDataAccess kenssieDataAccess,
+            MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening,
+            GasValveConfirmationWorkResultCodeAcquisition gasValveConfirmationWorkResultCodeAcquisition,
+            NextMeterReadingScheduledDateAcquisition nextMeterReadingScheduledDateAcquisition,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L80">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L81">        this.mtsetkDataAccess = Objects.requireNonNull(mtsetkDataAccess, &quot;mtsetkDataAccess&quot;);</span>
+<span class="fc" id="L82">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L83">        this.gasmtrkDataAccess = Objects.requireNonNull(gasmtrkDataAccess, &quot;gasmtrkDataAccess&quot;);</span>
+<span class="fc" id="L84">        this.tatemonDataAccess = Objects.requireNonNull(tatemonDataAccess, &quot;tatemonDataAccess&quot;);</span>
+<span class="fc" id="L85">        this.kenssieDataAccess = Objects.requireNonNull(kenssieDataAccess, &quot;kenssieDataAccess&quot;);</span>
+<span class="fc" id="L86">        this.meterReadingInfoAcquisitionForOpening = Objects.requireNonNull(</span>
+            meterReadingInfoAcquisitionForOpening, &quot;meterReadingInfoAcquisitionForOpening&quot;);
+<span class="fc" id="L88">        this.gasValveConfirmationWorkResultCodeAcquisition = Objects.requireNonNull(</span>
+            gasValveConfirmationWorkResultCodeAcquisition,
+            &quot;gasValveConfirmationWorkResultCodeAcquisition&quot;);
+<span class="fc" id="L91">        this.nextMeterReadingScheduledDateAcquisition = Objects.requireNonNull(</span>
+            nextMeterReadingScheduledDateAcquisition,
+            &quot;nextMeterReadingScheduledDateAcquisition&quot;);
+
+<span class="fc" id="L95">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L96">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L97">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L98">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L99">        this.noConceptMeterReadingMethod = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.MeterReadingMethodCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.MeterReadingMethodCode.NO_CONCEPT);
+<span class="fc" id="L103">        this.holdingMeterState = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.METER_POSSESSION_STATUS);
+<span class="fc" id="L107">        this.kenshinSupportCategoryCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterReadingSupport.TYPE,
+                ConstantLookupKeys.Cirius.MeterReadingSupport.SPECIAL_GAS_METER_MOUNTING_POSITION);
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    public OpeningWorkLocationInfoAcquisitionOutput execute(Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L115">        MtsetkRecord mtsetkRecord = findMtsetkRecord(gasMtstNo, knskKjnYmd);</span>
+<span class="fc" id="L116">        GmtsetkRecord gmtsetkRecord = gmtsetkDataAccess</span>
+<span class="fc" id="L117">                .findByGasMtstNoAndTkysYmd(gasMtstNo, mtsetkRecord.tkysYmd())</span>
+<span class="fc" id="L118">                .orElseThrow(OpeningWorkLocationInfoAcquisitionImpl::businessRule);</span>
+
+<span class="fc" id="L120">        GasMtrkResInf gasMtrkResInf = findGasMtrkResInf(gasMtstNo, knskKjnYmd, gmtsetkRecord.kngmStbJtkb());</span>
+<span class="fc" id="L121">        TatemonInf tatemonInf = findTatemonInf(mtsetkRecord.bldNo());</span>
+<span class="fc" id="L122">        String gmtItiInf = findGmtItiInf(gasMtstNo);</span>
+<span class="fc" id="L123">        Sv027ResInf sv027ResInf = findSv027ResInf(gasMtstNo);</span>
+<span class="fc" id="L124">        Sv290ResInf sv290ResInf = findSv290ResInf(gasMtstNo);</span>
+<span class="fc" id="L125">        Sv022ResInf sv022ResInf = findSv022ResInf(gasMtstNo, knskKjnYmd);</span>
+
+<span class="fc" id="L127">        return new OpeningWorkLocationInfoAcquisitionOutput(</span>
+<span class="fc" id="L128">                toGmtSetkResInf(gmtsetkRecord),</span>
+<span class="fc" id="L129">                toMtSetkResInf(mtsetkRecord),</span>
+                gasMtrkResInf,
+                tatemonInf,
+                gmtItiInf,
+                sv027ResInf,
+                sv290ResInf,
+                sv022ResInf);
+    }
+
+    /**
+     * DA-048-R004 用に SV 入力のガスメーター設置場所番号をメーター設置場所番号へ対応付けて取得する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return メーター設置場所情報
+     */
+    private MtsetkRecord findMtsetkRecord(Long gasMtstNo, LocalDate knskKjnYmd) {
+        // DA-048-R004 の IF 項目定義に合わせ、gasMtstNo を mtstNo に同値で対応付ける。
+<span class="fc" id="L147">        Long mtstNo = gasMtstNo;</span>
+<span class="fc" id="L148">        return mtsetkDataAccess.findByMtstNoAndTkysYmdAndTyenYmd(mtstNo, knskKjnYmd)</span>
+<span class="fc" id="L149">                .orElseThrow(OpeningWorkLocationInfoAcquisitionImpl::businessRule);</span>
+    }
+
+    /**
+     * ガスメーター情報を取得する。
+     * &lt;p&gt;
+     * {@code kngmStbJtkb} がメーター保有状態を示すコードと一致しない場合は {@code null} を返す。
+     * 対象レコードが存在しない場合は業務例外をスローする。
+     * &lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @param kngmStbJtkb 供内管・ガスメーター設備状態区分
+     * @return ガスメーター情報、または取得対象外の場合 {@code null}
+     */
+    private GasMtrkResInf findGasMtrkResInf(Long gasMtstNo, LocalDate knskKjnYmd, String kngmStbJtkb) {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (!holdingMeterState.equals(kngmStbJtkb)) {</span>
+<span class="fc" id="L166">            return null;</span>
+        }
+
+<span class="fc" id="L169">        List&lt;GasmtrkRecord&gt; records = gasmtrkDataAccess</span>
+<span class="fc" id="L170">                .findAllByTtkGmsbNoAndGmtkYmdAndGmtThkgYmd(gasMtstNo, knskKjnYmd);</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (records.isEmpty()) {</span>
+<span class="nc" id="L172">            throw businessRule();</span>
+        }
+
+<span class="fc" id="L175">        GasmtrkRecord record = records.get(0);</span>
+<span class="fc" id="L176">        return new GasMtrkResInf(</span>
+<span class="fc" id="L177">                record.gmb(),</span>
+<span class="fc" id="L178">                record.gmkShbt(),</span>
+<span class="fc" id="L179">                record.gmtGusu(),</span>
+<span class="fc" id="L180">                record.ktyYm(),</span>
+<span class="fc" id="L181">                record.sjsuMincSu());</span>
+    }
+
+    /**
+     * 建物情報を取得する。
+     * &lt;p&gt;
+     * {@code bldNo} が {@code null} または空文字の場合は {@code null} を返す（任意項目扱い）。
+     * 建物番号に対応するレコードが存在しない場合はデータ不整合例外をスローする。
+     * &lt;/p&gt;
+     *
+     * @param bldNo 建物番号
+     * @return 建物情報、または建物番号が未設定の場合 {@code null}
+     */
+    private TatemonInf findTatemonInf(String bldNo) {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (!hasText(bldNo)) {</span>
+<span class="fc" id="L196">            return null;</span>
+        }
+
+<span class="fc" id="L199">        TatemonRecord record = tatemonDataAccess.findByBldNo(bldNo)</span>
+<span class="fc" id="L200">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L201">                        tatemonDataAccess.tableName(),</span>
+<span class="fc" id="L202">                        TatemonDataAccess.CallSpecs.FIND_BY_BLD_NO.identifier(),</span>
+<span class="fc" id="L203">                        new FlatJsonBuilder().put(&quot;bldNo&quot;, bldNo)));</span>
+
+<span class="fc" id="L205">        return new TatemonInf(</span>
+<span class="fc" id="L206">                record.bldKjHyojiCd(),</span>
+<span class="fc" id="L207">                record.bldNamKn(),</span>
+<span class="fc" id="L208">                record.bldNamKj(),</span>
+<span class="fc" id="L209">                record.jyutakuKbnCd(),</span>
+<span class="fc" id="L210">                record.jutakKbnStCd());</span>
+    }
+
+    /**
+     * 検針支援情報を取得する。
+     * &lt;p&gt;
+     * 対象レコードが存在しない場合は {@code null} を返す（任意項目扱い）。
+     * &lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return メータ位置詳細情報、または存在しない場合 {@code null}
+     */
+    private String findGmtItiInf(Long gasMtstNo) {
+<span class="fc" id="L223">        Optional&lt;String&gt; result = kenssieDataAccess.findByGmtSetNoAndKnsnSienBrCd(gasMtstNo, kenshinSupportCategoryCode)</span>
+<span class="fc" id="L224">            .map(KenssieRecord::torokuNaiyoMx);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        return result.isPresent() ? result.get() : null;</span>
+    }
+
+    /**
+     * SV-027（検針情報取得（開栓））を返す。
+     * &lt;p&gt;
+     * SV-027 の出力が {@code null} の場合は {@code null} を返す（任意項目扱い）。
+     * &lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return SV-027 の応答情報、または取得結果なしの場合 {@code null}
+     */
+    private Sv027ResInf findSv027ResInf(Long gasMtstNo) {
+<span class="fc" id="L238">        MeterReadingInfoAcquisitionForOpeningOutput output =</span>
+<span class="fc" id="L239">                meterReadingInfoAcquisitionForOpening.execute(gasMtstNo);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (output == null) {</span>
+<span class="fc" id="L241">            return null;</span>
+        }
+<span class="fc" id="L243">        return new Sv027ResInf(output.gmtShjSu());</span>
+    }
+
+    /**
+     * SV-290（ガス栓確認作業結果コード取得）を呼び出し結果を返す。
+     * &lt;p&gt;
+     * SV-290 の出力が {@code null} の場合は {@code null} を返す（任意項目扱い）。
+     * &lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return SV-290 の応答情報、または取得結果なしの場合 {@code null}
+     */
+    private Sv290ResInf findSv290ResInf(Long gasMtstNo) {
+<span class="fc" id="L256">        GasValveConfirmationWorkResultCodeAcquisitionOutput output =</span>
+<span class="fc" id="L257">                gasValveConfirmationWorkResultCodeAcquisition.execute(gasMtstNo);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (output == null) {</span>
+<span class="fc" id="L259">            return null;</span>
+        }
+<span class="fc" id="L261">        return new Sv290ResInf(output.gassKknKkaCd(), output.ulfKknKkaCd(), output.flxStzTktCd());</span>
+    }
+
+    /**
+     * SV-022（次回検針予定日情報取得）を呼び出し結果を返す。
+     * &lt;p&gt;
+     * SV-022 の出力が {@code null} の場合は {@code null} を返す（任意項目扱い）。
+     * 処理対象データ無しの場合は設計書どおり概念なしの応答情報を返す。
+     * &lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return SV-022 の応答情報、または取得結果なしの場合 {@code null}
+     */
+    private Sv022ResInf findSv022ResInf(Long gasMtstNo, LocalDate knskKjnYmd) {
+        NextMeterReadingScheduledDateAcquisitionOutput output;
+        try {
+<span class="fc" id="L278">            output = nextMeterReadingScheduledDateAcquisition.execute(gasMtstNo, knskKjnYmd);</span>
+<span class="fc" id="L279">        } catch (DataNotFoundException exception) {</span>
+<span class="fc" id="L280">            return new Sv022ResInf(null, noConceptMeterReadingMethod);</span>
+<span class="fc" id="L281">        }</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (output == null) {</span>
+<span class="fc" id="L283">            return null;</span>
+        }
+<span class="fc" id="L285">        return new Sv022ResInf(output.tkytYmd(), output.knsHuhuKbn());</span>
+    }
+
+    /**
+     * {@link MtsetkRecord} を {@link MtSetkResInf} に変換する。
+     *
+     * @param record メーター設置場所レコード
+     * @return メーター設置場所情報
+     */
+    private static MtSetkResInf toMtSetkResInf(MtsetkRecord record) {
+<span class="fc" id="L295">        return new MtSetkResInf(</span>
+<span class="fc" id="L296">                record.szcGkkCd(),</span>
+<span class="fc" id="L297">                record.szcMchCd(),</span>
+<span class="fc" id="L298">                record.szcCmazCd(),</span>
+<span class="fc" id="L299">                record.cbgSuj1(),</span>
+<span class="fc" id="L300">                record.cbgKn2(),</span>
+<span class="fc" id="L301">                record.cbgKn3(),</span>
+<span class="fc" id="L302">                record.cbgKn4(),</span>
+<span class="fc" id="L303">                record.bldNo(),</span>
+<span class="fc" id="L304">                record.tunoKn(),</span>
+<span class="fc" id="L305">                record.hynKn(),</span>
+<span class="fc" id="L306">                record.htuFlg());</span>
+    }
+
+    /**
+     * {@link GmtsetkRecord} を {@link GmtSetkResInf} に変換する。
+     *
+     * @param record ガスメーター設置場所レコード
+     * @return ガスメーター設置場所情報
+     */
+    private static GmtSetkResInf toGmtSetkResInf(GmtsetkRecord record) {
+<span class="fc" id="L316">        return new GmtSetkResInf(</span>
+<span class="fc" id="L317">                record.hesnYmd(),</span>
+<span class="fc" id="L318">                record.kasYmd(),</span>
+<span class="fc" id="L319">                record.kasJysb(),</span>
+<span class="fc" id="L320">                record.hesnJysb(),</span>
+<span class="fc" id="L321">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L322">                record.ohmKj(),</span>
+<span class="fc" id="L323">                record.snstGkjYm(),</span>
+<span class="fc" id="L324">                record.gasYtCd(),</span>
+<span class="fc" id="L325">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L326">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L327">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L328">                record.kysfYmd(),</span>
+<span class="fc" id="L329">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L330">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L331">                record.knsKhFlg(),</span>
+<span class="fc" id="L332">                record.hesnSdnShbt());</span>
+    }
+
+    /**
+     * 文字列が {@code null} でなく、かつ空白のみでないかを判定する。
+     *
+     * @param value 判定対象の文字列
+     * @return 空でない場合 {@code true}
+     */
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L342" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    /**
+     * SV-023 用の開栓共通エラーを生成する。
+     *
+     * @return エラーコード {@value ERROR_CODE_TARGET_SV023} を持つ {@link KaisenRuleException}
+     */
+    private static KaisenRuleException businessRule() {
+<span class="fc" id="L351">        return new KaisenRuleException(ERROR_CODE_TARGET_SV023);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

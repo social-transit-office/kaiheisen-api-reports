@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PhoneNumberUpdateAddDeleteFunctionPipelineImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-phonenumberupdateadddeletefunctionpipeline</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">PhoneNumberUpdateAddDeleteFunctionPipelineImpl.java</span></div><h1>PhoneNumberUpdateAddDeleteFunctionPipelineImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyoteld.KyoteldDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyoteld.KyoteldRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyoteld.write.KyoteldColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyoteld.write.KyoteldUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyoteld.write.KyoteldWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotlrd.KyotlrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotlrd.KyotlrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotlrd.write.KyotlrdWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.PhoneNumberUpdateAddDeleteFunctionPipeline;
+
+/** 電話番号更新・追加・削除機能-導管サービス実装。 */
+public class PhoneNumberUpdateAddDeleteFunctionPipelineImpl
+        implements PhoneNumberUpdateAddDeleteFunctionPipeline {
+
+    static final String SERVICE_USER_ID = &quot;KHSS336&quot;;
+
+    private static final int HISTORY_SEQUENCE_MAX = 99999;
+
+    private final KyoteldDataAccess kyoteldDataAccess;
+
+    private final KyotlrdDataAccess kyotlrdDataAccess;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final CiriusConstantService ciriusConstantService;
+
+    private final RequestContext requestContext;
+
+    private final String processingDivisionAdd;
+
+    private final String processingDivisionUpdate;
+
+    private final String processingDivisionDelete;
+
+    private final String changeCancelDivisionChange;
+
+    private final String changeCancelDivisionDelete;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param kyoteldDataAccess 契約お客さま電話番号＜導管＞データアクセス
+     * @param kyotlrdDataAccess 契約お客さま電話番号履歴＜導管＞データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public PhoneNumberUpdateAddDeleteFunctionPipelineImpl(
+            KyoteldDataAccess kyoteldDataAccess,
+            KyotlrdDataAccess kyotlrdDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L69">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L70">        this.kyoteldDataAccess = Objects.requireNonNull(kyoteldDataAccess, &quot;kyoteldDataAccess&quot;);</span>
+<span class="fc" id="L71">        this.kyotlrdDataAccess = Objects.requireNonNull(kyotlrdDataAccess, &quot;kyotlrdDataAccess&quot;);</span>
+<span class="fc" id="L72">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L73">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L74">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L75">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L76">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L77">        this.kaiheisenConstantService = resolvedKaiheisenConstantService;</span>
+<span class="fc" id="L78">        this.ciriusConstantService = resolvedCiriusConstantService;</span>
+<span class="fc" id="L79">        this.processingDivisionAdd = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.ADDITION);
+<span class="fc" id="L83">        this.processingDivisionUpdate = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.UPDATE);
+<span class="fc" id="L87">        this.processingDivisionDelete = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.PhoneNumberProcessingDivision.DELETE);
+<span class="fc" id="L91">        this.changeCancelDivisionChange = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TelephoneChangeCancellation.TYPE,
+                ConstantLookupKeys.Cirius.TelephoneChangeCancellation.CHANGE);
+<span class="fc" id="L95">        this.changeCancelDivisionDelete = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TelephoneChangeCancellation.TYPE,
+                ConstantLookupKeys.Cirius.TelephoneChangeCancellation.DELETE);
+<span class="fc" id="L99">    }</span>
+
+    @Override
+        public void execute(
+            String telNoSyrKbn,
+            Long cstRegNo,
+            String kyoTelNo,
+            String telShbt,
+            String telRrskShbt,
+            String telKnzShbt,
+            String telStsdShbt,
+            LocalDate telShtkYmd,
+            String tetsCtnmKj,
+            String telZkgrShbt,
+            String telMusdKbn) {
+<span class="fc" id="L114">        Optional&lt;KyoteldRecord&gt; currentRecord = kyoteldDataAccess.findByKyoTrkNoAndKyoTelNo(cstRegNo, kyoTelNo);</span>
+<span class="fc" id="L115">        boolean exists = currentRecord.isPresent();</span>
+
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        if (!exists &amp;&amp; isUpdateOrDelete(telNoSyrKbn)) {</span>
+<span class="fc" id="L118">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L119">                    kyoteldDataAccess.tableName(),</span>
+<span class="fc" id="L120">                    KyoteldDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO_AND_KYO_TEL_NO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L122">                            .put(&quot;kyoTrkNo&quot;, cstRegNo)</span>
+<span class="fc" id="L123">                            .put(&quot;kyoTelNo&quot;, kyoTelNo));</span>
+        }
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (processingDivisionAdd.equals(telNoSyrKbn)) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (!exists) {</span>
+<span class="fc" id="L128">                String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L129">                kyoteldDataAccess.insert(</span>
+                        new KyoteldWriteRecord(
+                                kyoTelNo,
+                                cstRegNo,
+                                telShbt,
+                                telRrskShbt,
+                                telKnzShbt,
+                                telStsdShbt,
+                                telShtkYmd,
+                                tetsCtnmKj,
+                                telZkgrShbt,
+                                telMusdKbn,
+                                SERVICE_USER_ID),
+<span class="fc" id="L142">                        AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+            }
+<span class="fc" id="L144">            return;</span>
+        }
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (processingDivisionUpdate.equals(telNoSyrKbn)) {</span>
+<span class="fc" id="L148">            KyoteldRecord existingRecord = currentRecord.orElseThrow();</span>
+<span class="fc" id="L149">            String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L150">            LocalDate historyDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L151">            KyoteldWriteRecord updateRecord = new KyoteldWriteRecord(</span>
+<span class="fc" id="L152">                    existingRecord.kyoTelNo(),</span>
+<span class="fc" id="L153">                    existingRecord.kyoTrkNo(),</span>
+                    telShbt,
+                    telRrskShbt,
+                    telKnzShbt,
+                    telStsdShbt,
+                    telShtkYmd,
+                    tetsCtnmKj,
+                    telZkgrShbt,
+                    telMusdKbn,
+<span class="fc" id="L162">                    existingRecord.ttrsUsrId());</span>
+<span class="fc" id="L163">            Set&lt;KyoteldColumn&gt; targetColumns = buildUpdateTargetColumns(</span>
+                    telShbt,
+                    telRrskShbt,
+                    telKnzShbt,
+                    telStsdShbt,
+                    telShtkYmd,
+                    tetsCtnmKj,
+                    telZkgrShbt,
+                    telMusdKbn);
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if (targetColumns.isEmpty()) {</span>
+<span class="fc" id="L173">                return;</span>
+            }
+<span class="fc" id="L175">            KyoteldUpdateKey updateKey = new KyoteldUpdateKey(</span>
+<span class="fc" id="L176">                    existingRecord.kyoTrkNo(),</span>
+<span class="fc" id="L177">                    existingRecord.kyoTelNo(),</span>
+<span class="fc" id="L178">                    existingRecord.recUpdJnjNo());</span>
+<span class="fc" id="L179">            int updatedCount = kyoteldDataAccess.updateByKyoTrkNoAndKyoTelNoAndRecUpdJnjNo(</span>
+                    updateRecord,
+                    targetColumns,
+                    updateKey,
+<span class="fc" id="L183">                    AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            if (updatedCount == 0) {</span>
+<span class="fc" id="L185">                throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L186">                        kyoteldDataAccess.tableName(),</span>
+                        KyoteldDataAccess.CallSpecs.UPDATE_BY_KYO_TRK_NO_AND_KYO_TEL_NO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L188">                                .identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L190">                                .put(&quot;kyoTelNo&quot;, existingRecord.kyoTelNo())</span>
+<span class="fc" id="L191">                                .put(&quot;kyoTrkNo&quot;, existingRecord.kyoTrkNo())</span>
+<span class="fc" id="L192">                                .put(&quot;recUpdJnjNo&quot;, existingRecord.recUpdJnjNo())</span>
+<span class="fc" id="L193">                                .putIfNonNull(&quot;telShbt&quot;, telShbt)</span>
+<span class="fc" id="L194">                                .putIfNonNull(&quot;telRrskShbt&quot;, telRrskShbt)</span>
+<span class="fc" id="L195">                                .putIfNonNull(&quot;telKnzShbt&quot;, telKnzShbt)</span>
+<span class="fc" id="L196">                                .putIfNonNull(&quot;telStsdShbt&quot;, telStsdShbt)</span>
+<span class="fc" id="L197">                                .putIfNonNull(&quot;telShtkYmd&quot;, telShtkYmd)</span>
+<span class="fc" id="L198">                                .putIfNonNull(&quot;tetsCtnmKj&quot;, tetsCtnmKj)</span>
+<span class="fc" id="L199">                                .putIfNonNull(&quot;telZkgrShbt&quot;, telZkgrShbt)</span>
+<span class="fc" id="L200">                                .putIfNonNull(&quot;telMusdKbn&quot;, telMusdKbn)</span>
+<span class="fc" id="L201">                                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L202">                                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+            }
+<span class="fc" id="L204">            insertHistory(</span>
+                    existingRecord,
+                    changeCancelDivisionChange,
+                    historyDate,
+                    decodedOriginFunctionId);
+<span class="fc" id="L209">            return;</span>
+        }
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (processingDivisionDelete.equals(telNoSyrKbn)) {</span>
+<span class="fc" id="L213">            KyoteldRecord existingRecord = currentRecord.orElseThrow();</span>
+<span class="fc" id="L214">            String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L215">            LocalDate historyDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L216">            int deletedCount = kyoteldDataAccess.deleteByKyoTrkNoAndKyoTelNoAndRecUpdJnjNo(</span>
+<span class="fc" id="L217">                    existingRecord.kyoTrkNo(),</span>
+<span class="fc" id="L218">                    existingRecord.kyoTelNo(),</span>
+<span class="fc" id="L219">                    existingRecord.recUpdJnjNo());</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">            if (deletedCount == 0) {</span>
+<span class="fc" id="L221">                throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L222">                        kyoteldDataAccess.tableName(),</span>
+                        KyoteldDataAccess.CallSpecs.DELETE_BY_KYO_TRK_NO_AND_KYO_TEL_NO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L224">                                .identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L226">                                .put(&quot;kyoTelNo&quot;, existingRecord.kyoTelNo())</span>
+<span class="fc" id="L227">                                .put(&quot;kyoTrkNo&quot;, existingRecord.kyoTrkNo())</span>
+<span class="fc" id="L228">                                .put(&quot;recUpdJnjNo&quot;, existingRecord.recUpdJnjNo()));</span>
+            }
+<span class="fc" id="L230">            insertHistory(</span>
+                    existingRecord,
+                    changeCancelDivisionDelete,
+                    historyDate,
+                    decodedOriginFunctionId);
+<span class="fc" id="L235">            return;</span>
+        }
+<span class="fc" id="L237">    }</span>
+
+    private boolean isUpdateOrDelete(String telNoSyrKbn) {
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        return processingDivisionUpdate.equals(telNoSyrKbn)</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                || processingDivisionDelete.equals(telNoSyrKbn);</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L245">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L247">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L248">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L252">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L253">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private Set&lt;KyoteldColumn&gt; buildUpdateTargetColumns(
+            String telShbt,
+            String telRrskShbt,
+            String telKnzShbt,
+            String telStsdShbt,
+            LocalDate telShtkYmd,
+            String tetsCtnmKj,
+            String telZkgrShbt,
+            String telMusdKbn) {
+<span class="fc" id="L265">        EnumSet&lt;KyoteldColumn&gt; targetColumns = EnumSet.noneOf(KyoteldColumn.class);</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (telShbt != null) {</span>
+<span class="fc" id="L267">            targetColumns.add(KyoteldColumn.TEL_SHBT);</span>
+        }
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (telRrskShbt != null) {</span>
+<span class="fc" id="L270">            targetColumns.add(KyoteldColumn.TEL_RRSK_SHBT);</span>
+        }
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (telKnzShbt != null) {</span>
+<span class="fc" id="L273">            targetColumns.add(KyoteldColumn.TEL_KNZ_SHBT);</span>
+        }
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (telStsdShbt != null) {</span>
+<span class="fc" id="L276">            targetColumns.add(KyoteldColumn.TEL_STSD_SHBT);</span>
+        }
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (telShtkYmd != null) {</span>
+<span class="fc" id="L279">            targetColumns.add(KyoteldColumn.TEL_SHTK_YMD);</span>
+        }
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (tetsCtnmKj != null) {</span>
+<span class="fc" id="L282">            targetColumns.add(KyoteldColumn.TETS_CTNM_KJ);</span>
+        }
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (telZkgrShbt != null) {</span>
+<span class="fc" id="L285">            targetColumns.add(KyoteldColumn.TEL_ZKGR_SHBT);</span>
+        }
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (telMusdKbn != null) {</span>
+<span class="fc" id="L288">            targetColumns.add(KyoteldColumn.TEL_MUSD_KBN);</span>
+        }
+<span class="fc" id="L290">        return targetColumns;</span>
+    }
+
+    private void insertHistory(
+            KyoteldRecord existingRecord,
+            String changeCancelDivision,
+            LocalDate historyDate,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L298">        int historySequenceNo = kyotlrdDataAccess</span>
+<span class="fc" id="L299">                .findLatestByKyoTelNoAndKyoTrkNo(existingRecord.kyoTelNo(), existingRecord.kyoTrkNo())</span>
+<span class="fc" id="L300">                .map(KyotlrdRecord::telNoTsno)</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">                .map(sequenceNo -&gt; sequenceNo &gt;= HISTORY_SEQUENCE_MAX ? 1 : sequenceNo + 1)</span>
+<span class="fc" id="L302">                .orElse(1);</span>
+<span class="fc" id="L303">        kyotlrdDataAccess.insert(</span>
+                new KyotlrdWriteRecord(
+<span class="fc" id="L305">                        existingRecord.kyoTelNo(),</span>
+<span class="fc" id="L306">                        existingRecord.kyoTrkNo(),</span>
+<span class="fc" id="L307">                        historySequenceNo,</span>
+<span class="fc" id="L308">                        existingRecord.telShbt(),</span>
+<span class="fc" id="L309">                        existingRecord.telRrskShbt(),</span>
+<span class="fc" id="L310">                        existingRecord.telKnzShbt(),</span>
+<span class="fc" id="L311">                        existingRecord.telStsdShbt(),</span>
+<span class="fc" id="L312">                        existingRecord.telShtkYmd(),</span>
+<span class="fc" id="L313">                        existingRecord.tetsCtnmKj(),</span>
+<span class="fc" id="L314">                        existingRecord.telZkgrShbt(),</span>
+<span class="fc" id="L315">                        existingRecord.telMusdKbn(),</span>
+                        changeCancelDivision,
+                        historyDate,
+<span class="fc" id="L318">                        existingRecord.ttrsUsrId(),</span>
+                        SERVICE_USER_ID),
+<span class="fc" id="L320">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L321">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

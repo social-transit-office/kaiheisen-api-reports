@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalApiRestClientLoggingFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-integration-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.integration.core</a> &gt; <span class="el_source">ExternalApiRestClientLoggingFilter.java</span></div><h1>ExternalApiRestClientLoggingFilter.java</h1><pre class="source lang-java linenums">/**
+ * @file ExternalApiRestClientLoggingFilter.java
+ * 概要: MicroProfile Rest Client の送受信ログを出力するフィルタ。
+ * 主な仕様:
+ * - 送信時に full URL、HTTP メソッド、request body JSON をログ出力する。
+ * - 応答時に status/latency を出力し、エラー応答では response body も出力する。
+ * - response body 読み取り後も downstream が再読込できるよう entity stream を復元する。
+ * - 送受信フィルタ開始時刻を UTC・ミリ秒3桁固定で出力する。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.integration.core;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ContextNotActiveException;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.client.ClientRequestContext;
+import jakarta.ws.rs.client.ClientRequestFilter;
+import jakarta.ws.rs.client.ClientResponseContext;
+import jakarta.ws.rs.client.ClientResponseFilter;
+import jakarta.ws.rs.ext.Provider;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+
+/**
+ * MicroProfile Rest Client の送受信ログフィルタ。
+ */
+@Provider
+@ApplicationScoped
+public class ExternalApiRestClientLoggingFilter implements ClientRequestFilter, ClientResponseFilter {
+
+    private static final String START_TIME_NANOS = &quot;kaiheisen.externalapi.startTimeNanos&quot;;
+
+    private static final String REQUEST_SENT_AT = &quot;kaiheisen.externalapi.requestSentAt&quot;;
+
+    private static final String REQUEST_URL = &quot;kaiheisen.externalapi.url&quot;;
+
+    private static final String REQUEST_METHOD = &quot;kaiheisen.externalapi.httpMethod&quot;;
+
+    private static final String REQUEST_EVENT = &quot;externalapi.request&quot;;
+
+    private static final String REQUEST_SUMMARY = &quot;External API request sent&quot;;
+
+    private static final String RESPONSE_EVENT = &quot;externalapi.response&quot;;
+
+    private static final String RESPONSE_SUMMARY = &quot;External API response received&quot;;
+
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    private static final String URL_ATTRIBUTE = &quot;url&quot;;
+
+    private static final String RESPONSE_BODY_ATTRIBUTE = &quot;responseBody&quot;;
+
+    private final RequestContext requestContext;
+
+    private final StructuredLogger logger;
+
+    private final Clock clock;
+
+    /**
+     * CDI 用コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     */
+    @Inject
+    public ExternalApiRestClientLoggingFilter(final RequestContext requestContext) {
+<span class="nc" id="L81">        this(requestContext, new JbossStructuredLogger(ExternalApiRestClientLoggingFilter.class));</span>
+<span class="nc" id="L82">    }</span>
+
+    ExternalApiRestClientLoggingFilter(
+            final RequestContext requestContext,
+            final StructuredLogger logger) {
+<span class="fc" id="L87">        this(requestContext, logger, Clock.systemUTC());</span>
+<span class="fc" id="L88">    }</span>
+
+    ExternalApiRestClientLoggingFilter(
+            final RequestContext requestContext,
+            final StructuredLogger logger,
+<span class="fc" id="L93">            final Clock clock) {</span>
+<span class="fc" id="L94">        this.requestContext = requestContext;</span>
+<span class="fc" id="L95">        this.logger = logger;</span>
+<span class="fc" id="L96">        this.clock = clock;</span>
+<span class="fc" id="L97">    }</span>
+
+    @Override
+    public void filter(final ClientRequestContext clientRequestContext) {
+<span class="fc" id="L101">        Instant observedAt = clock.instant();</span>
+<span class="fc" id="L102">        String url = toUrl(clientRequestContext.getUri());</span>
+<span class="fc" id="L103">        String method = clientRequestContext.getMethod();</span>
+<span class="fc" id="L104">        clientRequestContext.setProperty(START_TIME_NANOS, System.nanoTime());</span>
+<span class="fc" id="L105">        clientRequestContext.setProperty(REQUEST_URL, url);</span>
+<span class="fc" id="L106">        clientRequestContext.setProperty(REQUEST_METHOD, method);</span>
+<span class="fc" id="L107">        String requestSentAt = ExternalApiLogTimestamp.format(observedAt);</span>
+<span class="fc" id="L108">        clientRequestContext.setProperty(REQUEST_SENT_AT, requestSentAt);</span>
+
+<span class="fc" id="L110">        ExternalApiRequestLog requestLog = new ExternalApiRequestLog(</span>
+                url,
+                method,
+<span class="fc" id="L113">                ExternalApiJsonSerializer.toJson(clientRequestContext.getEntity()));</span>
+<span class="fc" id="L114">        Map&lt;String, Object&gt; attributes = enrichWithContext(requestLog.toAttributes());</span>
+<span class="fc" id="L115">        attributes.put(LogField.REQUEST_SENT_AT.key(), requestSentAt);</span>
+
+<span class="fc" id="L117">        logger.info(new LogEvent(</span>
+                REQUEST_EVENT,
+                REQUEST_SUMMARY,
+                LogLayer.EXTERNAL,
+                null,
+                null,
+                attributes));
+<span class="fc" id="L124">    }</span>
+
+    @Override
+    public void filter(
+            final ClientRequestContext clientRequestContext,
+            final ClientResponseContext clientResponseContext) throws IOException {
+<span class="fc" id="L130">        Instant observedAt = clock.instant();</span>
+<span class="fc" id="L131">        String url = stringProperty(clientRequestContext, REQUEST_URL, toUrl(clientRequestContext.getUri()));</span>
+<span class="fc" id="L132">        String method = stringProperty(clientRequestContext, REQUEST_METHOD, clientRequestContext.getMethod());</span>
+<span class="fc" id="L133">        long latencyMs = latencyMs(clientRequestContext);</span>
+
+<span class="fc" id="L135">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L136">        attributes.put(URL_ATTRIBUTE, url);</span>
+<span class="fc" id="L137">        attributes.put(LogField.HTTP_METHOD.key(), method);</span>
+<span class="fc" id="L138">        attributes.put(LogField.LATENCY_MS.key(), latencyMs);</span>
+<span class="fc" id="L139">        String requestSentAt = stringProperty(clientRequestContext, REQUEST_SENT_AT, null);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (requestSentAt != null) {</span>
+<span class="fc" id="L141">            attributes.put(LogField.REQUEST_SENT_AT.key(), requestSentAt);</span>
+        }
+        // Quarkus は通信失敗時にも status=0 で受信フィルタを実行する。
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (clientResponseContext.getStatus() &gt; 0) {</span>
+<span class="fc" id="L145">            attributes.put(LogField.RESPONSE_RECEIVED_AT.key(), ExternalApiLogTimestamp.format(observedAt));</span>
+        }
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (clientResponseContext.getStatus() &gt;= 400) {</span>
+<span class="fc" id="L148">            String responseBody = readResponseBody(clientResponseContext);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (responseBody != null) {</span>
+<span class="fc" id="L150">                attributes.put(RESPONSE_BODY_ATTRIBUTE, responseBody);</span>
+            }
+        }
+
+<span class="fc" id="L154">        logger.info(new LogEvent(</span>
+                RESPONSE_EVENT,
+                RESPONSE_SUMMARY,
+                LogLayer.EXTERNAL,
+<span class="fc" id="L158">                clientResponseContext.getStatus(),</span>
+                null,
+<span class="fc" id="L160">                enrichWithContext(attributes)));</span>
+<span class="fc" id="L161">    }</span>
+
+    private Map&lt;String, Object&gt; enrichWithContext(final Map&lt;String, Object&gt; attributes) {
+<span class="fc" id="L164">        ExternalApiCallLogContext.current().ifPresent(context -&gt; {</span>
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">            if (context.functionId() != null &amp;&amp; !context.functionId().isBlank()) {</span>
+<span class="fc" id="L166">                attributes.put(FUNCTION_ID_ATTRIBUTE, context.functionId());</span>
+            }
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">            if (context.invocationSequence() != null) {</span>
+<span class="fc" id="L169">                attributes.put(</span>
+<span class="fc" id="L170">                        LogField.EXTERNAL_API_INVOCATION_SEQUENCE.key(),</span>
+<span class="fc" id="L171">                        context.invocationSequence());</span>
+            }
+<span class="fc" id="L173">        });</span>
+<span class="fc" id="L174">        String correlationId = safeGetCorrelationId();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (correlationId != null) {</span>
+<span class="fc" id="L176">            attributes.put(LogField.CORRELATION_ID.key(), correlationId);</span>
+        }
+<span class="fc" id="L178">        String callPath = safeBuildCallPath();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (callPath != null) {</span>
+<span class="fc" id="L180">            attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+        }
+<span class="fc" id="L182">        return attributes;</span>
+    }
+
+    private String safeGetCorrelationId() {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L187">            return null;</span>
+        }
+        try {
+<span class="fc" id="L190">            return requestContext.getCorrelationId().orElse(null);</span>
+<span class="nc" id="L191">        } catch (ContextNotActiveException exception) {</span>
+<span class="nc" id="L192">            return null;</span>
+        }
+    }
+
+    private String safeBuildCallPath() {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L198">            return null;</span>
+        }
+        try {
+<span class="fc" id="L201">            return ExternalApiCallLogContext.current()</span>
+<span class="fc" id="L202">                    .map(context -&gt; requestContext.buildCallPath(context.functionId()))</span>
+<span class="fc" id="L203">                    .orElseGet(requestContext::currentCallPath);</span>
+<span class="nc" id="L204">        } catch (ContextNotActiveException exception) {</span>
+<span class="nc" id="L205">            return null;</span>
+        }
+    }
+
+    private static String toUrl(final URI uri) {
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        return uri == null ? null : uri.toString();</span>
+    }
+
+    private static String stringProperty(
+            final ClientRequestContext requestContext,
+            final String propertyName,
+            final String defaultValue) {
+<span class="fc" id="L217">        Object value = requestContext.getProperty(propertyName);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        return value == null ? defaultValue : value.toString();</span>
+    }
+
+    private static long latencyMs(final ClientRequestContext requestContext) {
+<span class="fc" id="L222">        Object start = requestContext.getProperty(START_TIME_NANOS);</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (start instanceof Long startTimeNanos) {</span>
+<span class="fc" id="L224">            return (System.nanoTime() - startTimeNanos) / 1_000_000L;</span>
+        }
+<span class="fc" id="L226">        return 0L;</span>
+    }
+
+    private static String readResponseBody(final ClientResponseContext responseContext) throws IOException {
+<span class="fc" id="L230">        InputStream inputStream = responseContext.getEntityStream();</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (inputStream == null) {</span>
+<span class="nc" id="L232">            return null;</span>
+        }
+<span class="fc" id="L234">        byte[] body = readAllBytes(inputStream);</span>
+<span class="fc" id="L235">        responseContext.setEntityStream(new ByteArrayInputStream(body));</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (body.length == 0) {</span>
+<span class="nc" id="L237">            return null;</span>
+        }
+<span class="fc" id="L239">        return new String(body, StandardCharsets.UTF_8);</span>
+    }
+
+    private static byte[] readAllBytes(final InputStream inputStream) throws IOException {
+<span class="fc" id="L243">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L244">        byte[] buffer = new byte[1024];</span>
+        int read;
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        while ((read = inputStream.read(buffer)) != -1) {</span>
+<span class="fc" id="L247">            output.write(buffer, 0, read);</span>
+        }
+<span class="fc" id="L249">        return output.toByteArray();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

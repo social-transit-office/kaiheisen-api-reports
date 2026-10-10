@@ -1,0 +1,693 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SvmstkrDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-svmstkr</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.svmstkr</a> &gt; <span class="el_source">SvmstkrDataAccessImpl.java</span></div><h1>SvmstkrDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.svmstkr;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrRkkiKnrnJtkbUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoOptionalUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.DateConverter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbReadValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.StringBooleanFlagConverter;
+
+/** SVMSTKR データアクセスの JPA 実装。 */
+public class SvmstkrDataAccessImpl extends DataAccessBase implements SvmstkrDataAccess {
+
+    private record ResolvedUpdateTarget(
+            SvmstkrEntity entity, Integer currentRecUpdJnjNo, PreparedWhere where) {
+
+<span class="fc" id="L46">        private ResolvedUpdateTarget {</span>
+<span class="fc" id="L47">            Objects.requireNonNull(entity, &quot;entity&quot;);</span>
+<span class="fc" id="L48">            Objects.requireNonNull(currentRecUpdJnjNo, &quot;currentRecUpdJnjNo&quot;);</span>
+<span class="fc" id="L49">            Objects.requireNonNull(where, &quot;where&quot;);</span>
+<span class="fc" id="L50">        }</span>
+    }
+
+    private record ResolvedOptimisticTargets(
+            List&lt;ResolvedUpdateTarget&gt; matchedTargets, ResolvedUpdateTarget firstMismatchedTarget) {
+
+<span class="fc" id="L56">        private ResolvedOptimisticTargets {</span>
+<span class="fc" id="L57">            matchedTargets = List.copyOf(Objects.requireNonNull(matchedTargets, &quot;matchedTargets&quot;));</span>
+<span class="fc" id="L58">        }</span>
+    }
+
+    private static final String TABLE_NAME = &quot;SVMSTKR&quot;;
+
+    private static final int RKKI_KNRN_JTKB_LENGTH = 2;
+
+    private static final String PRIMARY_KEY_ONLY_WHERE_CLAUSE =
+            &quot;MTST_NO = ? AND SVKY_NO = ? AND SKNO = ?&quot;;
+
+<span class="fc" id="L68">    private static final ReflectiveRecordEntityMapper&lt;SvmstkrRecord, SvmstkrEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L69">            ReflectiveRecordEntityMapper.create(SvmstkrRecord.class, SvmstkrEntity.class);</span>
+
+<span class="fc" id="L71">    private static final ReflectiveRecordEntityMapper&lt;SvmstkrWriteRecord, SvmstkrEntity&gt; WRITE_MAPPER =</span>
+<span class="fc" id="L72">            ReflectiveRecordEntityMapper.create(SvmstkrWriteRecord.class, SvmstkrEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;SvmstkrEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;SvmstkrWriteRecord, SvmstkrEntity, SvmstkrColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;SvmstkrWriteRecord, SvmstkrEntity, SvmstkrColumn&gt; updateSupport;
+
+    /** コンストラクタ。 */
+    public SvmstkrDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L91">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L96">    }</span>
+
+    SvmstkrDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L102">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L103">    }</span>
+
+    SvmstkrDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L109">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L110">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L111">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L112">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L113">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L114">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(SvmstkrEntity.class);</span>
+<span class="fc" id="L115">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L116">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L117">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SvmstkrWriteDefinition.INSTANCE,
+                        SvmstkrEntity.class,
+<span class="fc" id="L123">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L124">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        SvmstkrWriteDefinition.INSTANCE,
+                        SvmstkrEntity.class,
+<span class="fc" id="L130">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L131">    }</span>
+
+    @Override
+    public int insert(SvmstkrWriteRecord record, AuditContext context) {
+<span class="fc" id="L135">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L136">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L137">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L140">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L141">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndRkkiSttYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate rkkiSttYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L147">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L148">        BigDecimal safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L149">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L150">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L151">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L152">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeRkkiSttYmd);</span>
+<span class="fc" id="L153">        JpaWhere.notEq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L154">        builder.orderByDesc(&quot;rkkiEndYmd&quot;).orderByAsc(&quot;mtstNo&quot;);</span>
+<span class="fc" id="L155">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L161">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L162">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L163">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L164">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L165">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L166">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L167">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L168">        JpaWhere.notEq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L169">        builder.orderByAsc(&quot;mtstNo&quot;).orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L170">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public long findBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L176">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L177">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L178">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L179">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L180">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L181">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L182">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L183">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L184">        return builder.getResultList().size();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNo(
+            Long svkyNo, List&lt;String&gt; rkkiKnrnJtkbList, LocalDate knskKjnYmd, Long mtstNo) {
+<span class="fc" id="L190">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L191">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L192">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L193">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L194">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L195">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L196">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L197">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L198">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L199">        JpaWhere.notEq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L200">        builder.orderByAsc(&quot;mtstNo&quot;).orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L201">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndMtstNo(Long svkyNo, Long mtstNo) {
+<span class="fc" id="L206">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L207">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L208">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L209">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L210">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L211">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L212">        return builder</span>
+<span class="fc" id="L213">                .setMaxResults(1)</span>
+<span class="fc" id="L214">                .getResultList()</span>
+<span class="fc" id="L215">                .stream()</span>
+<span class="fc" id="L216">                .map(READ_MAPPER::toRecord)</span>
+<span class="fc" id="L217">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndMtstNoAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, String rkkiKnrnJtkb) {
+<span class="fc" id="L223">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L224">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L225">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L226">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L227">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L228">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L229">        JpaWhere.notEq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L230">        builder.orderByDesc(&quot;skno&quot;);</span>
+<span class="fc" id="L231">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndMtstNoAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L237">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L238">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L239">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L240">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L241">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L242">        JpaWhere.notEq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L243">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L244">        builder.orderByAsc(&quot;mtstNo&quot;);</span>
+<span class="fc" id="L245">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L251">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L252">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L253">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L254">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L255">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L256">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L257">        JpaWhere.notEq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L258">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L259">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L260">        JpaWhere.eq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L261">        builder.orderByAsc(&quot;mtstNo&quot;);</span>
+<span class="fc" id="L262">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkb(Long mtstNo, String rkkiKnrnJtkb) {
+<span class="fc" id="L267">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L268">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L269">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L270">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L271">        JpaWhere.eq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L272">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkb(
+            Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L278">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L279">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L280">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L281">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L282">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L283">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L284">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate rkkiSttYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L290">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L291">        BigDecimal safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L292">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L293">        return entityManager</span>
+<span class="fc" id="L294">                .createNativeQuery(</span>
+                        &quot;&quot;&quot;
+                        SELECT MTST_NO, SVKY_NO, SKNO, SUGU_KBN, SKNR_FLG,
+                               RKKI_KNRN_JTKB, RKKI_STT_YMD, RKKI_END_YMD, HISH_YTI_YMD,
+                               REG_TSMP, REG_USR_ID, UPD_TSMP, UPD_USR_ID, UPD_KTN_KINO_ID,
+                               REC_UPD_JNJ_NO
+                          FROM SVMSTKR
+                         WHERE MTST_NO = :mtstNo
+                           AND RKKI_STT_YMD &lt;= :rkkiSttYmd
+                           AND RKKI_KNRN_JTKB &lt;&gt; :rkkiKnrnJtkb
+                         ORDER BY RKKI_STT_YMD DESC
+                        &quot;&quot;&quot;)
+<span class="fc" id="L306">                    .setParameter(&quot;mtstNo&quot;, safeMtstNo)</span>
+<span class="fc" id="L307">                    .setParameter(&quot;rkkiSttYmd&quot;, safeRkkiSttYmd)</span>
+<span class="fc" id="L308">                    .setParameter(&quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb)</span>
+<span class="fc" id="L309">                .setMaxResults(1)</span>
+<span class="fc" id="L310">                .getResultList()</span>
+<span class="fc" id="L311">                .stream()</span>
+<span class="fc" id="L312">                .map(result -&gt; toRecordFromNativeRow((Object[]) result))</span>
+<span class="fc" id="L313">                .findFirst();</span>
+    }
+
+    private static SvmstkrRecord toRecordFromNativeRow(Object[] row) {
+<span class="fc" id="L317">        return new SvmstkrRecord(</span>
+<span class="fc" id="L318">                JpaDbReadValues.longOrNullIfZero((BigDecimal) row[0]),</span>
+<span class="fc" id="L319">                JpaDbReadValues.longOrNullIfZero((BigDecimal) row[1]),</span>
+<span class="fc" id="L320">                JpaDbReadValues.integerOrNullIfZero((BigDecimal) row[2]),</span>
+<span class="fc" id="L321">                stringValue(row[3]),</span>
+<span class="fc" id="L322">                StringBooleanFlagConverter.INSTANCE.convert(stringValue(row[4])),</span>
+<span class="fc" id="L323">                stringValue(row[5]),</span>
+<span class="fc" id="L324">                JpaDbReadValues.localDate((BigDecimal) row[6]),</span>
+<span class="fc" id="L325">                JpaDbReadValues.localDate((BigDecimal) row[7]),</span>
+<span class="fc" id="L326">                JpaDbReadValues.localDate((BigDecimal) row[8]),</span>
+<span class="fc" id="L327">                toLocalDateTime(row[9]),</span>
+<span class="fc" id="L328">                stringValue(row[10]),</span>
+<span class="fc" id="L329">                toLocalDateTime(row[11]),</span>
+<span class="fc" id="L330">                stringValue(row[12]),</span>
+<span class="fc" id="L331">                stringValue(row[13]),</span>
+<span class="fc" id="L332">                JpaDbReadValues.integerOrNullIfZero((BigDecimal) row[14]));</span>
+    }
+
+    private static String stringValue(Object value) {
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L337">            return null;</span>
+        }
+<span class="fc" id="L339">        return FixedLengthFormatter.suppressSpace(String.valueOf(value));</span>
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L344">            return null;</span>
+        }
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (value instanceof LocalDateTime localDateTime) {</span>
+<span class="nc" id="L347">            return localDateTime;</span>
+        }
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        if (value instanceof Timestamp timestamp) {</span>
+<span class="fc" id="L350">            return timestamp.toLocalDateTime();</span>
+        }
+<span class="nc" id="L352">        throw new IllegalArgumentException(&quot;Unsupported timestamp type: &quot; + value.getClass().getName());</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkbAndRkkiEndYmd(
+            Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList, LocalDate rkkiEndYmd) {
+<span class="fc" id="L358">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L359">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L360">        BigDecimal safeRkkiEndYmd = safeYmd(rkkiEndYmd, &quot;rkkiEndYmd&quot;);</span>
+<span class="fc" id="L361">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L362">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L363">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L364">        JpaWhere.le(builder, &quot;rkkiEndYmd&quot;, safeRkkiEndYmd);</span>
+<span class="fc" id="L365">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L366">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L372">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L373">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L374">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L375">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L376">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L377">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L378">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L379">        JpaWhere.notEq(builder, &quot;rkkiKnrnJtkb&quot;, safeRkkiKnrnJtkb);</span>
+<span class="fc" id="L380">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L381">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate knskKjnYmd, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L387">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L388">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L389">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L391">            return Optional.empty();</span>
+        }
+<span class="fc" id="L393">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L394">        JpaWhere.eq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L395">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L396">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L397">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L398">        builder.orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L399">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt;
+            findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNoForR015(
+                    Long svkyNo,
+                    List&lt;String&gt; rkkiKnrnJtkbList,
+                    LocalDate rkkiSttYmd,
+                    LocalDate rkkiEndYmd,
+                    Long mtstNo) {
+<span class="fc" id="L410">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L411">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L412">        BigDecimal safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L413">        BigDecimal safeRkkiEndYmd = safeYmd(rkkiEndYmd, &quot;rkkiEndYmd&quot;);</span>
+<span class="fc" id="L414">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L415">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L416">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L417">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L418">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeRkkiSttYmd);</span>
+<span class="fc" id="L419">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeRkkiEndYmd);</span>
+<span class="fc" id="L420">        JpaWhere.notEq(builder, &quot;mtstNo&quot;, safeMtstNo);</span>
+<span class="fc" id="L421">        builder.orderByAsc(&quot;mtstNo&quot;).orderByDesc(&quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L422">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkbList(
+            Long svkyNo,
+            LocalDate knskKjnYmd,
+            List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L430">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L431">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L432">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="fc" id="L434">            return List.of();</span>
+        }
+<span class="fc" id="L436">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L437">        JpaWhere.eq(builder, &quot;svkyNo&quot;, safeSvkyNo);</span>
+<span class="fc" id="L438">        JpaWhere.le(builder, &quot;rkkiSttYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L439">        JpaWhere.ge(builder, &quot;rkkiEndYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L440">        JpaWhere.in(builder, &quot;rkkiKnrnJtkb&quot;, rkkiKnrnJtkbList);</span>
+<span class="fc" id="L441">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int updateByMtstNoAndSvkyNoAndSkno(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrSknoOptionalUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L450">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L451">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L452">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L453">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L454">        return updateByPrimaryKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L457">                updateKey.mtstNo(),</span>
+<span class="fc" id="L458">                updateKey.svkyNo(),</span>
+<span class="fc" id="L459">                updateKey.skno(),</span>
+<span class="fc" id="L460">                updateKey.recUpdJnjNo(),</span>
+                Identifiers.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO,
+                context);
+    }
+
+    @Override
+    public int updateByMtstNoAndSvkyNoAndSkno(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrSknoUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L471">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L472">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L473">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L474">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L475">        return updateByPrimaryKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L478">                updateKey.mtstNo(),</span>
+<span class="fc" id="L479">                updateKey.svkyNo(),</span>
+<span class="fc" id="L480">                updateKey.skno(),</span>
+<span class="fc" id="L481">                updateKey.recUpdJnjNo(),</span>
+                Identifiers.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO_KEY_ONLY,
+                context);
+    }
+
+    @Override
+    public int updateBySvkyNoAndRkkiKnrnJtkb(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrRkkiKnrnJtkbUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L492">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L493">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L494">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L495">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L496">        var builder = criteriaBuilderFactory.create(entityManager, SvmstkrEntity.class);</span>
+<span class="fc" id="L497">        JpaWhere.eq(builder, &quot;svkyNo&quot;, JpaDbWriteValues.bigDecimal(updateKey.svkyNo()));</span>
+<span class="fc" id="L498">        JpaWhere.eq(builder, &quot;rkkiKnrnJtkb&quot;, updateKey.rkkiKnrnJtkb());</span>
+
+<span class="fc" id="L500">        ResolvedOptimisticTargets resolvedTargets =</span>
+<span class="fc" id="L501">            resolveOptimisticTargets(builder.getResultList(), updateKey.recUpdJnjNo());</span>
+<span class="fc" id="L502">        int updated = 0;</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">        for (ResolvedUpdateTarget resolvedTarget : resolvedTargets.matchedTargets()) {</span>
+<span class="fc" id="L504">            updated +=</span>
+<span class="fc" id="L505">                applyUpdateOnResolvedTarget(</span>
+                            record,
+                            targetColumns,
+                    resolvedTarget,
+                            context,
+<span class="fc" id="L510">                            updateKey.recUpdJnjNo(),</span>
+                            Identifiers.UPDATE_BY_SVKY_NO_AND_RKKI_KNRN_JTKB);
+<span class="fc" id="L512">        }</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        if (updated == 0</span>
+<span class="pc bpc" id="L514" title="1 of 2 branches missed.">            &amp;&amp; updateKey.recUpdJnjNo() != null</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            &amp;&amp; resolvedTargets.firstMismatchedTarget() != null) {</span>
+<span class="pc" id="L516">            return applyUpdateOnResolvedTarget(</span>
+                    record,
+                    targetColumns,
+<span class="fc" id="L519">                resolvedTargets.firstMismatchedTarget(),</span>
+                    context,
+<span class="fc" id="L521">                    updateKey.recUpdJnjNo(),</span>
+                    Identifiers.UPDATE_BY_SVKY_NO_AND_RKKI_KNRN_JTKB);
+        }
+<span class="fc" id="L524">        return updated;</span>
+    }
+
+    private int updateByPrimaryKey(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            Long mtstNo,
+            Long svkyNo,
+            Integer skno,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier,
+            AuditContext context) {
+<span class="fc" id="L536">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L537">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L538">        Objects.requireNonNull(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L539">        Objects.requireNonNull(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L540">        Objects.requireNonNull(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L541">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L543">        Optional&lt;ResolvedUpdateTarget&gt; resolvedTarget =</span>
+<span class="fc" id="L544">            resolvePrimaryKeyTarget(mtstNo, svkyNo, skno);</span>
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">        if (resolvedTarget.isEmpty()) {</span>
+<span class="nc" id="L546">            return 0;</span>
+        }
+<span class="fc" id="L548">        return applyUpdateOnResolvedTarget(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L551">                resolvedTarget.orElseThrow(),</span>
+                context,
+                expectedRecUpdJnjNo,
+                daIdentifier);
+    }
+
+    private Optional&lt;ResolvedUpdateTarget&gt; resolvePrimaryKeyTarget(
+            Long mtstNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L559">        Objects.requireNonNull(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L560">        Objects.requireNonNull(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L561">        Objects.requireNonNull(skno, &quot;skno&quot;);</span>
+
+<span class="fc" id="L563">        SvmstkrId id =</span>
+                new SvmstkrId(
+<span class="fc" id="L565">                        JpaDbWriteValues.bigDecimal(mtstNo),</span>
+<span class="fc" id="L566">                        JpaDbWriteValues.bigDecimal(svkyNo),</span>
+<span class="fc" id="L567">                        JpaDbWriteValues.bigDecimal(skno));</span>
+<span class="fc" id="L568">        SvmstkrEntity entity = entityManager.find(SvmstkrEntity.class, id);</span>
+<span class="pc bpc" id="L569" title="1 of 2 branches missed.">        if (entity == null) {</span>
+<span class="nc" id="L570">            return Optional.empty();</span>
+        }
+<span class="fc" id="L572">        Integer currentRecUpdJnjNo = currentRecUpdJnjNo(entity);</span>
+<span class="fc" id="L573">        entityManager.detach(entity);</span>
+<span class="fc" id="L574">        return Optional.of(</span>
+                new ResolvedUpdateTarget(
+                        entity,
+                        currentRecUpdJnjNo,
+<span class="fc" id="L578">                        preparedWhereByPrimaryKey(entity)));</span>
+    }
+
+    private ResolvedOptimisticTargets resolveOptimisticTargets(
+            List&lt;SvmstkrEntity&gt; entities, Integer expectedRecUpdJnjNo) {
+<span class="fc" id="L583">        Objects.requireNonNull(entities, &quot;entities&quot;);</span>
+
+<span class="fc" id="L585">        List&lt;ResolvedUpdateTarget&gt; matchedTargets = new java.util.ArrayList&lt;&gt;();</span>
+<span class="fc" id="L586">        ResolvedUpdateTarget firstMismatchedTarget = null;</span>
+<span class="fc bfc" id="L587" title="All 2 branches covered.">        for (SvmstkrEntity entity : entities) {</span>
+<span class="fc" id="L588">            Integer currentRecUpdJnjNo = currentRecUpdJnjNo(entity);</span>
+<span class="fc" id="L589">            entityManager.detach(entity);</span>
+<span class="fc" id="L590">            ResolvedUpdateTarget resolvedTarget =</span>
+                    new ResolvedUpdateTarget(
+                            entity,
+                            currentRecUpdJnjNo,
+<span class="fc" id="L594">                            preparedWhereByPrimaryKey(entity));</span>
+<span class="fc bfc" id="L595" title="All 2 branches covered.">            if (expectedRecUpdJnjNo != null</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">                    &amp;&amp; !Objects.equals(currentRecUpdJnjNo, expectedRecUpdJnjNo)) {</span>
+<span class="pc bpc" id="L597" title="1 of 2 branches missed.">                if (firstMismatchedTarget == null) {</span>
+<span class="fc" id="L598">                    firstMismatchedTarget = resolvedTarget;</span>
+                }
+                continue;
+            }
+<span class="fc" id="L602">            matchedTargets.add(resolvedTarget);</span>
+<span class="fc" id="L603">        }</span>
+<span class="fc" id="L604">        return new ResolvedOptimisticTargets(matchedTargets, firstMismatchedTarget);</span>
+    }
+
+    private Integer currentRecUpdJnjNo(SvmstkrEntity entity) {
+<span class="fc" id="L608">        Objects.requireNonNull(entity, &quot;entity&quot;);</span>
+<span class="fc" id="L609">        return Objects.requireNonNull(entity.getRecUpdJnjNo(), &quot;entity.recUpdJnjNo&quot;)</span>
+<span class="fc" id="L610">                .intValueExact();</span>
+    }
+
+    private int applyUpdateOnResolvedTarget(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            ResolvedUpdateTarget resolvedTarget,
+            AuditContext context,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier) {
+<span class="fc" id="L620">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L621">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L622">        Objects.requireNonNull(resolvedTarget, &quot;resolvedTarget&quot;);</span>
+<span class="fc" id="L623">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L624">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (targetEntity, ignoredColumns) -&gt;
+<span class="fc" id="L628">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L629">                                auditColumnAccessBinder.bind(targetEntity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L632">                        resolvedTarget.currentRecUpdJnjNo()),</span>
+<span class="fc" id="L633">                resolvedTarget.where(),</span>
+                expectedRecUpdJnjNo,
+                daIdentifier);
+    }
+
+    private PreparedWhere preparedWhereByPrimaryKey(SvmstkrEntity entity) {
+<span class="fc" id="L639">        Objects.requireNonNull(entity, &quot;entity&quot;);</span>
+<span class="fc" id="L640">        return PreparedWhere.of(</span>
+                PRIMARY_KEY_ONLY_WHERE_CLAUSE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L643">                    int nextIndex = JpaBind.set(query, startIndex, entity.getMtstNo());</span>
+<span class="fc" id="L644">                    nextIndex = JpaBind.set(query, nextIndex, entity.getSvkyNo());</span>
+<span class="fc" id="L645">                    return JpaBind.set(query, nextIndex, entity.getSkno());</span>
+                },
+<span class="fc" id="L647">                entity.getMtstNo(),</span>
+<span class="fc" id="L648">                entity.getSvkyNo(),</span>
+<span class="fc" id="L649">                entity.getSkno());</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByPK(Long mtstNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L654">        BigDecimal safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L655">        BigDecimal safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L656">        BigDecimal safeSkno = safeSkno(skno, &quot;skno&quot;);</span>
+
+<span class="fc" id="L658">        SvmstkrId id =</span>
+                new SvmstkrId(
+                        safeMtstNo,
+                        safeSvkyNo,
+                        safeSkno);
+<span class="fc" id="L663">        SvmstkrEntity entity = entityManager.find(SvmstkrEntity.class, id);</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">        if (entity == null) {</span>
+<span class="fc" id="L665">            return Optional.empty();</span>
+        }
+<span class="fc" id="L667">        return Optional.of(READ_MAPPER.toRecord(entity));</span>
+    }
+
+    private static BigDecimal safeMtstNo(Long value, String paramName) {
+<span class="fc" id="L671">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L672">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeSvkyNo(Long value, String paramName) {
+<span class="fc" id="L676">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L677">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeSkno(Integer value, String paramName) {
+<span class="fc" id="L681">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L682">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L686">        return WhereParamGuard.complement(JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeRkkiKnrnJtkb(String value, String paramName) {
+<span class="fc" id="L690">        return WhereParamGuard.fixedLengthNotNull(value, paramName, RKKI_KNRN_JTKB_LENGTH);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCancelTransportMeterInfoUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-openingcanceltransportmeterinfoupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">OpeningCancelTransportMeterInfoUpdateImpl.java</span></div><h1>OpeningCancelTransportMeterInfoUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.write.TaksmtrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.OpeningCancelTransportMeterInfoUpdate;
+
+/**
+ * 概要: SV-067（開栓取消託送メータ情報更新）のサービス実装。
+ * 主な仕様:
+ * - DA-019-R001 で託送メータ情報を取得し、先頭レコードだけを更新判定対象とする。
+ * - 先頭レコードが当日更新かつスイッチ申込以外かつ本登録の場合のみ DA-019-U002 を実行する。
+ * - 非排他更新のため、更新件数 0 件は DataInconsistencyException へ変換する。
+ */
+public final class OpeningCancelTransportMeterInfoUpdateImpl
+        implements OpeningCancelTransportMeterInfoUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS067&quot;;
+
+<span class="fc" id="L36">    static final Set&lt;TaksmtrColumn&gt; TARGET_COLUMNS = Set.of(TaksmtrColumn.TAKS_KY_JT_CD);</span>
+
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String bookRegistrationStatus;
+
+    private final String temporaryRegistrationStatus;
+
+    private final String switchApplicationCode;
+
+    /**
+     * 必須依存と必須定数を初期化する。
+     *
+     * @param taksmtrDataAccess 託送メータ情報 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public OpeningCancelTransportMeterInfoUpdateImpl(
+            TaksmtrDataAccess taksmtrDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L62">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L63">        this.taksmtrDataAccess = Objects.requireNonNull(taksmtrDataAccess, &quot;taksmtrDataAccess&quot;);</span>
+<span class="fc" id="L64">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L65">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L66">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L67">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L68">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L69">        this.bookRegistrationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.BOOK_REGISTRATION);
+<span class="fc" id="L73">        this.temporaryRegistrationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TEMPORARY_REGISTRATION);
+<span class="fc" id="L77">        this.switchApplicationCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.SWITCH_APPLICATION);
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    public void execute(Long gasMtstNo) {
+<span class="fc" id="L85">        List&lt;TaksmtrRecord&gt; records = taksmtrDataAccess.findAllByGmtSetNo(gasMtstNo);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (records.isEmpty()) {</span>
+<span class="fc" id="L87">            return;</span>
+        }
+
+<span class="fc" id="L90">        TaksmtrRecord record = records.getFirst();</span>
+<span class="fc" id="L91">        LocalDate systemDate = requireSystemDate();</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!shouldUpdate(record, systemDate)) {</span>
+<span class="fc" id="L93">            return;</span>
+        }
+
+<span class="fc" id="L96">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodeOriginFunctionId());</span>
+<span class="fc" id="L97">        int updatedCount = taksmtrDataAccess.updateByTakskyNoAndHkkmItiNoAndGmtSetNo(</span>
+<span class="fc" id="L98">                buildWriteRecord(),</span>
+                TARGET_COLUMNS,
+                new TaksmtrUpdateKey(
+<span class="fc" id="L101">                        record.takskyNo(),</span>
+<span class="fc" id="L102">                        record.hkkmItiNo(),</span>
+<span class="fc" id="L103">                        record.gmtSetNo(),</span>
+                        null),
+                auditContext);
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L107">            throw createDataInconsistency(record, auditContext);</span>
+        }
+<span class="fc" id="L109">    }</span>
+
+    private boolean shouldUpdate(TaksmtrRecord record, LocalDate systemDate) {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        return Objects.equals(record.recUpdYmd(), systemDate)</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                &amp;&amp; !switchApplicationCode.equals(record.taksCisHntCd())</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                &amp;&amp; bookRegistrationStatus.equals(record.taksKyJtCd());</span>
+    }
+
+    private LocalDate requireSystemDate() {
+<span class="fc" id="L118">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L119">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L120">                .toLocalDate();</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L124">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                .filter(value -&gt; !value.isBlank())</span>
+<span class="fc" id="L126">                .orElse(null);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (hukkSysShbt == null) {</span>
+<span class="fc" id="L128">            return null;</span>
+        }
+<span class="fc" id="L130">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (decodedOriginFunctionId == null) {</span>
+<span class="nc" id="L134">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L138">        return decodedOriginFunctionId;</span>
+    }
+
+    private TaksmtrWriteRecord buildWriteRecord() {
+<span class="fc" id="L142">        return new TaksmtrWriteRecord(</span>
+                temporaryRegistrationStatus,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private DataInconsistencyException createDataInconsistency(
+            TaksmtrRecord record,
+            AuditContext auditContext) {
+<span class="fc" id="L169">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L170">                taksmtrDataAccess.tableName(),</span>
+<span class="fc" id="L171">                TaksmtrDataAccess.CallSpecs.UPDATE_BY_TAKSKY_NO_AND_HKKM_ITI_NO_AND_GMT_SET_NO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L173">                        .put(&quot;takskyNo&quot;, record.takskyNo())</span>
+<span class="fc" id="L174">                        .put(&quot;hkkmItiNo&quot;, record.hkkmItiNo())</span>
+<span class="fc" id="L175">                        .put(&quot;gmtSetNo&quot;, record.gmtSetNo())</span>
+<span class="fc" id="L176">                        .put(&quot;taksKyJtCd&quot;, temporaryRegistrationStatus)</span>
+<span class="fc" id="L177">                        .put(&quot;updUsrId&quot;, auditContext.userId())</span>
+<span class="fc" id="L178">                        .put(&quot;updKtnKinoId&quot;, auditContext.kinoId()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

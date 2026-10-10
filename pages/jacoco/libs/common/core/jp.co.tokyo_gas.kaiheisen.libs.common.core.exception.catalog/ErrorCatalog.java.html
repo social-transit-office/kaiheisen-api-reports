@@ -1,0 +1,1465 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ErrorCatalog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog</a> &gt; <span class="el_source">ErrorCatalog.java</span></div><h1>ErrorCatalog.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * エラーカタログ。
+ * このファイルは generate_exception_catalog.py で自動生成される。
+ */
+public final class ErrorCatalog {
+
+<span class="fc" id="L18">    private static final Map&lt;String, ErrorDefinition&gt; DEFINITIONS = createDefinitions();</span>
+
+    private ErrorCatalog() {
+    }
+
+    /**
+     * エラーコードに対応するエラー定義を検索する。
+     *
+     * @param errorCode エラーコード
+     * @return エラー定義。見つからない場合は {@code null}
+     */
+    public static ErrorDefinition find(String errorCode) {
+<span class="nc bnc" id="L30" title="All 4 branches missed.">        if (errorCode == null || errorCode.isBlank()) {</span>
+<span class="nc" id="L31">            return null;</span>
+        }
+<span class="nc" id="L33">        return DEFINITIONS.get(errorCode.trim());</span>
+    }
+
+    /**
+     * ラウンディングを解決した最終エラーコードを返す。
+     *
+     * @param errorCode エラーコード
+     * @return 最終エラーコード
+     */
+    public static String resolveFinalErrorCode(String errorCode) {
+<span class="fc" id="L43">        ErrorDefinition resolved = resolveFinalDefinition(errorCode);</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (resolved == null) {</span>
+<span class="nc" id="L45">            return errorCode;</span>
+        }
+<span class="fc" id="L47">        return resolved.errorCode();</span>
+    }
+
+    /**
+     * ラウンディングを解決した最終エラー定義を返す。
+     *
+     * @param errorCode エラーコード
+     * @return 最終エラー定義。見つからない場合は {@code null}
+     * @throws IllegalStateException 丸め先エラーコードが循環している場合
+     */
+    public static ErrorDefinition resolveFinalDefinition(String errorCode) {
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">        if (errorCode == null || errorCode.isBlank()) {</span>
+<span class="nc" id="L59">            return null;</span>
+        }
+<span class="fc" id="L61">        String normalized = errorCode.trim();</span>
+<span class="fc" id="L62">        Set&lt;String&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L63">        ArrayDeque&lt;String&gt; history = new ArrayDeque&lt;&gt;();</span>
+        while (true) {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (!visited.add(normalized)) {</span>
+<span class="nc" id="L66">                history.addLast(normalized);</span>
+<span class="nc" id="L67">                throw new IllegalStateException(&quot;Rounding loop detected: &quot; + String.join(&quot; -&gt; &quot;, history));</span>
+            }
+<span class="fc" id="L69">            history.addLast(normalized);</span>
+<span class="fc" id="L70">            ErrorDefinition current = DEFINITIONS.get(normalized);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (current == null) {</span>
+<span class="fc" id="L72">                return null;</span>
+            }
+<span class="fc" id="L74">            String target = current.roundingTargetErrorCode();</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            if (target == null || target.isBlank()) {</span>
+<span class="fc" id="L76">                return current;</span>
+            }
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (!DEFINITIONS.containsKey(target)) {</span>
+<span class="fc" id="L79">                return current;</span>
+            }
+<span class="fc" id="L81">            normalized = target;</span>
+<span class="fc" id="L82">        }</span>
+    }
+
+    /**
+     * エラーコードと埋め込み値からエラーメッセージを解決する。
+     *
+     * @param errorCode エラーコード
+     * @param embeddedValues 埋め込み値リスト
+     * @return エラーメッセージ。定義が見つからない場合は {@code null}
+     */
+    public static String resolveErrorMessage(String errorCode, List&lt;String&gt; embeddedValues) {
+<span class="fc" id="L93">        ErrorDefinition definition = resolveFinalDefinition(errorCode);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (definition == null) {</span>
+<span class="nc" id="L95">            return null;</span>
+        }
+<span class="fc" id="L97">        return applyPlaceholders(definition.messageTemplate(), embeddedValues);</span>
+    }
+
+    /**
+     * エラーコードから CIRIUS メッセージIDを解決する。
+     *
+     * @param errorCode エラーコード
+     * @return CIRIUS メッセージID。未設定または定義が見つからない場合は {@code null}
+     */
+    public static String resolveCiriusMessageId(String errorCode) {
+<span class="fc" id="L107">        ErrorDefinition definition = resolveFinalDefinition(errorCode);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (definition == null) {</span>
+<span class="fc" id="L109">            return null;</span>
+        }
+<span class="fc" id="L111">        String messageId = definition.ciriusMessageId();</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        if (messageId == null || messageId.isBlank()) {</span>
+<span class="fc" id="L113">            return null;</span>
+        }
+<span class="fc" id="L115">        return messageId;</span>
+    }
+
+    /**
+     * エラーコードと埋め込み値から CIRIUS メッセージを解決する。
+     *
+     * @param errorCode エラーコード
+     * @param embeddedValues 埋め込み値リスト
+     * @return CIRIUS メッセージ。未設定または定義が見つからない場合は {@code null}
+     */
+    public static String resolveCiriusMessage(String errorCode, List&lt;String&gt; embeddedValues) {
+<span class="fc" id="L126">        ErrorDefinition definition = resolveFinalDefinition(errorCode);</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (definition == null) {</span>
+<span class="nc" id="L128">            return null;</span>
+        }
+<span class="fc" id="L130">        String template = definition.ciriusMessageTemplate();</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">        if (template == null || template.isBlank()) {</span>
+<span class="nc" id="L132">            return null;</span>
+        }
+<span class="fc" id="L134">        return applyPlaceholders(template, embeddedValues);</span>
+    }
+
+    /**
+     * メッセージテンプレートに埋め込み値を適用する。
+     *
+     * @param template メッセージテンプレート
+     * @param embeddedValues 埋め込み値リスト
+     * @return プレースホルダ適用済み文字列。template が {@code null} の場合は {@code null}
+     */
+    public static String applyPlaceholders(String template, List&lt;String&gt; embeddedValues) {
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (template == null) {</span>
+<span class="nc" id="L146">            return null;</span>
+        }
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        List&lt;String&gt; values = embeddedValues == null ? List.of() : new ArrayList&lt;&gt;(embeddedValues);</span>
+<span class="fc" id="L149">        String resolved = template;</span>
+<span class="fc" id="L150">        boolean zeroBasedTemplate = template.contains(&quot;{0}&quot;);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        boolean oneBasedValuesWithDummyZero = !zeroBasedTemplate</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                &amp;&amp; !values.isEmpty()</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                &amp;&amp; Objects.toString(values.getFirst(), &quot;&quot;).isEmpty();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (int i = 0; i &lt; values.size(); i++) {</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">            if (oneBasedValuesWithDummyZero &amp;&amp; i == 0) {</span>
+<span class="fc" id="L156">                continue;</span>
+            }
+            int placeholderIndex;
+<span class="fc bfc" id="L159" title="All 4 branches covered.">            if (zeroBasedTemplate || oneBasedValuesWithDummyZero) {</span>
+<span class="fc" id="L160">                placeholderIndex = i;</span>
+            } else {
+<span class="fc" id="L162">                placeholderIndex = i + 1;</span>
+            }
+<span class="fc" id="L164">            String placeholder = &quot;{&quot; + placeholderIndex + &quot;}&quot;;</span>
+<span class="fc" id="L165">            String value = Objects.toString(values.get(i), &quot;&quot;);</span>
+<span class="fc" id="L166">            resolved = resolved.replace(placeholder, value);</span>
+        }
+<span class="fc" id="L168">        return resolved;</span>
+    }
+
+    private static Map&lt;String, ErrorDefinition&gt; createDefinitions() {
+<span class="fc" id="L172">        Map&lt;String, ErrorDefinition&gt; mutable = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L173">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_990000001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_990000001,
+                        &quot;システムエラーが発生しました。&quot;,
+                        &quot;CXXM21597E&quot;,
+                        &quot;システムエラーです。（{0}）（{1}）&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L181">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000001,
+                        &quot;リクエストパラメータが不正です。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L189">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000011,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000011,
+                        &quot;{1}を指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L197">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000012,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000012,
+                        &quot;{1}は半角数字で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L205">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000013,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000013,
+                        &quot;{1}は半角英数字で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L213">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000014,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000014,
+                        &quot;{1}は配列で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L221">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000015,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000015,
+                        &quot;{1}はRFC3339形式で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L229">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000016,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000016,
+                        &quot;{1}は{2}桁で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L237">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000017,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000017,
+                        &quot;{1}は{2}桁以内で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L245">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000018,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000018,
+                        &quot;{1}は{2}桁以上で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L253">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000019,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000019,
+                        &quot;{1}は{2}～{3}桁で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L261">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000020,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000020,
+                        &quot;{1}は整数部{2}桁、少数部{3}桁以内で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L269">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000021,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000021,
+                        &quot;{1}は{2}文字で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L277">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000022,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000022,
+                        &quot;{1}は{2}文字以内で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L285">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000023,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000023,
+                        &quot;{1}は{2}文字以上で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L293">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000024,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000024,
+                        &quot;{1}は{2}～{3}文字で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L301">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000025,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000025,
+                        &quot;{1}は{2}以前の日付で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L309">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000026,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000026,
+                        &quot;{1}は{2}以降の日付で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L317">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000027,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000027,
+                        &quot;{1}は{2}～{3}の日付で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L325">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000028,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000028,
+                        &quot;{1}はコンスタント種別:{2} の次のいずれかの値を指定してください。{3}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L333">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000029,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000029,
+                        &quot;{1}は次のいずれかの値を指定してください。{2}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L341">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000030,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000030,
+                        &quot;{1}は全角で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L349">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000031,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000031,
+                        &quot;{1}は半角で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L357">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010000032,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010000032,
+                        &quot;{1}は{2}件以下で指定してください&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010000001&quot;));
+<span class="fc" id="L365">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_010100001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_010100001,
+                        &quot;{1}が存在しません。&quot;,
+                        &quot;CXXM20900E&quot;,
+                        &quot;該当データがありません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L373">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000001,
+                        &quot;処理区分に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;010100001&quot;));
+<span class="fc" id="L381">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000002,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000002,
+                        &quot;処理区分に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000001&quot;));
+<span class="fc" id="L389">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000003,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000003,
+                        &quot;代替区分に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000002&quot;));
+<span class="fc" id="L397">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000004,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000004,
+                        &quot;契約番号に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000003&quot;));
+<span class="fc" id="L405">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000005,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000005,
+                        &quot;開始年月日に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000004&quot;));
+<span class="fc" id="L413">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000006,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000006,
+                        &quot;終了年月日に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000005&quot;));
+<span class="fc" id="L421">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000007,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000007,
+                        &quot;開始年月日に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000006&quot;));
+<span class="fc" id="L429">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000008,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000008,
+                        &quot;排他区分に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;020000007&quot;));
+<span class="fc" id="L437">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000009,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000009,
+                        &quot;料金地区コードが複数指定されています。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L445">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000010,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000010,
+                        &quot;所有事業者区分に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L453">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000011,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000011,
+                        &quot;複数の業務エラーが発生しました。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L461">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000012,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000012,
+                        &quot;お客さま番号に誤りがあります。&quot;,
+                        &quot;CXXM20082E&quot;,
+                        &quot;お客さま番号に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L469">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000013,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000013,
+                        &quot;検針情報がありません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L477">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000014,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000014,
+                        &quot;同じガス料金契約種別振分種別が指定されています。{0}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L485">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000015,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000015,
+                        &quot;ＧＨＰ設置変更後に同日で閉栓報告と開栓報告が行われたため開栓取消はできません。&quot;,
+                        &quot;CXXM23403E&quot;,
+                        &quot;ＧＨＰ設置変更後に同日で閉栓報告と開栓報告が行われたため開栓取消はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L493">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000016,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000016,
+                        &quot;コンスタントマスターの登録利用がありません。\nコンスタント種別コード：{0}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L501">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000017,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000017,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;CXXM23449E&quot;,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L509">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000018,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000018,
+                        &quot;異動報告業務と取消報告業務が異なるため、取消できません。&quot;,
+                        &quot;CXXM23400E&quot;,
+                        &quot;異動報告業務と取消報告業務が異なるため、取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L517">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000019,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000019,
+                        &quot;ＬＩＶＡＬＩＴからの開栓結果報告のため、オンラインから取消できません。&quot;,
+                        &quot;CXXM23399E&quot;,
+                        &quot;ＬＩＶＡＬＩＴからの開栓結果報告のため、オンラインから取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L525">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000020,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000020,
+                        &quot;閉栓希望年月日が対象外です。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L533">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000021,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000021,
+                        &quot;当日報告分ではないため取消できません。&quot;,
+                        &quot;CXXM20138E&quot;,
+                        &quot;当日報告分ではないため取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L541">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000022,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000022,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;CXXM20159E&quot;,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L549">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000023,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000023,
+                        &quot;取消対象の検針結果は存在しません。&quot;,
+                        &quot;CXXM23404E&quot;,
+                        &quot;取消対象の検針結果は存在しません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L557">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000024,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000024,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;CXXM20159E&quot;,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L565">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000025,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000025,
+                        &quot;社用扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;CXXM23406E&quot;,
+                        &quot;社用扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L573">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000026,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000026,
+                        &quot;免税扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;CXXM23407E&quot;,
+                        &quot;免税扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L581">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000027,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000027,
+                        &quot;有効な契約が存在しないため、受付できません。&quot;,
+                        &quot;CXXM22643E&quot;,
+                        &quot;有効な契約が存在しないため、受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L589">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000028,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000028,
+                        &quot;社用扱いのため受付できません。&quot;,
+                        &quot;CXXM20505E&quot;,
+                        &quot;社用扱いのため、受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L597">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000029,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000029,
+                        &quot;お客さま番号に誤りがあります。正しいお客さま番号を入力して下さい。&quot;,
+                        &quot;CXXM21357E&quot;,
+                        &quot;お客さま番号に誤りがあります。正しいお客さま番号を入力して下さい。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L605">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000030,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000030,
+                        &quot;お客さま番号に誤りがあります。&quot;,
+                        &quot;CXXM20082E&quot;,
+                        &quot;お客さま番号に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L613">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000031,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000031,
+                        &quot;社員番号に誤りがあります。&quot;,
+                        &quot;CXXM23374E&quot;,
+                        &quot;社員番号に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L621">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000033,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000033,
+                        &quot;支払期限日を経過したガス料金はありません。供給再開の手続きを行ってください。&quot;,
+                        &quot;CXXM23384W&quot;,
+                        &quot;支払期限日を経過したガス料金はありません。供給再開の手続きを行ってください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L629">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000034,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000034,
+                        &quot;災害時閉栓中のため、災害復旧開栓以外の報告はできません。&quot;,
+                        &quot;CXXM23387E&quot;,
+                        &quot;災害時閉栓中のため、災害復旧開栓以外の報告はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L637">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000035,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000035,
+                        &quot;臨時検針を登録し、請求が確定してから報告してください。&quot;,
+                        &quot;CXXM23388E&quot;,
+                        &quot;臨時検針を登録し、請求が確定してから報告してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L645">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000036,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000036,
+                        &quot;総合扱いのため、登録できません。（{0}）&quot;,
+                        &quot;CXXM20955E&quot;,
+                        &quot;総合扱いのため、登録できません。（{0}）&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L653">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000037,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000037,
+                        &quot;当画面で解約できる契約種別ではありません。&quot;,
+                        &quot;CXXM23392E&quot;,
+                        &quot;当画面で解約できる契約種別ではありません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L661">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000038,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000038,
+                        &quot;契約の予約が登録されているため、受付できません。&quot;,
+                        &quot;CXXM23394E&quot;,
+                        &quot;契約の予約が登録されているため、受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L669">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000039,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000039,
+                        &quot;該当するお客さまは存在しません。&quot;,
+                        &quot;CXXM23401E&quot;,
+                        &quot;該当するお客さまは存在しません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L677">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000040,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000040,
+                        &quot;開栓時メータ社番に訂正があったため、開栓取消できません。&quot;,
+                        &quot;CXXM23402E&quot;,
+                        &quot;開栓時メータ社番に訂正があったため、開栓取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L685">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000041,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000041,
+                        &quot;当日報告分でないため、取消報告はできません。&quot;,
+                        &quot;CXXM20138E&quot;,
+                        &quot;当日報告分ではないため取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L693">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000042,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000042,
+                        &quot;スイッチング受付があるため、登録できません。&quot;,
+                        &quot;CXXM23543E&quot;,
+                        &quot;スイッチング受付があるため、登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L701">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000043,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000043,
+                        &quot;すでに登録済みです。&quot;,
+                        &quot;CXXM21136E&quot;,
+                        &quot;すでに登録済みです。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L709">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000044,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000044,
+                        &quot;閉栓未済のメータが存在するため、支払方法指定は受付できません。&quot;,
+                        &quot;CXXM23371E&quot;,
+                        &quot;閉栓未済のメータが存在するため、支払方法指定は受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L717">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000047,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000047,
+                        &quot;取消対象のお客さまは存在しません。&quot;,
+                        &quot;CXXM23395E&quot;,
+                        &quot;取消対象のお客さまは存在しません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L725">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000048,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000048,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;CXXM20159E&quot;,
+                        &quot;異動報告が存在します。取消を行うことができません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L733">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000049,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000049,
+                        &quot;請求サービス扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;CXXM23408E&quot;,
+                        &quot;請求サービス扱いのため、開栓の取消報告はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L741">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000050,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000050,
+                        &quot;直列専用メータ閉栓後、再度報告して下さい。&quot;,
+                        &quot;CXXM23409E&quot;,
+                        &quot;直列専用メータ閉栓後、再度報告して下さい。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L749">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000051,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000051,
+                        &quot;ＬＩＶＡＬＩＴから報告した閉栓結果のため、取消できません。&quot;,
+                        &quot;CXXM23411E&quot;,
+                        &quot;ＬＩＶＡＬＩＴから報告した閉栓結果のため、取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L757">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000052,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000052,
+                        &quot;ガスメータ取外済のため、閉栓取消できません。&quot;,
+                        &quot;CXXM20980E&quot;,
+                        &quot;ガスメータ取外済のため、閉栓取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L765">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000053,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000053,
+                        &quot;直列元メータ閉栓中のため、専用メータの閉栓取消はできません。&quot;,
+                        &quot;CXXM20981E&quot;,
+                        &quot;直列元メータ閉栓中のため、専用メータの閉栓取消はできません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L773">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000054,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000054,
+                        &quot;託送契約に異動情報が存在するため、取消できません。&quot;,
+                        &quot;CXXM23414E&quot;,
+                        &quot;託送契約に異動情報が存在するため、取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L781">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000055,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000055,
+                        &quot;対象業務で選択した内容と異なるため、取消できません。&quot;,
+                        &quot;CXXM23415E&quot;,
+                        &quot;対象業務で選択した内容と異なるため、取消できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L789">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000056,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000056,
+                        &quot;ガスメーター設置場所存在チェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L797">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000057,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000057,
+                        &quot;サービス契約存在チェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L805">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000058,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000058,
+                        &quot;ガス用途コード登録判定エラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L813">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000059,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000059,
+                        &quot;ガス用途コード更新判定エラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L821">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000060,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000060,
+                        &quot;閉栓報告後に免税の適用が行われているため、取消できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L829">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000063,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000063,
+                        &quot;閉栓後託送異動ありエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L837">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000064,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000064,
+                        &quot;閉栓エラーフォロー済のため、取消できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L845">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000065,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000065,
+                        &quot;オンライン閉栓にて報告した閉栓結果のため、取消できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L853">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000066,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000066,
+                        &quot;フォロー不要の報告が行われているため、取消できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L861">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000067,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000067,
+                        &quot;開栓中のため受付できません。閉栓報告後、登録して下さい。&quot;,
+                        &quot;CXXM20604E&quot;,
+                        &quot;開栓中のため受付できません。閉栓報告後、登録して下さい。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L869">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000068,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000068,
+                        &quot;開栓中以外のため受付できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L877">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000070,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000070,
+                        &quot;報告対象のお客さまは、開栓エラーフォローの対象となっています。&quot;,
+                        &quot;CXXM23382W&quot;,
+                        &quot;報告対象のお客さまは、開栓エラーフォローの対象となっています。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L885">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000071,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000071,
+                        &quot;ガスメータ設置場所が未登録です。&quot;,
+                        &quot;CXXM23336E&quot;,
+                        &quot;ガスメータ設置場所が未登録です。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L893">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000072,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000072,
+                        &quot;直列元メーターが閉栓中のため、開栓登録できません。&quot;,
+                        &quot;CXXM20147E&quot;,
+                        &quot;直列元メーターが閉栓中のため、開栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L901">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000073,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000073,
+                        &quot;開栓中以外のため受付できません。&quot;,
+                        &quot;CXXM23370E&quot;,
+                        &quot;開栓中以外のため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L909">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000074,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000074,
+                        &quot;前回のガス調定情報が存在しないため、起算日を特定できません。&quot;,
+                        &quot;CXXM23059E&quot;,
+                        &quot;前回のガス調定情報が存在しないため、起算日を特定できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L917">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000075,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000075,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;CXXM23449E&quot;,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L925">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000076,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000076,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;CXXM23341E&quot;,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L933">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000077,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000077,
+                        &quot;指定検針日より新しい検針結果が登録されているため、使用量、使用日数の算出が行えません。&quot;,
+                        &quot;CXXM21087E&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L941">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000078,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000078,
+                        &quot;請求回収連携情報に誤りがあります。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L949">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000079,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000079,
+                        &quot;同型式並列設置グループのメーターです。グループすべての開栓後、総合設定を行ってください。お客さま番号：{0}&quot;,
+                        &quot;CXXM23358W&quot;,
+                        &quot;同型式並列設置グループのメーターです。グループすべての開栓後、総合設定を行ってください。お客さま番号：{0}&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L957">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000086,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000086,
+                        &quot;他小売から開栓の申し出があるため受付できません。&quot;,
+                        &quot;CXXM23446E&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L965">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000089,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000089,
+                        &quot;ガスメーター設置場所番号チェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L973">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000090,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000090,
+                        &quot;ガスメーター開閉栓状態チェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L981">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000091,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000091,
+                        &quot;ガス用途コード有無チェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L989">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000092,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000092,
+                        &quot;ガス用途コードチェックエラー&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L997">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000093,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000093,
+                        &quot;該当データがありません。&quot;,
+                        &quot;CXXM20900E&quot;,
+                        &quot;該当データがありません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1005">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020000094,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020000094,
+                        &quot;開栓事由に誤りがあります。&quot;,
+                        &quot;CXXM23448E&quot;,
+                        &quot;開栓事由に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1013">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100012,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100012,
+                        &quot;ガス未使用のため受付できません。正しいお客さまを特定しなおしてください。&quot;,
+                        &quot;CXXM20859E&quot;,
+                        &quot;ガス未使用のため受付できません。正しいお客さまを特定しなおしてください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1021">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100013,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100013,
+                        &quot;メータ社番に誤りがあります。&quot;,
+                        &quot;CXXM23337E&quot;,
+                        &quot;メータ社番に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1029">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100014,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100014,
+                        &quot;メータ取付先の住所と異なります。&quot;,
+                        &quot;CXXM23345E&quot;,
+                        &quot;メータ取付先の住所と異なります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1037">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100016,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100016,
+                        &quot;開栓中のため受付できません。閉栓報告後、登録して下さい。&quot;,
+                        &quot;CXXM20604E&quot;,
+                        &quot;開栓中のため受付できません。閉栓報告後、登録して下さい。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1045">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100018,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100018,
+                        &quot;日付に誤りがあります。&quot;,
+                        &quot;CXXM10494E&quot;,
+                        &quot;日付に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1053">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100019,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100019,
+                        &quot;指示数に誤りがあります。&quot;,
+                        &quot;CXXM20069E&quot;,
+                        &quot;指示数に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1061">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100022,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100022,
+                        &quot;被総合メーターのため、新規使用契約として登録できません。&quot;,
+                        &quot;CXXM23447E&quot;,
+                        &quot;被総合メーターのため、新規使用契約として登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1069">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100023,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100023,
+                        &quot;現在有効の使用者名義で開栓します。開栓後、名義訂正してください。&quot;,
+                        &quot;CXXM23346W&quot;,
+                        &quot;現在有効の使用者名義で開栓します。開栓後、名義訂正してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1077">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100025,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100025,
+                        &quot;直列元メーターが閉栓中のため、開栓登録できません。&quot;,
+                        &quot;CXXM20147E&quot;,
+                        &quot;直列元メーターが閉栓中のため、開栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1085">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100030,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100030,
+                        &quot;供給停止精算待ちのため、開栓登録できません。&quot;,
+                        &quot;CXXM20149E&quot;,
+                        &quot;供給停止精算待ちのため、開栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1093">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100031,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100031,
+                        &quot;託送契約状態に誤りがあるため受付できません。&quot;,
+                        &quot;CXXM23339E&quot;,
+                        &quot;託送契約状態に誤りがあるため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1101">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100032,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100032,
+                        &quot;託送契約番号の入力に誤りがあります。&quot;,
+                        &quot;CXXM23357E&quot;,
+                        &quot;託送契約番号の入力に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1109">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100033,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100033,
+                        &quot;他小売から開栓の申し出があるため受付できません。&quot;,
+                        &quot;CXXM23338E&quot;,
+                        &quot;他小売から開栓の申し出があるため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1117">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100036,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100036,
+                        &quot;解約未済のため受付できません。&quot;,
+                        &quot;CXXM23340E&quot;,
+                        &quot;解約未済のため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1125">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100039,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100039,
+                        &quot;桁数オーバーです。正しい指示数を入力してください。&quot;,
+                        &quot;CXXM20151E&quot;,
+                        &quot;桁数オーバーです。正しい指示数を入力してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1133">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100040,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100040,
+                        &quot;災害時閉栓中のため、開栓登録できません。&quot;,
+                        &quot;CXXM20148E&quot;,
+                        &quot;災害時閉栓中のため、開栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1141">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100041,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100041,
+                        &quot;開栓事由に誤りがあります。&quot;,
+                        &quot;CXXM23448E&quot;,
+                        &quot;開栓事由に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1149">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100045,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100045,
+                        &quot;回収依頼中です。返却報告後に再度報告して下さい。&quot;,
+                        &quot;CXXM23344E&quot;,
+                        &quot;回収依頼中です。返却報告後に再度報告して下さい。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1157">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100046,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100046,
+                        &quot;社用は継続されません。必要に応じて再度申請を行ってください。&quot;,
+                        &quot;CXXM23347W&quot;,
+                        &quot;社用は継続されません。必要に応じて再度申請を行ってください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1165">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100047,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100047,
+                        &quot;日付に誤りがあります。&quot;,
+                        &quot;CXXM10494E&quot;,
+                        &quot;日付に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1173">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100048,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100048,
+                        &quot;同型式並列設置グループのメーターです。グループすべての開栓後、総合設定を行ってください。お客さま番号：{0}&quot;,
+                        &quot;CXXM23358W&quot;,
+                        &quot;同型式並列設置グループのメーターです。グループすべての開栓後、総合設定を行ってください。お客さま番号：{0}&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1181">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100050,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100050,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;CXXM23341E&quot;,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1189">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020100051,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020100051,
+                        &quot;前契約を継続して問題ないか確認が必要です。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1197">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020110051,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020110051,
+                        &quot;前契約を継続します。&quot;,
+                        &quot;CXXM23349W&quot;,
+                        &quot;前契約を継続します。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1205">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020120051,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020120051,
+                        &quot;前契約（総合）を継続します。&quot;,
+                        &quot;CXXM23350W&quot;,
+                        &quot;前契約（総合）を継続します。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1213">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200011,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200011,
+                        &quot;ガスメーター取外済のため受付できません。&quot;,
+                        &quot;CXXM20337E&quot;,
+                        &quot;ガスメーター取外済のため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1221">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200012,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200012,
+                        &quot;メータ社番に誤りがあります。&quot;,
+                        &quot;CXXM23337E&quot;,
+                        &quot;メータ社番に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1229">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200014,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200014,
+                        &quot;開栓中ではないため、閉栓登録できません。&quot;,
+                        &quot;CXXM20722E&quot;,
+                        &quot;開栓中ではないため、閉栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1237">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200015,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200015,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;CXXM23449E&quot;,
+                        &quot;閉栓日に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1245">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200016,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200016,
+                        &quot;使用量に誤りがあります。&quot;,
+                        &quot;CXXM21387E&quot;,
+                        &quot;使用量に誤りがあります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1253">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200020,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200020,
+                        &quot;直列元メーターに紐づく専用メーターが開栓中のため、閉栓できません。&quot;,
+                        &quot;CXXM20724E&quot;,
+                        &quot;CXXM23370E&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1261">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200021,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200021,
+                        &quot;桁数オーバーです。正しい指示数を入力してください。&quot;,
+                        &quot;CXXM20151E&quot;,
+                        &quot;桁数オーバーです。正しい指示数を入力してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1269">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200026,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200026,
+                        &quot;協定中の検針結果が存在するため協定後に報告して下さい。  お客さま番号：{0}&quot;,
+                        &quot;CXXM23362E&quot;,
+                        &quot;協定中の検針結果が存在するため協定後に報告して下さい。  お客さま番号：{0}&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1277">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200034,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200034,
+                        &quot;託送契約状態に誤りがあるため受付できません。&quot;,
+                        &quot;CXXM23339E&quot;,
+                        &quot;託送契約状態に誤りがあるため受付できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1285">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200040,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200040,
+                        &quot;前回のガス調定情報が存在しないため、起算日を特定できません。&quot;,
+                        &quot;CXXM23059E&quot;,
+                        &quot;前回のガス調定情報が存在しないため、起算日を特定できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1293">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200041,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200041,
+                        &quot;元メーターの使用量よりも、専用メーターの使用量が多くなっています。指示数に誤りがないことを確認してください。&quot;,
+                        &quot;CXXM20727C&quot;,
+                        &quot;元メーターの使用量よりも、専用メーターの使用量が多くなっています。指示数に誤りがないことを確認してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1301">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200042,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200042,
+                        &quot;報告使用量と算出使用量が一致しないため、閉栓できません。 算出使用量：{0}&quot;,
+                        &quot;CXXM23363E&quot;,
+                        &quot;報告使用量と算出使用量が一致しないため、閉栓できません。 算出使用量：{0}&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1309">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200043,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200043,
+                        &quot;最終検針日から規定日数を超過しているため、閉栓登録できません。&quot;,
+                        &quot;CXXM23364E&quot;,
+                        &quot;最終検針日から規定日数を超過しているため、閉栓登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1317">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200044,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200044,
+                        &quot;マイナス使用量です。指示数に誤りがないことを確認してください。&quot;,
+                        &quot;CXXM20732C&quot;,
+                        &quot;マイナス使用量です。指示数に誤りがないことを確認してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1325">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200045,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200045,
+                        &quot;今回使用量が通常使用量の日割り換算後使用量と比較して大きく異なります。&quot;,
+                        &quot;CXXM23367W&quot;,
+                        &quot;今回使用量が通常使用量の日割り換算後使用量と比較して大きく異なります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1333">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200046,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200046,
+                        &quot;保安・災害閉栓中のメーターがあるため、閉栓登録ができません。&quot;,
+                        &quot;CXXM23365E&quot;,
+                        &quot;保安・災害閉栓中のメーターがあるため、閉栓登録ができません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1341">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200047,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200047,
+                        &quot;臨時検針が報告されていないため、報告できません。契約担当課所に確認してください。&quot;,
+                        &quot;CXXM23366E&quot;,
+                        &quot;臨時検針が報告されていないため、報告できません。契約担当課所に確認してください。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1349">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200048,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200048,
+                        &quot;スイッチング受付があるため、登録できません。&quot;,
+                        &quot;CXXM23543E&quot;,
+                        &quot;スイッチング受付があるため、登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1357">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200049,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200049,
+                        &quot;閉栓予定日と報告された閉栓日が異なります。&quot;,
+                        &quot;CXXM23368W&quot;,
+                        &quot;閉栓予定日と報告された閉栓日が異なります。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1365">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200050,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200050,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;CXXM23341E&quot;,
+                        &quot;専用メーターが契約中のため、登録できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1373">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200051,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200051,
+                        &quot;メーターの検定有効期間を超過しています。&quot;,
+                        &quot;CXXM27814W&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1381">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_020200053,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_020200053,
+                        &quot;他小売開栓落成待ちのため、報告できません。&quot;,
+                        &quot;CXXM23377E&quot;,
+                        &quot;他小売開栓落成待ちのため、報告できません。&quot;,
+                        &quot;&quot;));
+<span class="fc" id="L1389">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_030000001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_030000001,
+                        &quot;DBエラーが発生しました。&quot;,
+                        &quot;CXXM21597E&quot;,
+                        &quot;システムエラーです。（{0}）（{1}）&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1397">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_030100001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_030100001,
+                        &quot;デッドロックのため処理できません。テーブル：{1}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1405">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_030200001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_030200001,
+                        &quot;{1}テーブルの情報が存在しないため処理できません。DA：{2}, 検索キー：{3}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1413">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_030300001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_030300001,
+                        &quot;主キー重複のため処理できません。テーブル：{1}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1421">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_030400001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_030400001,
+                        &quot;{1}テーブルを他のユーザーが更新したため処理できません。DA：{2}, 検索キー：{3}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1429">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_040000001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_040000001,
+                        &quot;外部システムエラーのため処理できません。&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1437">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_040100001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_040100001,
+                        &quot;CIRIUS APIエラーのため処理できません。API：{1}, リクエストパラメータ: {2}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1445">        mutable.put(</span>
+                ErrorCodeConstants.ERROR_CODE_040200001,
+                new ErrorDefinition(
+                        ErrorCodeConstants.ERROR_CODE_040200001,
+                        &quot;MA APIエラーのため処理できません。API：{1}, リクエストパラメータ: {2}&quot;,
+                        &quot;&quot;,
+                        &quot;&quot;,
+                        &quot;990000000&quot;));
+<span class="fc" id="L1453">        return Map.copyOf(mutable);</span>
+    }
+
+    /**
+     * 登録済みの全エラーコード一覧を返す。
+     *
+     * @return エラーコードのリスト
+     */
+    public static List&lt;String&gt; listRegisteredErrorCodes() {
+<span class="nc" id="L1462">        return new ArrayList&lt;&gt;(DEFINITIONS.keySet());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

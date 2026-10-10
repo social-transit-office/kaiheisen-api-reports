@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningReportVariousJudgmentProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingreportvariousjudgmentprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningReportVariousJudgmentProcessImpl.java</span></div><h1>OpeningReportVariousJudgmentProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AlternativeJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AlternativeJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContinuedUseContractContinuationJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContinuedUseContractContinuationJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractExistenceJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractExistenceJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNameEditForOpeningCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNameEditForOpeningCheckOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportVariousJudgmentProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportVariousJudgmentProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContinuedUseContractSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContinuedUseContractSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TskgmstInf;
+
+/**
+ * 概要: SV-165（開栓報告各種判定処理）の実装クラス.
+ * 主な仕様:
+ * - SV-171 で契約有無を判定し、継続使用時のみ SV-172 を実行する。
+ * - SV-173 と、継続使用・供給再開・保安復旧・災害復旧時に 2 回の SV-174 を実行し、下位 SV の戻り値を合成して返却する。
+ * - RequestContext の必須値は下位 SV 呼出し前に fail-fast で検査する。
+ * 既知の制約:
+ * - output_patterns.condition の文言は不整合があるが、Phase B 合意に従い継続使用時のみ SV-172 を実行する。
+ */
+public final class OpeningReportVariousJudgmentProcessImpl
+        implements OpeningReportVariousJudgmentProcess {
+
+        /** 開栓時契約有無判定サービス. */
+    private final ContractExistenceJudgmentAtOpening
+            contractExistenceJudgmentAtOpening;
+
+        /** 開栓時継続使用契約継続判定サービス. */
+    private final ContinuedUseContractContinuationJudgmentAtOpening
+            continuedUseContractContinuationJudgmentAtOpening;
+
+        /** 開栓時代替判定サービス. */
+    private final AlternativeJudgmentAtOpening alternativeJudgmentAtOpening;
+
+        /** 開栓時チェック用おなまえ編集サービス. */
+    private final CustomerNameEditForOpeningCheck
+            customerNameEditForOpeningCheck;
+
+        /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 継続使用の定数値. */
+    private final String continuedUseReason;
+
+    /** 供給再開の定数値. */
+    private final String supplyResumedReason;
+
+    /** 保安復旧の定数値. */
+    private final String securityRestorationReason;
+
+    /** 災害復旧の定数値. */
+    private final String disasterRecoveryReason;
+
+    /**
+     * 概要: 必須依存と開栓事由種別判定用定数を初期化する.
+     * 主な仕様:
+     * - 下位 SV と RequestContext を fail-fast で保持する。
+     * - 報告開栓事由種別 04900 の継続使用・供給再開・保安復旧・災害復旧コードをコンストラクタで解決する。
+     *
+     * @param contractExistenceJudgmentService 開栓時契約有無判定サービス
+     * @param continuedUseJudgmentService 開栓時継続使用契約継続判定サービス
+     * @param alternativeJudgmentService 開栓時代替判定サービス
+     * @param customerNameEditService 開栓時チェック用おなまえ編集サービス
+     * @param currentRequestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public OpeningReportVariousJudgmentProcessImpl(
+            final ContractExistenceJudgmentAtOpening
+                    contractExistenceJudgmentService,
+            final ContinuedUseContractContinuationJudgmentAtOpening
+                    continuedUseJudgmentService,
+            final AlternativeJudgmentAtOpening alternativeJudgmentService,
+            final CustomerNameEditForOpeningCheck customerNameEditService,
+            final RequestContext currentRequestContext,
+<span class="fc" id="L96">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L97">        this.contractExistenceJudgmentAtOpening = Objects.requireNonNull(</span>
+                contractExistenceJudgmentService,
+                &quot;contractExistenceJudgmentAtOpening&quot;);
+<span class="fc" id="L100">        this.continuedUseContractContinuationJudgmentAtOpening =</span>
+<span class="fc" id="L101">                Objects.requireNonNull(</span>
+                        continuedUseJudgmentService,
+                        &quot;continuedUseContractContinuationJudgmentAtOpening&quot;);
+<span class="fc" id="L104">        this.alternativeJudgmentAtOpening = Objects.requireNonNull(</span>
+                alternativeJudgmentService,
+                &quot;alternativeJudgmentAtOpening&quot;);
+<span class="fc" id="L107">        this.customerNameEditForOpeningCheck = Objects.requireNonNull(</span>
+                customerNameEditService,
+                &quot;customerNameEditForOpeningCheck&quot;);
+<span class="fc" id="L110">        this.requestContext = Objects.requireNonNull(</span>
+                currentRequestContext,
+                &quot;requestContext&quot;);
+<span class="fc" id="L113">        CiriusConstantService resolvedService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L116">        this.continuedUseReason =</span>
+<span class="fc" id="L117">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType
+                                .CONTINUED_USE);
+<span class="fc" id="L122">        this.supplyResumedReason =</span>
+<span class="fc" id="L123">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType
+                                .SUPPLY_RESUMED);
+<span class="fc" id="L128">        this.securityRestorationReason =</span>
+<span class="fc" id="L129">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType
+                                .SECURITY_RESTORATION);
+<span class="fc" id="L134">        this.disasterRecoveryReason =</span>
+<span class="fc" id="L135">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType
+                                .DISASTER_RECOVERY);
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * 概要: 開栓報告各種判定処理を実行する.
+     * 主な仕様:
+     * - RequestContext の必須値を先に検証し、以降の子SV呼出し条件を確定する。
+     * - 継続使用以外では SV-172 をスキップし、該当フラグは false で返却する。
+     * - SV-174 は継続使用・供給再開・保安復旧・災害復旧時に、閉栓時と開栓時で 2 回呼び出す。
+     * 既知の制約:
+     * - public 引数の null 妥当性は上位層責務とし、必要な箇所での自然な fail-fast に委ねる。
+     */
+    @Override
+    public OpeningReportVariousJudgmentProcessOutput
+            execute(
+            final String kasJysb,
+            final String tgTkurKbn,
+            final LocalDate kasgYmd,
+            final String ctnmKn1Ksen,
+            final String ctnm1HujnShbtKsen,
+            final String ctnm1HshiShbtKsen,
+            final TskgmstInf tskgmstInf,
+            final TkssvkyInf tkssvkyInf,
+            final OpeningReportJudgmentSvmstkrInf svmstkrInf,
+            final OpeningReportJudgmentSvckyaInf svckyaInf,
+            final GmtsetdInf gmtsetdInf,
+            final OpeningReportJudgmentSihakyInf sihakyInf,
+            final KiycstInf kiycstInf,
+            final Boolean ksenYmdTskgmstUmFlg,
+            final Boolean ksenYmdSvmstkrUmFlg,
+            final Boolean snyTkmtFlg,
+            final Boolean sknrUmFlg,
+            final String kzksyAtkCd) {
+<span class="fc" id="L172">        validateRequestContext();</span>
+<span class="fc" id="L173">        boolean continuedUse = isContinuedUse(kasJysb);</span>
+<span class="fc" id="L174">        boolean requiresCustomerNameCheck = requiresCustomerNameCheck(kasJysb);</span>
+
+<span class="fc" id="L176">        ContractExistenceJudgmentAtOpeningOutput contractExistenceOutput =</span>
+<span class="fc" id="L177">                contractExistenceJudgmentAtOpening.execute(</span>
+                        ksenYmdTskgmstUmFlg,
+                        tskgmstInf,
+                        ksenYmdSvmstkrUmFlg,
+<span class="fc" id="L181">                        toContractExistenceSvmstkrInf(svmstkrInf),</span>
+<span class="fc" id="L182">                        svckyaInf.svkyJtkb());</span>
+
+<span class="fc" id="L184">        Boolean contractExists = contractExistenceOutput.kiyUmFlg();</span>
+        ContinuedUseContractContinuationJudgmentAtOpeningOutput
+<span class="fc" id="L186">                continuedUseOutput = null;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (continuedUse) {</span>
+<span class="fc" id="L188">            continuedUseOutput =</span>
+                    continuedUseContractContinuationJudgmentAtOpening
+<span class="fc" id="L190">                            .execute(</span>
+                                    tgTkurKbn,
+                                    kasgYmd,
+                                    contractExists,
+                                    kzksyAtkCd,
+                                    tkssvkyInf,
+                                    new ContinuedUseContractSvckyaInf(
+<span class="fc" id="L197">                                            svckyaInf.kiyShbt()),</span>
+                                    gmtsetdInf,
+                                    new ContinuedUseContractSihakyInf(
+<span class="fc" id="L200">                                            sihakyInf.sikSvcShbt()));</span>
+        }
+
+<span class="fc" id="L203">        Boolean judgment4xFlag = Boolean.TRUE.equals(extractJudgment4xFlag(continuedUseOutput));</span>
+<span class="fc" id="L204">        AlternativeJudgmentAtOpeningOutput alternativeOutput =</span>
+<span class="fc" id="L205">                alternativeJudgmentAtOpening.execute(</span>
+                        kasJysb,
+                        snyTkmtFlg,
+                        judgment4xFlag,
+                        sknrUmFlg);
+        CustomerNameEditForOpeningCheckOutput closingCustomerNameOutput =
+<span class="fc bfc" id="L211" title="All 2 branches covered.">                requiresCustomerNameCheck</span>
+<span class="fc" id="L212">                        ? executeCustomerNameEditIfPresent(</span>
+<span class="fc" id="L213">                                kiycstInf.ctnmKn1(),</span>
+<span class="fc" id="L214">                                kiycstInf.ctnm1HujnShbt(),</span>
+<span class="fc" id="L215">                                kiycstInf.ctnm1HshiShbt())</span>
+<span class="fc" id="L216">                        : new CustomerNameEditForOpeningCheckOutput(null);</span>
+        CustomerNameEditForOpeningCheckOutput openingCustomerNameOutput =
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                requiresCustomerNameCheck</span>
+<span class="fc" id="L219">                        ? executeCustomerNameEditIfPresent(</span>
+                                ctnmKn1Ksen,
+                                ctnm1HujnShbtKsen,
+                                ctnm1HshiShbtKsen)
+<span class="fc" id="L223">                        : new CustomerNameEditForOpeningCheckOutput(null);</span>
+
+<span class="fc" id="L225">        return new OpeningReportVariousJudgmentProcessOutput(</span>
+                contractExists,
+<span class="fc" id="L227">                Boolean.TRUE.equals(judgment4xFlag),</span>
+<span class="fc" id="L228">                Boolean.TRUE.equals(extractJudgment3xFlag(continuedUseOutput)),</span>
+<span class="fc" id="L229">                Boolean.TRUE.equals(extractJudgment2xFlag(continuedUseOutput)),</span>
+<span class="fc" id="L230">                Boolean.TRUE.equals(extractRevivalFlag(continuedUseOutput)),</span>
+<span class="fc" id="L231">                extractBillingServiceCategory(continuedUseOutput),</span>
+<span class="fc" id="L232">                alternativeOutput.digwrHntFlg(),</span>
+<span class="fc" id="L233">                alternativeOutput.sknrUmFlg(),</span>
+<span class="fc" id="L234">                closingCustomerNameOutput.chkCtnm1Kn(),</span>
+<span class="fc" id="L235">                openingCustomerNameOutput.chkCtnm1Kn());</span>
+    }
+
+    private CustomerNameEditForOpeningCheckOutput executeCustomerNameEditIfPresent(
+            String ctnmKn1,
+            String ctnm1HujnShbt,
+            String ctnm1HshiShbt) {
+<span class="pc bpc" id="L242" title="5 of 6 branches missed.">        if (isBlank(ctnmKn1) &amp;&amp; isBlank(ctnm1HujnShbt) &amp;&amp; isBlank(ctnm1HshiShbt)) {</span>
+<span class="nc" id="L243">            return new CustomerNameEditForOpeningCheckOutput(null);</span>
+        }
+<span class="fc" id="L245">        return customerNameEditForOpeningCheck.execute(</span>
+                ctnmKn1,
+                ctnm1HujnShbt,
+                ctnm1HshiShbt);
+    }
+
+    private static boolean isBlank(String value) {
+<span class="pc bpc" id="L252" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+
+    private Boolean extractJudgment4xFlag(
+            final ContinuedUseContractContinuationJudgmentAtOpeningOutput
+                    continuedUseOutput) {
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        return continuedUseOutput == null</span>
+<span class="fc" id="L259">                ? null</span>
+<span class="fc" id="L260">                : continuedUseOutput.syoriHnt4XFlg();</span>
+    }
+
+    private Boolean extractJudgment3xFlag(
+            final ContinuedUseContractContinuationJudgmentAtOpeningOutput
+                    continuedUseOutput) {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        return continuedUseOutput == null</span>
+<span class="fc" id="L267">                ? null</span>
+<span class="fc" id="L268">                : continuedUseOutput.syoriHnt3XFlg();</span>
+    }
+
+    private Boolean extractJudgment2xFlag(
+            final ContinuedUseContractContinuationJudgmentAtOpeningOutput
+                    continuedUseOutput) {
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        return continuedUseOutput == null</span>
+<span class="fc" id="L275">                ? null</span>
+<span class="fc" id="L276">                : continuedUseOutput.syoriHnt2XFlg();</span>
+    }
+
+    private Boolean extractRevivalFlag(
+            final ContinuedUseContractContinuationJudgmentAtOpeningOutput
+                    continuedUseOutput) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        return continuedUseOutput == null</span>
+<span class="fc" id="L283">                ? null</span>
+<span class="fc" id="L284">                : continuedUseOutput.syoriHntFkktFlg();</span>
+    }
+
+    private String extractBillingServiceCategory(
+            final ContinuedUseContractContinuationJudgmentAtOpeningOutput
+                    continuedUseOutput) {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        return continuedUseOutput == null</span>
+<span class="fc" id="L291">                ? null</span>
+<span class="fc" id="L292">                : continuedUseOutput.sqsvsHnsb();</span>
+    }
+
+    private boolean isContinuedUse(final String kasJysb) {
+<span class="fc" id="L296">        return kasJysb.equals(continuedUseReason);</span>
+    }
+
+    private boolean requiresCustomerNameCheck(final String kasJysb) {
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        return isContinuedUse(kasJysb)</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">                || kasJysb.equals(supplyResumedReason)</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                || kasJysb.equals(securityRestorationReason)</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                || kasJysb.equals(disasterRecoveryReason);</span>
+    }
+
+    private SvmstkrInf toContractExistenceSvmstkrInf(
+            final OpeningReportJudgmentSvmstkrInf svmstkrInf) {
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">        return svmstkrInf == null</span>
+<span class="nc" id="L309">                ? null</span>
+<span class="fc" id="L310">                : new SvmstkrInf(svmstkrInf.rkkiKnrnJtkb());</span>
+    }
+
+    private void validateRequestContext() {
+<span class="fc" id="L314">        requireCorrelationIdentifier();</span>
+<span class="fc" id="L315">        requireReportingSystemType();</span>
+<span class="fc" id="L316">        requireRequestSystemDatetime();</span>
+<span class="fc" id="L317">    }</span>
+
+    private String requireCorrelationIdentifier() {
+<span class="fc" id="L320">        return requestContext.getCorrelationId().orElseThrow(</span>
+<span class="fc" id="L321">                () -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.correlationId is required&quot;));
+    }
+
+    private String requireReportingSystemType() {
+<span class="fc" id="L326">        return requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L327">                () -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.hukkSysShbt is required&quot;));
+    }
+
+    private LocalDateTime requireRequestSystemDatetime() {
+<span class="fc" id="L332">        return requestContext.getSystemDatetime().orElseThrow(</span>
+<span class="fc" id="L333">                () -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

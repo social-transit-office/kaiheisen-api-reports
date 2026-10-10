@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractExistenceJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractexistencejudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractExistenceJudgmentAtOpeningImpl.java</span></div><h1>ContractExistenceJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractExistenceJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractExistenceJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TskgmstInf;
+
+/**
+ * 概要: 開栓時契約有無判定サービス実装。
+ * 主な仕様:
+ * - 託送サービス契約関連有無フラグが true かつ、託送サービス契約関連状態区分が適用中の場合は契約ありと判定する。
+ * - サービス契約関連有無フラグが true かつ、料金計算関連状態区分が関連終了かつサービス契約状態区分が契約適用中の場合も契約ありと判定する。
+ * - 判定に利用する CIRIUS 定数はコンストラクタで fail-fast に解決する。
+ */
+public final class ContractExistenceJudgmentAtOpeningImpl
+        implements ContractExistenceJudgmentAtOpening {
+
+    private final String transportationServiceContractRelatedStatusApplying;
+
+    private final String chargeCalculationRelatedStatusEnded;
+
+    private final String serviceContractStatusUnderContract;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を初期化する。
+     * 主な仕様:
+     * - 託送サービス契約関連状態区分「適用中」を解決する。
+     * - 料金計算関連状態区分「関連終了」とサービス契約状態区分「契約適用中」を解決する。
+     * 既知の制約:
+     * - 必須定数不足時はコンストラクタ初期化時点で失敗する。
+     *
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+<span class="fc" id="L38">    public ContractExistenceJudgmentAtOpeningImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L39">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L40">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L41">        this.transportationServiceContractRelatedStatusApplying =</span>
+<span class="fc" id="L42">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L46">        this.chargeCalculationRelatedStatusEnded = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L50">        this.serviceContractStatusUnderContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * 概要: 開栓時点の契約有無を判定する。
+     * 主な仕様:
+     * - 託送サービス契約関連有無フラグが true かつ託送サービス契約関連状態区分が適用中なら契約ありを返す。
+     * - サービス契約関連有無フラグが true かつ料金計算関連状態区分が関連終了、かつサービス契約状態区分が契約適用中なら契約ありを返す。
+     * 既知の制約:
+     * - `Boolean` フラグや DTO 参照が null の場合は条件不成立として扱う。
+     * - 状態区分の比較は完全一致のみで行う。
+     *
+     * @param ksenYmdTskgmstUmFlg 開栓日時点託送サービス契約・ガスメーター設置場所関連有無フラグ
+     * @param tskgmstInf 託送サービス契約・ガスメーター設置場所関連情報
+     * @param ksenYmdSvmstkrUmFlg 開栓日時点サービス契約・メーター設置場所関連有無フラグ
+     * @param svmstkrInf サービス契約・メーター設置場所関連情報
+     * @param svkyJtkb サービス契約状態区分
+     * @return 契約有無判定結果
+     */
+    @Override
+    public ContractExistenceJudgmentAtOpeningOutput execute(
+            Boolean ksenYmdTskgmstUmFlg,
+            TskgmstInf tskgmstInf,
+            Boolean ksenYmdSvmstkrUmFlg,
+            SvmstkrInf svmstkrInf,
+            String svkyJtkb) {
+<span class="fc bfc" id="L79" title="All 4 branches covered.">        boolean hasConsignmentContract = Boolean.TRUE.equals(ksenYmdTskgmstUmFlg)</span>
+                &amp;&amp; tskgmstInf != null
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L82">                        tskgmstInf.tksuSvkkJtkb(),</span>
+                        transportationServiceContractRelatedStatusApplying);
+<span class="fc bfc" id="L84" title="All 4 branches covered.">        boolean hasServiceContract = Boolean.TRUE.equals(ksenYmdSvmstkrUmFlg)</span>
+                &amp;&amp; svmstkrInf != null
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                &amp;&amp; Objects.equals(svmstkrInf.rkkiKnrnJtkb(), chargeCalculationRelatedStatusEnded)</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                &amp;&amp; Objects.equals(svkyJtkb, serviceContractStatusUnderContract);</span>
+
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        return new ContractExistenceJudgmentAtOpeningOutput(</span>
+<span class="fc" id="L90">                hasConsignmentContract || hasServiceContract);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCommonForceOtherRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_other</a> &gt; <span class="el_source">ClosingCommonForceOtherRetailResource.java</span></div><h1>ClosingCommonForceOtherRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_other;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-069 閉栓共通処理 強制入力 他小売 API のリソース実装。
+ */
+@Path(ClosingCommonForceOtherRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-069&quot;, name = &quot;閉栓共通処理 強制入力 他小売 API&quot;)
+@Tag(name = &quot;閉栓共通処理 強制入力 他小売&quot;, description = &quot;MA-069 閉栓共通処理 強制入力 他小売 API&quot;)
+public class ClosingCommonForceOtherRetailResource
+        extends BaseResource&lt;ClosingCommonForceOtherRetailRequest&gt; {
+
+    private static final char HALF_WIDTH_SPACE = ' ';
+
+    private static final char FULL_WIDTH_SPACE = '　';
+
+    /** サービスユーザー ID。 */
+    private static final String SERVICE_USER_ID = &quot;KHSM069&quot;;
+
+    /** フォロー担当地域統括コードの空白値。 */
+<span class="fc" id="L67">    private static final String DEFAULT_FOLLOW_CKTK_CD = repeat(HALF_WIDTH_SPACE, 3);</span>
+
+    /** フォロー担当拠点コードの空白値。 */
+<span class="fc" id="L70">    private static final String DEFAULT_FOLLOW_KTN_CD = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** お客さま名カナ1の空白値。 */
+<span class="fc" id="L73">    private static final String DEFAULT_CUSTOMER_NAME_KANA = repeat(HALF_WIDTH_SPACE, 30);</span>
+
+    /** お客さま名漢字1の空白値。 */
+<span class="fc" id="L76">    private static final String DEFAULT_CUSTOMER_NAME_KANJI = repeat(FULL_WIDTH_SPACE, 15);</span>
+
+    /** お客さま名漢字表示可否フラグの空白値。 */
+<span class="fc" id="L79">    private static final String DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** お客さま名1法人種別の空白値。 */
+<span class="fc" id="L82">    private static final String DEFAULT_CUSTOMER_CORPORATE_TYPE = repeat(HALF_WIDTH_SPACE, 2);</span>
+
+    /** お客さま名1法人種別表示位置種別の空白値。 */
+<span class="fc" id="L85">    private static final String DEFAULT_CUSTOMER_CORPORATE_POSITION_TYPE = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 閉栓エラーフォロー DataAccess。 */
+    private final HseflDataAccess hseflDataAccess;
+
+    /** 契約お客さま DataAccess。 */
+    private final KiycstdDataAccess kiycstdDataAccess;
+
+    /** 区分別エリアマスタ DataAccess。 */
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    /** フォロー状況コード。 */
+    private final String followStatusCode;
+
+    /** 開閉栓定数サービス。 */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエストバリデータ
+     * @param clock システム日時プロバイダ
+     * @param hseflDataAccess HSEFL DataAccess
+     * @param kiycstdDataAccess KIYCSTD DataAccess
+     * @param kbagmstDataAccess KBAGMST DataAccess
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public ClosingCommonForceOtherRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            HseflDataAccess hseflDataAccess,
+            KiycstdDataAccess kiycstdDataAccess,
+            KbagmstDataAccess kbagmstDataAccess,
+            CiriusConstantService ciriusConstantService,
+                KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L124">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L125">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L126">        this.kiycstdDataAccess = Objects.requireNonNull(kiycstdDataAccess, &quot;kiycstdDataAccess&quot;);</span>
+<span class="fc" id="L127">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L128">        this.followStatusCode = RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L129">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L132">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L133">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * MA-069 を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;閉栓共通処理-強制入力-小売-他小売&quot;,
+            description = &quot;閉栓エラーフォロー件名へ強制処理データを登録する。&quot;,
+            operationId = &quot;postClosingCommonForceOtherRetail&quot;)
+    @RequestBody(required = true, content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = ClosingCommonForceOtherRetailRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;強制処理データの登録結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingCommonForceOtherRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingCommonForceOtherRetailResponse endpoint(ClosingCommonForceOtherRetailRequest request) {
+<span class="fc" id="L170">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    ClosingCommonForceOtherRetailResponse handle(ClosingCommonForceOtherRetailRequest request) {
+<span class="fc" id="L174">        LocalDate hsenHkkYmd = Rfc3339LocalDateParser.parse(request.hsenHkkYmd().trim());</span>
+<span class="fc" id="L175">        LocalDate hssgYmd = Rfc3339LocalDateParser.parse(request.hssgYmd().trim());</span>
+<span class="fc" id="L176">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L177">        Long gasMtstNo = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc" id="L178">        Long syoKyoTrno = Long.valueOf(request.syoKyoTrno().trim());</span>
+<span class="fc" id="L179">        Integer nextRegTsno = resolveNextRegTsno(gasMtstNo, hssgYmd, hsenHkkYmd);</span>
+<span class="fc" id="L180">        KiycstdRecord customer = findKiycstd(syoKyoTrno);</span>
+<span class="fc" id="L181">        KbagmstRecord area = findKbagmst(gasMtstNo, hssgYmd);</span>
+
+<span class="fc" id="L183">        HseflWriteRecord writeRecord = new HseflWriteRecord(</span>
+                gasMtstNo,
+                hssgYmd,
+                hsenHkkYmd,
+                nextRegTsno,
+<span class="fc" id="L188">                requestContext.getHukkSysShbt().orElse(null),</span>
+<span class="fc" id="L189">                request.sgyAnknNo(),</span>
+                followStatusCode,
+                null,
+                syoKyoTrno,
+<span class="fc" id="L193">                request.gmb(),</span>
+<span class="fc" id="L194">                request.hesnJysb(),</span>
+<span class="fc" id="L195">                request.hsenErrRyCd(),</span>
+<span class="fc" id="L196">                resolveFollowAreaChiefCode(area),</span>
+<span class="fc" id="L197">                resolveFollowAreaBranchCode(area),</span>
+<span class="fc" id="L198">                request.sgytNwkCd(),</span>
+<span class="fc" id="L199">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L200">                request.sagyTntEmpNmKj(),</span>
+<span class="fc" id="L201">                Long.valueOf(request.gmtShjSu().trim()),</span>
+<span class="fc" id="L202">                new BigDecimal(request.gasSyry().trim()),</span>
+<span class="fc" id="L203">                request.sjskKbn(),</span>
+                null,
+                null,
+                null,
+<span class="fc" id="L207">                request.utidxNo(),</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                customer != null ? customer.ctnmKn1() : DEFAULT_CUSTOMER_NAME_KANA,</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                customer != null ? customer.ctnmKj1() : DEFAULT_CUSTOMER_NAME_KANJI,</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                customer != null</span>
+<span class="fc" id="L211">                    ? toFlagOrDefault(customer.ctnmKjhkFlg())</span>
+<span class="fc" id="L212">                    : DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG,</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                customer != null ? customer.ctnm1HujnShbt() : DEFAULT_CUSTOMER_CORPORATE_TYPE,</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                customer != null ? customer.ctnm1HshiShbt() : DEFAULT_CUSTOMER_CORPORATE_POSITION_TYPE,</span>
+                null,
+                null,
+                null,
+                null,
+                null);
+
+<span class="fc" id="L221">        hseflDataAccess.insert(</span>
+                writeRecord,
+<span class="fc" id="L223">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+
+<span class="fc" id="L225">        String correlationId = requestContext</span>
+<span class="fc" id="L226">                .getCorrelationId()</span>
+<span class="pc" id="L227">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L228">        return new ClosingCommonForceOtherRetailResponse(correlationId);</span>
+    }
+
+    private Integer resolveNextRegTsno(Long gasMtstNo, LocalDate hssgYmd, LocalDate hsenHkkYmd) {
+<span class="fc" id="L232">        return hseflDataAccess.findAllByGasMtstNoAndHssgYmdAndHesnHukkYmd(gasMtstNo, hssgYmd, hsenHkkYmd)</span>
+<span class="fc" id="L233">                .stream()</span>
+<span class="fc" id="L234">                .map(HseflRecord::regTsno)</span>
+<span class="fc" id="L235">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L236">                .max(Comparator.naturalOrder())</span>
+<span class="fc" id="L237">                .map(value -&gt; value + 1)</span>
+<span class="fc" id="L238">                .orElse(1);</span>
+    }
+
+    private KiycstdRecord findKiycstd(Long syoKyoTrno) {
+<span class="fc" id="L242">        return kiycstdDataAccess.findByKyoTrkNo(syoKyoTrno).orElse(null);</span>
+    }
+
+    private KbagmstRecord findKbagmst(Long gasMtstNo, LocalDate hssgYmd) {
+<span class="fc" id="L246">        YearMonth knskKjnYm = YearMonth.of(hssgYmd.getYear(), hssgYmd.getMonthValue());</span>
+<span class="fc" id="L247">        return kbagmstDataAccess.findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, knskKjnYm)</span>
+<span class="fc" id="L248">                .orElse(null);</span>
+    }
+
+    private String toFlag(Boolean value) {
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (Boolean.TRUE.equals(value)) {</span>
+<span class="fc" id="L253">            return &quot;1&quot;;</span>
+        }
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (Boolean.FALSE.equals(value)) {</span>
+<span class="nc" id="L256">            return &quot;0&quot;;</span>
+        }
+<span class="fc" id="L258">        return null;</span>
+    }
+
+    private String toFlagOrDefault(Boolean value) {
+<span class="fc" id="L262">        return Objects.requireNonNullElse(toFlag(value), DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG);</span>
+    }
+
+    private String resolveFollowAreaChiefCode(KbagmstRecord area) {
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (area == null) {</span>
+<span class="fc" id="L267">            return DEFAULT_FOLLOW_CKTK_CD;</span>
+        }
+<span class="fc" id="L269">        return Objects.requireNonNullElse(area.kbabCktkCd(), DEFAULT_FOLLOW_CKTK_CD);</span>
+    }
+
+    private String resolveFollowAreaBranchCode(KbagmstRecord area) {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (area == null) {</span>
+<span class="fc" id="L274">            return DEFAULT_FOLLOW_KTN_CD;</span>
+        }
+<span class="fc" id="L276">        return Objects.requireNonNullElse(area.kbabKtnCd(), DEFAULT_FOLLOW_KTN_CD);</span>
+    }
+
+    private static String repeat(char character, int count) {
+<span class="fc" id="L280">        return String.valueOf(character).repeat(count);</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L284">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L285">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L286">        String reportingSystemType = ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE;</span>
+        try {
+<span class="fc" id="L288">            return kaiheisenConstantService.findNameByTypeAndValue(reportingSystemType, hukkSysShbt);</span>
+<span class="fc" id="L289">        } catch (ConstantDefinitionNotFoundException ex) {</span>
+<span class="fc" id="L290">            throw new KaiheisenException(&quot;報告システム種別の定数定義が見つかりません&quot;, ex);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

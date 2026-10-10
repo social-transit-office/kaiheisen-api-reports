@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GmtsetkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-gmtsetk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.gmtsetk</a> &gt; <span class="el_source">GmtsetkDataAccessImpl.java</span></div><h1>GmtsetkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.gmtsetk;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkTkysJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkTyenUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** GMTSETK データアクセスの JPA 実装。 */
+public class GmtsetkDataAccessImpl extends DataAccessBase implements GmtsetkDataAccess {
+
+    private static final String TABLE_NAME = &quot;GMTSETK&quot;;
+
+    private static final String U001_BASE_WHERE_CLAUSE = &quot;GAS_MTST_NO = ? AND TKYS_YMD = ?&quot;;
+
+    private static final String U002_WHERE_CLAUSE = &quot;GAS_MTST_NO = ? AND TYEN_YMD = ?&quot;;
+
+<span class="fc" id="L44">    private static final ReflectiveRecordEntityMapper&lt;GmtsetkRecord, GmtsetkEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L45">            ReflectiveRecordEntityMapper.create(GmtsetkRecord.class, GmtsetkEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;GmtsetkWriteRecord, GmtsetkEntity&gt;
+<span class="fc" id="L48">            WRITE_MAPPER =</span>
+<span class="fc" id="L49">                    ReflectiveRecordEntityMapper.create(</span>
+                            GmtsetkWriteRecord.class, GmtsetkEntity.class);
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;GmtsetkEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;GmtsetkWriteRecord, GmtsetkEntity, GmtsetkColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;GmtsetkWriteRecord, GmtsetkEntity, GmtsetkColumn&gt;
+            updateSupport;
+
+    /**
+     * JPA ベースの GMTSETK データアクセスを生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param criteriaBuilderFactory Blaze Persistence CriteriaBuilderFactory
+     */
+    public GmtsetkDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="fc" id="L75">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L80">    }</span>
+
+    GmtsetkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="nc" id="L86">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L87">    }</span>
+
+    GmtsetkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L93">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L94">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L95">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L96">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L97">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L98">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(GmtsetkEntity.class);</span>
+<span class="fc" id="L99">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L100">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L101">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        GmtsetkWriteDefinition.INSTANCE,
+                        GmtsetkEntity.class,
+<span class="fc" id="L107">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L108">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        GmtsetkWriteDefinition.INSTANCE,
+                        GmtsetkEntity.class,
+<span class="fc" id="L114">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L115">    }</span>
+
+    @Override
+    public int insert(GmtsetkWriteRecord record, AuditContext context) {
+<span class="fc" id="L119">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L120">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L121">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L124">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L125">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public Optional&lt;GmtsetkRecord&gt; findByGasMtstNoAndTkysYmd(Long gasMtstNo, LocalDate tkysYmd) {
+<span class="fc" id="L130">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L131">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+
+<span class="fc" id="L133">        GmtsetkId id = new GmtsetkId(safeGasMtstNo, safeTkysYmd);</span>
+<span class="fc" id="L134">        GmtsetkEntity entity = entityManager.find(GmtsetkEntity.class, id);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        if (entity == null) {</span>
+<span class="nc" id="L136">            return Optional.empty();</span>
+        }
+<span class="fc" id="L138">        return Optional.of(READ_MAPPER.toRecord(entity));</span>
+    }
+
+    @Override
+    public Optional&lt;GmtsetkRecord&gt; findByGasMtstNoAndTkysYmdAndTyenYmd(
+            Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L144">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L145">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+
+<span class="fc" id="L147">        var builder = criteriaBuilderFactory.create(entityManager, GmtsetkEntity.class);</span>
+<span class="fc" id="L148">        JpaWhere.eq(builder, &quot;gasMtstNo&quot;, safeGasMtstNo);</span>
+<span class="fc" id="L149">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L150">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L151">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L152">        return builder.setMaxResults(1)</span>
+<span class="fc" id="L153">                .getResultList()</span>
+<span class="fc" id="L154">                .stream()</span>
+<span class="fc" id="L155">                .map(READ_MAPPER::toRecord)</span>
+<span class="fc" id="L156">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndTkysYmdAndRecUpdJnjNo(
+            GmtsetkWriteRecord record,
+            Set&lt;GmtsetkColumn&gt; targetColumns,
+            GmtsetkTkysJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L165">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L166">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L167">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L168">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L169">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L173">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L174">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L177">                                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0)),</span>
+<span class="fc" id="L178">                PreparedWhere.of(</span>
+                        U001_BASE_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L181">                            int nextIndex =</span>
+<span class="fc" id="L182">                                    JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+<span class="fc" id="L185">                                            updateKey.gasMtstNo(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L187">                            nextIndex =</span>
+<span class="fc" id="L188">                                    JpaBind.set(</span>
+                                            query,
+                                            nextIndex,
+<span class="fc" id="L191">                                            updateKey.tkysYmd(),</span>
+                                            JpaDbWriteValues::ymd);
+<span class="fc" id="L193">                            return nextIndex;</span>
+                        },
+<span class="fc" id="L195">                        JpaDbWriteValues.bigDecimal(updateKey.gasMtstNo()),</span>
+<span class="fc" id="L196">                        JpaDbWriteValues.ymd(updateKey.tkysYmd())),</span>
+<span class="fc" id="L197">                updateKey.recUpdJnjNo(),</span>
+                GmtsetkDataAccess.Identifiers.UPDATE_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO);
+    }
+
+    @Override
+    public int updateByGasMtstNoAndTyenYmd(
+            GmtsetkWriteRecord record,
+            Set&lt;GmtsetkColumn&gt; targetColumns,
+            GmtsetkTyenUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L207">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L208">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L209">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L210">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L211">        Integer currentRecUpdJnjNo =</span>
+<span class="fc" id="L212">                Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L213">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L217">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L218">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L222">                PreparedWhere.of(</span>
+                        U002_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L225">                            int nextIndex =</span>
+<span class="fc" id="L226">                                    JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+<span class="fc" id="L229">                                            updateKey.gasMtstNo(),</span>
+                                            JpaDbWriteValues::bigDecimal);
+<span class="fc" id="L231">                            return JpaBind.set(</span>
+<span class="fc" id="L232">                                    query, nextIndex, updateKey.tyenYmd(), JpaDbWriteValues::ymd);</span>
+                        },
+<span class="fc" id="L234">                        JpaDbWriteValues.bigDecimal(updateKey.gasMtstNo()),</span>
+<span class="fc" id="L235">                        JpaDbWriteValues.ymd(updateKey.tyenYmd())),</span>
+<span class="fc" id="L236">                updateKey.recUpdJnjNo(),</span>
+                GmtsetkDataAccess.Identifiers.UPDATE_BY_GAS_MTST_NO_AND_TYEN_YMD);
+    }
+
+    @Override
+    public int deleteByGasMtstNoAndTkysYmdAndRecUpdJnjNo(
+            Long gasMtstNo, LocalDate tkysYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L243">        BigDecimal safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L244">        BigDecimal safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+
+<span class="fc" id="L246">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L247">                .delete(</span>
+<span class="fc" id="L248">                        PreparedWhere.of(</span>
+                                U001_BASE_WHERE_CLAUSE,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L251">                                    query.setParameter(startIndex, safeGasMtstNo);</span>
+<span class="fc" id="L252">                                    query.setParameter(startIndex + 1, safeTkysYmd);</span>
+<span class="fc" id="L253">                                    return startIndex + 2;</span>
+                                },
+                                safeGasMtstNo,
+                                safeTkysYmd),
+                        recUpdJnjNo,
+                        GmtsetkDataAccess.Identifiers.DELETE_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO);
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L262">        return JpaDbWriteValues.bigDecimal(WhereParamGuard.complement(value, paramName, 0L));</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L266">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L267">                JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

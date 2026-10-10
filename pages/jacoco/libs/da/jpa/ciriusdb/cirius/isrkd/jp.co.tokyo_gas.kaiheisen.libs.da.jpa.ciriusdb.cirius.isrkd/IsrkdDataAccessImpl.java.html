@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IsrkdDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-isrkd</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.isrkd</a> &gt; <span class="el_source">IsrkdDataAccessImpl.java</span></div><h1>IsrkdDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.isrkd;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrkd.IsrkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** ISRKD データアクセスの JPA 実装。 */
+public class IsrkdDataAccessImpl extends DataAccessBase implements IsrkdDataAccess {
+
+    private static final int DUKN_ISRS_CD_LENGTH = 8;
+
+<span class="fc" id="L23">    private static final ReflectiveRecordEntityMapper&lt;IsrkdRecord, IsrkdEntity&gt; MAPPER =</span>
+<span class="fc" id="L24">            ReflectiveRecordEntityMapper.create(IsrkdRecord.class, IsrkdEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    /** コンストラクタ。 */
+    public IsrkdDataAccessImpl(
+            EntityManager entityManager,
+<span class="fc" id="L33">            CriteriaBuilderFactory criteriaBuilderFactory) {</span>
+<span class="fc" id="L34">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L35">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L36">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public Optional&lt;IsrkdRecord&gt; findByArtyCstNoAndIsrrTriYmdAndDuknIsrsCd(
+            Long artyCstNo,
+            LocalDate isrrTriYmd,
+            List&lt;String&gt; duknIsrsCdList) {
+<span class="fc" id="L44">        List&lt;String&gt; safeDuknIsrsCdList = normalizeDuknIsrsCdList(duknIsrsCdList);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (safeDuknIsrsCdList.isEmpty()) {</span>
+<span class="fc" id="L46">            return Optional.empty();</span>
+        }
+<span class="fc" id="L48">        BigDecimal safeArtyCstNo =</span>
+<span class="fc" id="L49">                JpaDbWriteValues.bigDecimal(WhereParamGuard.complement(artyCstNo, &quot;artyCstNo&quot;, 0L));</span>
+<span class="fc" id="L50">        BigDecimal safeIsrrTriYmd =</span>
+<span class="fc" id="L51">                WhereParamGuard.complement(</span>
+<span class="fc" id="L52">                        JpaDbWriteValues.ymd(isrrTriYmd),</span>
+                        &quot;isrrTriYmd&quot;,
+                        BigDecimal.ZERO);
+<span class="fc" id="L55">        var builder = criteriaBuilderFactory.create(entityManager, IsrkdEntity.class);</span>
+<span class="fc" id="L56">        JpaWhere.eq(builder, &quot;artyCstNo&quot;, safeArtyCstNo);</span>
+<span class="fc" id="L57">        JpaWhere.eq(builder, &quot;isrrTriYmd&quot;, safeIsrrTriYmd);</span>
+<span class="fc" id="L58">        JpaWhere.in(builder, &quot;duknIsrsCd&quot;, safeDuknIsrsCdList);</span>
+<span class="fc" id="L59">        builder.orderByDesc(&quot;isrrKytuTsno&quot;);</span>
+<span class="fc" id="L60">        return builder.setMaxResults(1).getResultList().stream().map(MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;IsrkdRecord&gt; findByPK(Long artyCstNo, LocalDate isrrTriYmd, Integer isrrKytuTsno) {
+<span class="fc" id="L65">        BigDecimal safeArtyCstNo =</span>
+<span class="fc" id="L66">                JpaDbWriteValues.bigDecimal(</span>
+<span class="fc" id="L67">                        WhereParamGuard.complement(artyCstNo, &quot;artyCstNo&quot;, 0L));</span>
+<span class="fc" id="L68">        BigDecimal safeIsrrTriYmd =</span>
+<span class="fc" id="L69">                WhereParamGuard.complement(</span>
+<span class="fc" id="L70">                        JpaDbWriteValues.ymd(isrrTriYmd),</span>
+                        &quot;isrrTriYmd&quot;,
+                        BigDecimal.ZERO);
+<span class="fc" id="L73">        BigDecimal safeIsrrKytuTsno =</span>
+<span class="fc" id="L74">                JpaDbWriteValues.bigDecimal(</span>
+<span class="fc" id="L75">                        WhereParamGuard.complement(isrrKytuTsno, &quot;isrrKytuTsno&quot;, 0));</span>
+
+<span class="fc" id="L77">        var builder = criteriaBuilderFactory.create(entityManager, IsrkdEntity.class);</span>
+<span class="fc" id="L78">        JpaWhere.eq(builder, &quot;artyCstNo&quot;, safeArtyCstNo);</span>
+<span class="fc" id="L79">        JpaWhere.eq(builder, &quot;isrrTriYmd&quot;, safeIsrrTriYmd);</span>
+<span class="fc" id="L80">        JpaWhere.eq(builder, &quot;isrrKytuTsno&quot;, safeIsrrKytuTsno);</span>
+<span class="fc" id="L81">        builder.setMaxResults(1);</span>
+<span class="fc" id="L82">        return builder.getResultList().stream().map(MAPPER::toRecord).findFirst();</span>
+    }
+
+    /**
+     * IN 句検索用の業務詳細コード一覧を固定長文字列へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: null の一覧は拒否し、空一覧はそのまま返却する。
+     * 各要素は null/空白-only を入力不正として検証した後、固定長 8 文字へ整形する。
+     *
+     * &lt;p&gt;既知の制約: 要素に null または空白-only を含む一覧は入力不正として扱う。
+     */
+    private static List&lt;String&gt; normalizeDuknIsrsCdList(List&lt;String&gt; duknIsrsCdList) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (duknIsrsCdList == null) {</span>
+<span class="fc" id="L95">            throw new IllegalArgumentException(&quot;duknIsrsCdList must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (duknIsrsCdList.isEmpty()) {</span>
+<span class="fc" id="L98">            return List.of();</span>
+        }
+<span class="fc" id="L100">        return duknIsrsCdList.stream().map(IsrkdDataAccessImpl::normalizeInDuknIsrsCd).toList();</span>
+    }
+
+    /**
+     * IN 句要素の業務詳細コードを固定長条件値へ正規化する。
+     *
+     * &lt;p&gt;主な仕様: null と空白-only を入力不正として拒否した上で、fixedLengthNotNull により固定長 8 文字へ整形する。
+     *
+     * &lt;p&gt;既知の制約: 8 文字超の値は切り詰めず、そのまま返す。
+     */
+    private static String normalizeInDuknIsrsCd(String value) {
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L112">            throw new IllegalArgumentException(</span>
+                    &quot;duknIsrsCdList must not contain null or blank-only&quot;);
+        }
+<span class="fc" id="L115">        return WhereParamGuard.fixedLengthNotNull(value, &quot;duknIsrsCdList&quot;, DUKN_ISRS_CD_LENGTH);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

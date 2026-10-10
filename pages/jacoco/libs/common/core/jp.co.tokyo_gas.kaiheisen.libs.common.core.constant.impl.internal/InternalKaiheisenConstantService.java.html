@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InternalKaiheisenConstantService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal</a> &gt; <span class="el_source">InternalKaiheisenConstantService.java</span></div><h1>InternalKaiheisenConstantService.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.model.KaiheisenConstantItem;
+
+/**
+ * 開閉栓API独自コンスタント内部定義実装。
+ */
+public final class InternalKaiheisenConstantService implements KaiheisenConstantService {
+
+<span class="fc" id="L18">    private static final Comparator&lt;InternalConstantDataLoader.KaiheisenDefinition&gt; KAIHEISEN_ORDER =</span>
+<span class="fc" id="L19">            Comparator.comparing(InternalConstantDataLoader.KaiheisenDefinition::value);</span>
+
+    private final Map&lt;String, List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt;&gt; definitionsByType;
+
+    /**
+     * リソースパスとクラスローダを指定して内部開閉栓コンスタントサービスを生成する。
+     *
+     * @param resourcePath TSV リソースパス
+     * @param classLoader クラスローダ
+     */
+<span class="fc" id="L29">    public InternalKaiheisenConstantService(String resourcePath, ClassLoader classLoader) {</span>
+<span class="fc" id="L30">        List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt; definitions =</span>
+<span class="fc" id="L31">                InternalConstantDataLoader.loadKaiheisenDefinitions(resourcePath, classLoader);</span>
+
+<span class="fc" id="L33">        Map&lt;String, List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt;&gt; mutable = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (InternalConstantDataLoader.KaiheisenDefinition definition : definitions) {</span>
+<span class="fc" id="L35">            mutable.computeIfAbsent(definition.type(), unused -&gt; new ArrayList&lt;&gt;()).add(definition);</span>
+<span class="fc" id="L36">        }</span>
+
+<span class="fc" id="L38">        Map&lt;String, List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt;&gt; immutable = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt;&gt; entry : mutable.entrySet()) {</span>
+<span class="fc" id="L40">            List&lt;InternalConstantDataLoader.KaiheisenDefinition&gt; sorted = new ArrayList&lt;&gt;(entry.getValue());</span>
+<span class="fc" id="L41">            sorted.sort(KAIHEISEN_ORDER);</span>
+<span class="fc" id="L42">            immutable.put(entry.getKey(), List.copyOf(sorted));</span>
+<span class="fc" id="L43">        }</span>
+<span class="fc" id="L44">        this.definitionsByType = Map.copyOf(immutable);</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public List&lt;KaiheisenConstantItem&gt; listActiveByType(String type) {
+<span class="fc" id="L49">        String normalizedType = ConstantKeyNormalizer.normalizeRequiredTrimmed(type, &quot;type&quot;);</span>
+
+<span class="fc" id="L51">        return definitionsByType.getOrDefault(normalizedType, List.of()).stream()</span>
+<span class="fc" id="L52">                .map(definition -&gt; new KaiheisenConstantItem(definition.value(), definition.name()))</span>
+<span class="fc" id="L53">                .toList();</span>
+    }
+
+    @Override
+    public String findNameByTypeAndValue(String type, String value) {
+<span class="fc" id="L58">        String normalizedType = ConstantKeyNormalizer.normalizeRequiredTrimmed(type, &quot;type&quot;);</span>
+<span class="fc" id="L59">        Objects.requireNonNull(value, &quot;value&quot;);</span>
+<span class="fc" id="L60">        String normalizedValue = value.trim();</span>
+
+<span class="fc" id="L62">        return definitionsByType.getOrDefault(normalizedType, List.of()).stream()</span>
+<span class="fc" id="L63">                .filter(definition -&gt; definition.value().equals(normalizedValue))</span>
+<span class="fc" id="L64">                .map(InternalConstantDataLoader.KaiheisenDefinition::name)</span>
+<span class="fc" id="L65">                .findFirst()</span>
+<span class="fc" id="L66">                .orElseThrow(() -&gt; new ConstantDefinitionNotFoundException(</span>
+                        &quot;KaiheisenConstantService&quot;,
+                        &quot;type=&quot; + normalizedType + &quot;, value=&quot; + normalizedValue));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

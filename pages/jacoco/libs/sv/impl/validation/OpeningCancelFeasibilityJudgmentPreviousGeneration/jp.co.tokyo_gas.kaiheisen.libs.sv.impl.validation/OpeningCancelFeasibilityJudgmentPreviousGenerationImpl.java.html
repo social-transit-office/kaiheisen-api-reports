@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCancelFeasibilityJudgmentPreviousGenerationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-openingcancelfeasibilityjudgmentpreviousgeneration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">OpeningCancelFeasibilityJudgmentPreviousGenerationImpl.java</span></div><h1>OpeningCancelFeasibilityJudgmentPreviousGenerationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningCancelFeasibilityJudgmentPreviousGeneration;
+
+/**
+ * 概要: SV-051（開栓取消実施可否判定：前世代チェック）の実装クラス。
+ *
+ * 主な仕様:
+ * - 判定対象の前世代レコードを DA-033-R001 で取得する。
+ * - 取得レコードが存在し、かつガスメーター開閉栓状態区分が開栓中の場合のみ業務エラーを送出する。
+ * - 取得結果が存在しない場合、または開栓中以外の場合は何も返さず正常終了する。
+ *
+ * 既知の制約:
+ * - public 引数の null / blank 補正や追加バリデーションは行わない。
+ * - systemDatetime、correlationId、hukkSysShbt は本サービスでは参照しない。
+ */
+public final class OpeningCancelFeasibilityJudgmentPreviousGenerationImpl
+        implements OpeningCancelFeasibilityJudgmentPreviousGeneration {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final String openingStatus;
+
+    /**
+     * 概要: 判定に必要な依存コンポーネントと必須定数を初期化する。
+     *
+     * 主な仕様:
+     * - ガスメーター設置場所＜導管＞DA と CIRIUS 定数サービスを必須依存として受け取る。
+     * - 開栓中判定に必要な `02100-1` をコンストラクタ初期化時に解決し、未登録なら fail-fast する。
+     *
+     * 既知の制約:
+     * - 必須依存が null の場合は {@link NullPointerException} を送出する。
+     *
+     * @param gmtsetdDataAccessParam ガスメーター設置場所＜導管＞データアクセス
+     * @param ciriusConstantServiceParam CIRIUS 定数サービス
+     */
+    public OpeningCancelFeasibilityJudgmentPreviousGenerationImpl(
+            final GmtsetdDataAccess gmtsetdDataAccessParam,
+<span class="fc" id="L49">            final CiriusConstantService ciriusConstantServiceParam) {</span>
+<span class="fc" id="L50">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccessParam, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L51">        CiriusConstantService ciriusConstantService =</span>
+<span class="fc" id="L52">                Objects.requireNonNull(ciriusConstantServiceParam, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L53">        this.openingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L57">    }</span>
+
+    /**
+     * 概要: 前世代のガスメーター開閉栓状態を判定し、取消不可の場合に業務エラーを送出する。
+     *
+     * 主な仕様:
+     * - DA-033-R001 を 1 回だけ呼び出す。
+     * - 取得レコードが存在し、かつ `gmtKhsJtkb` が開栓中定数と一致する場合のみ
+     *   `BusinessRuleException(ERROR_CODE_020000015)` を送出する。
+     * - 上記以外の場合は何も返さず正常終了する。
+     *
+     * 既知の制約:
+     * - DA 戻り値が `Optional.empty()` の場合はエラー化しない。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     */
+    @Override
+    public void execute(final Long gasMtstNo, final LocalDate trkKnsYmd) {
+<span class="fc" id="L76">        Optional&lt;GmtsetdRecord&gt; previousGeneration =</span>
+<span class="fc" id="L77">                gmtsetdDataAccess.findByGasMtstNoAndTkysYmd(gasMtstNo, trkKnsYmd);</span>
+
+<span class="fc" id="L79">        if (previousGeneration</span>
+<span class="fc" id="L80">                .map(GmtsetdRecord::gmtKhsJtkb)</span>
+<span class="fc" id="L81">                .filter(openingStatus::equals)</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                .isPresent()) {</span>
+<span class="fc" id="L83">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000015);</span>
+        }
+<span class="fc" id="L85">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

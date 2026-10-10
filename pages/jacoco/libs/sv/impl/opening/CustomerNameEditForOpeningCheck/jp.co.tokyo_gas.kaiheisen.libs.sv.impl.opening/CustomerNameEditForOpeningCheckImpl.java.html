@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CustomerNameEditForOpeningCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-customernameeditforopeningcheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">CustomerNameEditForOpeningCheckImpl.java</span></div><h1>CustomerNameEditForOpeningCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.edit_customer.EditCustomerCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.edit_customer.EditCustomerRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.edit_customer.EditCustomerResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNameEditForOpeningCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.CustomerNameEditForOpeningCheckOutput;
+
+/**
+ * 概要: 開栓時チェック用おなまえ編集サービス実装。
+ * 主な仕様: CIRIUS お客さま情報編集結果取得 API の編集結果から編集パターン3のお客さま名カナ2＋法人種別を取得し、ブランクサプレスと小文字大文字変換を適用して返却する。
+ * 既知の制約: CIRIUS お客さま情報編集結果取得 API 呼出しの詳細な request 展開は gateway に委譲し、RequestContext の必須値不足時は fail-fast する。
+ */
+public final class CustomerNameEditForOpeningCheckImpl implements CustomerNameEditForOpeningCheck {
+
+    private final EditedCustomerInfoGateway editedCustomerInfoGateway;
+
+    private final String customerNameKanjiHiddenFlag;
+
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: CDI から依存を受け取って初期化する。
+    * 主な仕様: CIRIUS お客さま情報編集結果取得 API の adapter を SV 用 gateway へ変換して委譲する。
+    * 既知の制約: CIRIUS お客さま情報編集結果取得 API の adapter と RequestContext と CIRIUS 定数サービスが必須である。
+     *
+    * @param editCustomerCiriusAdapter CIRIUS お客さま情報編集結果取得 API の adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public CustomerNameEditForOpeningCheckImpl(
+            EditCustomerCiriusAdapter editCustomerCiriusAdapter,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L44">        this(</span>
+                new EditedCustomerInfoCiriusGateway(editCustomerCiriusAdapter),
+                requestContext,
+<span class="fc" id="L47">                resolveCustomerNameKanjiHiddenFlag(ciriusConstantService));</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * 概要: 依存を初期化する。
+    * 主な仕様: CIRIUS お客さま情報編集結果取得 API 呼出し gateway と RequestContext をフィールドへ保持する。
+     * 既知の制約: 必須依存が null の場合はコンストラクタ初期化時点で fail-fast する。
+     *
+    * @param editedCustomerInfoGateway CIRIUS お客さま情報編集結果取得 API 呼出し gateway
+     * @param requestContext リクエストコンテキスト
+     * @param customerNameKanjiHiddenFlag お客さま名漢字非表示フラグ
+     */
+    CustomerNameEditForOpeningCheckImpl(
+            EditedCustomerInfoGateway editedCustomerInfoGateway,
+            RequestContext requestContext,
+<span class="fc" id="L62">            String customerNameKanjiHiddenFlag) {</span>
+<span class="fc" id="L63">        this.editedCustomerInfoGateway = Objects.requireNonNull(</span>
+                editedCustomerInfoGateway,
+                &quot;editedCustomerInfoGateway&quot;);
+<span class="fc" id="L66">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L67">        this.customerNameKanjiHiddenFlag = Objects.requireNonNull(</span>
+            customerNameKanjiHiddenFlag,
+            &quot;customerNameKanjiHiddenFlag&quot;);
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * 概要: 開栓時チェック用のお客さま名カナ1を編集する。
+    * 主な仕様: RequestContext の必須値を解決して CIRIUS お客さま情報編集結果取得 API を呼び出し、編集パターン3のお客さま名カナ2＋法人種別へブランクサプレスと小文字大文字変換を適用して返却する。
+    * 既知の制約: public 引数の null は補正せず下位 gateway へ引き渡し、CIRIUS お客さま情報編集結果取得 API の例外は握りつぶさず伝播する。
+     *
+     * @param ctnmKn1 お客さま名カナ1
+     * @param ctnm1HujnShbt お客さま名1＿法人種別
+     * @param ctnm1HshiShbt お客さま名1＿法人種別表示位置種別
+     * @return チェック用お客さま名1カナ
+     */
+    @Override
+    public CustomerNameEditForOpeningCheckOutput execute(
+            String ctnmKn1,
+            String ctnm1HujnShbt,
+            String ctnm1HshiShbt) {
+<span class="fc" id="L87">        requireCorrelationId();</span>
+<span class="fc" id="L88">        requireHukkSysShbt();</span>
+<span class="fc" id="L89">        requireSystemDatetime();</span>
+<span class="fc" id="L90">        EditedCustomerInfoResult editedCustomerInfoResult = editedCustomerInfoGateway.execute(</span>
+                new EditedCustomerInfoRequest(
+                        ctnmKn1,
+                        ctnm1HujnShbt,
+                        ctnm1HshiShbt,
+                        customerNameKanjiHiddenFlag));
+<span class="fc" id="L96">        return new CustomerNameEditForOpeningCheckOutput(</span>
+<span class="fc" id="L97">                normalizeEditedCustomerNameKana(</span>
+<span class="fc" id="L98">                editedCustomerInfoResult.editedPattern3CustomerNameKana2WithCorporateType()));</span>
+    }
+
+    /**
+     * 概要: お客さま名漢字非表示フラグを CIRIUS 定数から解決する。
+     * 主な仕様: 01500 の 0 を必須 CIRIUS 定数として検証し、コード値を返却する。
+     * 既知の制約: 必須定数が未定義の場合は下位例外をそのまま送出する。
+     *
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @return お客さま名漢字非表示フラグ
+     */
+    private static String resolveCustomerNameKanjiHiddenFlag(
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L111">        return RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L112">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.NameKanjiDisplayFlag.TYPE,
+                ConstantLookupKeys.Cirius.NameKanjiDisplayFlag.KANJI_NAME_HIDDEN);
+    }
+
+    /**
+     * 概要: 相関IDを取得する。
+     * 主な仕様: RequestContext から相関IDを取得し、未設定時は fail-fast する。
+     * 既知の制約: Optional の空値は許容しない。
+     *
+     * @return 相関ID
+     */
+    private String requireCorrelationId() {
+<span class="fc" id="L125">        return requestContext.getCorrelationId()</span>
+<span class="fc" id="L126">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 報告システム種別を取得する。
+     * 主な仕様: RequestContext から報告システム種別を取得し、未設定時は fail-fast する。
+     * 既知の制約: Optional の空値は許容しない。
+     *
+     * @return 報告システム種別
+     */
+    private String requireHukkSysShbt() {
+<span class="fc" id="L137">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L138">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    /**
+     * 概要: システム日時を取得する。
+     * 主な仕様: RequestContext からシステム日時を取得し、未設定時は fail-fast する。
+     * 既知の制約: Optional の空値は許容しない。
+     *
+     * @return システム日時
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L149">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L150">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 編集済みお客さま名カナを正規化する。
+     * 主な仕様: ブランクサプレスを行った後に小文字大文字変換を適用する。
+     * 既知の制約: null 入力は null のまま返却し、日本語小文字の正規化は JDK 標準変換で扱えない範囲を補正しない。
+     *
+     * @param editedCustomerNameKanaWithCorporateType 編集済みお客さま名カナ1＋法人種別
+     * @return 正規化後のチェック用お客さま名1カナ
+     */
+    private static String normalizeEditedCustomerNameKana(String editedCustomerNameKanaWithCorporateType) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (editedCustomerNameKanaWithCorporateType == null) {</span>
+<span class="fc" id="L163">            return null;</span>
+        }
+<span class="fc" id="L165">        return suppressBlanks(editedCustomerNameKanaWithCorporateType).toUpperCase(Locale.ROOT);</span>
+    }
+
+    /**
+     * 概要: 文字列から空白文字を除去する。
+     * 主な仕様: 半角空白、全角空白、改行やタブを含む Java whitespace を除去する。
+     * 既知の制約: 空白以外の記号や文字種変換は行わない。
+     *
+     * @param value 入力文字列
+     * @return 空白除去後文字列
+     */
+    private static String suppressBlanks(String value) {
+<span class="fc" id="L177">        StringBuilder builder = new StringBuilder(value.length());</span>
+<span class="fc" id="L178">        value.codePoints().forEach(codePoint -&gt; {</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">            if (!Character.isWhitespace(codePoint) &amp;&amp; codePoint != '　') {</span>
+<span class="fc" id="L180">                builder.appendCodePoint(codePoint);</span>
+            }
+<span class="fc" id="L182">        });</span>
+<span class="fc" id="L183">        return builder.toString();</span>
+    }
+
+    /** CIRIUS お客さま情報編集結果取得 API 呼出しを抽象化する。 */
+    private interface EditedCustomerInfoGateway {
+
+        /**
+         * CIRIUS お客さま情報編集結果取得 API を呼び出して編集済みお客さま情報を取得する。
+         *
+         * @param request CIRIUS お客さま情報編集結果取得 API 呼出し入力
+         * @return 編集済みお客さま情報
+         */
+        EditedCustomerInfoResult execute(EditedCustomerInfoRequest request);
+    }
+
+    /** CIRIUS お客さま情報編集結果取得 API の request body に必要な最小入力。 */
+<span class="fc" id="L199">    private record EditedCustomerInfoRequest(</span>
+            String ctnmKn1,
+            String ctnm1HujnShbt,
+            String ctnm1HshiShbt,
+            String ctnmKjhkFlg) {
+    }
+
+    /** CIRIUS お客さま情報編集結果取得 API 応答から SV-174 が必要とする最小出力。 */
+<span class="fc" id="L207">    private record EditedCustomerInfoResult(</span>
+            String editedPattern3CustomerNameKana2WithCorporateType) {
+    }
+
+    /** CIRIUS お客さま情報編集結果取得 API の adapter を SV-174 用 gateway に変換する。 */
+    private static final class EditedCustomerInfoCiriusGateway implements EditedCustomerInfoGateway {
+
+        private final EditCustomerCiriusAdapter editCustomerCiriusAdapter;
+
+<span class="fc" id="L216">        private EditedCustomerInfoCiriusGateway(EditCustomerCiriusAdapter editCustomerCiriusAdapter) {</span>
+<span class="fc" id="L217">            this.editCustomerCiriusAdapter = Objects.requireNonNull(</span>
+                    editCustomerCiriusAdapter,
+                    &quot;editCustomerCiriusAdapter&quot;);
+<span class="fc" id="L220">        }</span>
+
+        @Override
+        public EditedCustomerInfoResult execute(EditedCustomerInfoRequest request) {
+<span class="fc" id="L224">            EditCustomerResponse response = editCustomerCiriusAdapter.editCustomer(</span>
+                    new EditCustomerRequest(
+                            new EditCustomerRequest.BeforeCustomerInfo(
+                                    new EditCustomerRequest.BeforeNameInfo(
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+<span class="fc" id="L233">                                            request.ctnmKn1(),</span>
+<span class="fc" id="L234">                                            request.ctnm1HujnShbt(),</span>
+<span class="fc" id="L235">                                            request.ctnm1HshiShbt(),</span>
+<span class="fc" id="L236">                                            request.ctnmKjhkFlg(),</span>
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;,
+                                            &quot;&quot;),
+                                    null)));
+<span class="fc" id="L243">            return new EditedCustomerInfoResult(resolveEditedPattern3CustomerNameKana2(response));</span>
+        }
+
+        private static String resolveEditedPattern3CustomerNameKana2(EditCustomerResponse response) {
+<span class="fc bfc" id="L247" title="All 2 branches covered.">            if (response == null) {</span>
+<span class="fc" id="L248">                return null;</span>
+            }
+<span class="fc" id="L250">            return response.editedPattern3CustomerNameKana2();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxExemptContractUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-taxexemptcontractupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TaxExemptContractUpdateForRevivalImpl.java</span></div><h1>TaxExemptContractUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiySvkyTkysUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TaxExemptContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TaxExemptContractUpdateForRevivalOutput;
+
+/**
+ * 概要: SV-109（免税契約更新（契約復活））のサービス実装。
+ * 主な仕様:
+ * - 取消対象検針年月日時点で有効な免税契約を 1 件検索し、存在する場合のみ契約復活状態へ更新する。
+ * - 更新時は免税適用終了年月日を最大日付へ戻し、免税適用終了報告年月日を null にする。
+ * 既知の制約:
+ * - public メソッド引数の null 検証は追加しない。
+ * - 報告システム種別は RequestContext から取得し、監査情報の起点機能 ID に利用する。
+ */
+public class TaxExemptContractUpdateForRevivalImpl implements TaxExemptContractUpdateForRevival {
+
+    static final String SERVICE_USER_ID = &quot;KHSS109&quot;;
+
+<span class="fc" id="L31">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final MnzkiyDataAccess mnzkiyDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * 概要: SV-109 の依存を初期化する。
+     * 主な仕様:
+     * - MNZKIY データアクセス、RequestContext、開閉栓定数サービスを保持する。
+     * - 依存が不足している場合は初期化時点で失敗する。
+     *
+     * @param mnzkiyDataAccess MNZKIY データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public TaxExemptContractUpdateForRevivalImpl(
+            MnzkiyDataAccess mnzkiyDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L52">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L53">        this.mnzkiyDataAccess = Objects.requireNonNull(mnzkiyDataAccess, &quot;mnzkiyDataAccess&quot;);</span>
+<span class="fc" id="L54">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L55">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * 概要: 契約復活対象の免税契約を更新する。
+     * 主な仕様:
+     * - 免税契約が存在しない場合は更新せず false を返却する。
+     * - 免税契約が存在する場合は更新し true を返却する。
+     *
+     * @param svkyNo サービス契約番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 免税契約有無フラグ
+     */
+    @Override
+    public TaxExemptContractUpdateForRevivalOutput execute(Long svkyNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L72">        return mnzkiyDataAccess.findBySvkyNoAndMnziTkysYmdAndMnziTyenYmd(svkyNo, trkKnsYmd)</span>
+<span class="fc" id="L73">                .map(this::updateExistingRecord)</span>
+<span class="fc" id="L74">                .orElseGet(() -&gt; new TaxExemptContractUpdateForRevivalOutput(false));</span>
+    }
+
+    /**
+     * 概要: 取得済みの免税契約情報を契約復活状態へ更新する。
+     * 主な仕様:
+     * - 免税適用終了年月日を最大日付へ更新する。
+     * - 免税適用終了報告年月日を null に更新する。
+     *
+     * @param record 取得済み免税契約情報
+     * @return 免税契約有無フラグ
+     */
+    private TaxExemptContractUpdateForRevivalOutput updateExistingRecord(MnzkiyRecord record) {
+<span class="fc" id="L87">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L88">        mnzkiyDataAccess.updateBySvkyNoAndMnziTkysYmdAndRecUpdJnjNo(</span>
+                new MnzkiyWriteRecord(
+<span class="fc" id="L90">                        record.svkyNo(),</span>
+<span class="fc" id="L91">                        record.mnziTkysYmd(),</span>
+                        MAX_DATE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L100">                        record.recUpdJnjNo()),</span>
+<span class="fc" id="L101">                Set.of(MnzkiyColumn.MNZI_TYEN_YMD, MnzkiyColumn.MNZI_TYEH_YMD),</span>
+<span class="fc" id="L102">                new MnzkiySvkyTkysUpdateKey(record.svkyNo(), record.mnziTkysYmd(), record.recUpdJnjNo()),</span>
+<span class="fc" id="L103">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L104">        return new TaxExemptContractUpdateForRevivalOutput(true);</span>
+    }
+
+    /**
+     * 概要: 報告システム種別から監査情報用の起点機能 ID を解決する。
+     * 主な仕様:
+     * - RequestContext から報告システム種別を取得する。
+     * - 報告システム種別が未設定の場合は fail-fast する。
+     *
+     * @return 起点機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L116">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L118">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L119">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

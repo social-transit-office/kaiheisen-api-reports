@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IdouktkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-ncis-idouktk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.ncis.idouktk</a> &gt; <span class="el_source">IdouktkDataAccessImpl.java</span></div><h1>IdouktkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.ncis.idouktk;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.HexFormat;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.IdouktkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.write.IdouktkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.write.IdouktkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.idouktk.write.IdouktkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.NcisCisAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbReadValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/**
+ * IDOUKTK（異動受付）データアクセスの JPA 実装。
+ */
+public class IdouktkDataAccessImpl extends DataAccessBase implements IdouktkDataAccess {
+
+    private static final String TABLE_NAME = &quot;IDOUKTK&quot;;
+
+<span class="fc" id="L38">    private static final HexFormat HEX_FORMAT = HexFormat.of();</span>
+
+    private static final String FIND_MAX_SEQ_SQL =
+            &quot;SELECT MAX(IDO_RKK_SEQ_NO) FROM IDOUKTK&quot;
+                    + &quot; WHERE OKYAKU_NO = :okyakuNo&quot;
+                    + &quot; AND IDOH_HKK_YMD = :idohHkkYmd&quot;
+                    + &quot; AND IDO_HKOKU_JKK = :idoHkokuJkk&quot;;
+
+    private static final ReflectiveRecordEntityMapper&lt;IdouktkEntityWriteRecord, IdouktkEntity&gt;
+<span class="fc" id="L47">            WRITE_MAPPER =</span>
+<span class="fc" id="L48">                    ReflectiveRecordEntityMapper.create(</span>
+                            IdouktkEntityWriteRecord.class, IdouktkEntity.class);
+
+    private final EntityManager entityManager;
+
+    private final JpaAuditColumnAccessBinder&lt;IdouktkEntity&gt; auditColumnAccessBinder;
+
+    private final SystemDateTimeProvider clock;
+
+    private final NcisCisAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;IdouktkWriteRecord, IdouktkEntity, IdouktkColumn&gt; insertSupport;
+
+    /**
+     * JPA ベースの IDOUKTK データアクセスを生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param criteriaBuilderFactory Blaze-Persistence の criteria builder factory
+     */
+    public IdouktkDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L69">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new NcisCisAuditColumnAutoSetter());
+<span class="nc" id="L74">    }</span>
+
+    IdouktkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L80">        this(entityManager, criteriaBuilderFactory, clock, new NcisCisAuditColumnAutoSetter());</span>
+<span class="fc" id="L81">    }</span>
+
+    IdouktkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L87">            NcisCisAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L88">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L89">        Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L90">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L91">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L92">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L93">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(IdouktkEntity.class);</span>
+<span class="fc" id="L94">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        IdouktkWriteDefinition.INSTANCE,
+                        IdouktkEntity.class,
+                        this::toWriteEntity,
+                        this::insertValueExpression,
+                        this::insertBindValue);
+<span class="fc" id="L103">    }</span>
+
+    private IdouktkEntity toWriteEntity(IdouktkWriteRecord record) {
+<span class="fc" id="L106">        return WRITE_MAPPER.toEntity(new IdouktkEntityWriteRecord(</span>
+<span class="fc" id="L107">                record.okyakuNo(),</span>
+<span class="fc" id="L108">                record.idohHkkYmd(),</span>
+<span class="fc" id="L109">                record.idoHkokuJkk(),</span>
+<span class="fc" id="L110">                record.idoRkkSeqNo(),</span>
+<span class="fc" id="L111">                record.idoHkkGymCd(),</span>
+<span class="fc" id="L112">                record.idoHkNySbCd(),</span>
+<span class="fc" id="L113">                record.idoUserNamKn(),</span>
+<span class="fc" id="L114">                record.idoUserNamKj(),</span>
+<span class="fc" id="L115">                record.usNHjiSybCd(),</span>
+<span class="fc" id="L116">                record.usNHjiHyjCd(),</span>
+<span class="fc" id="L117">                record.usNKjhKhiCd(),</span>
+<span class="fc" id="L118">                record.jigyosyoCd(),</span>
+<span class="fc" id="L119">                record.kaCd(),</span>
+<span class="fc" id="L120">                record.syokubaCd(),</span>
+<span class="fc" id="L121">                record.riySubsysJCd(),</span>
+<span class="fc" id="L122">                record.tanmatuNo(),</span>
+<span class="fc" id="L123">                record.hkoksEmpNo(),</span>
+<span class="fc" id="L124">                record.hkoksEmpNam(),</span>
+<span class="fc" id="L125">                record.syokyNo(),</span>
+<span class="fc" id="L126">                record.uktkKeiroCd(),</span>
+<span class="fc" id="L127">                record.syokaiTsyCd(),</span>
+<span class="fc" id="L128">                record.nwKsyCd(),</span>
+<span class="fc" id="L129">                record.idohYmd(),</span>
+<span class="fc" id="L130">                record.kStKnsnJoho(),</span>
+<span class="fc" id="L131">                record.sStKnsnJoho(),</span>
+<span class="fc" id="L132">                record.hkzSsyMryYmd(),</span>
+<span class="fc" id="L133">                record.hkgSsyMryYmd(),</span>
+<span class="fc" id="L134">                record.gasKyksybCd(),</span>
+<span class="fc" id="L135">                record.tjhkTrksCd(),</span>
+<span class="fc" id="L136">                toHex(record.hkkNaiyoAr()),</span>
+<span class="fc" id="L137">                toHex(record.teiseiFilAr())));</span>
+    }
+
+    @Override
+    public int insert(IdouktkWriteRecord record, AuditContext context) {
+<span class="fc" id="L142">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L143">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L146">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L147">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    private String insertValueExpression(DataAccessColumn column) {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (column == IdouktkColumn.HKK_NAIYO_AR) {</span>
+<span class="fc" id="L152">            return reportAreaCastExpression(1100);</span>
+        }
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (column == IdouktkColumn.TEISEI_FIL_AR) {</span>
+<span class="fc" id="L155">            return reportAreaCastExpression(150);</span>
+        }
+<span class="fc" id="L157">        return &quot;?&quot;;</span>
+    }
+
+    private Object insertBindValue(DataAccessColumn column, Object value) {
+<span class="fc bfc" id="L161" title="All 4 branches covered.">        if (column == IdouktkColumn.HKK_NAIYO_AR || column == IdouktkColumn.TEISEI_FIL_AR) {</span>
+<span class="fc" id="L162">            byte[] bytes = HEX_FORMAT.parseHex(Objects.toString(value, &quot;&quot;));</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (isH2TestDatabase()) {</span>
+<span class="fc" id="L164">                return new String(bytes, StandardCharsets.ISO_8859_1);</span>
+            }
+<span class="nc" id="L166">            return bytes;</span>
+        }
+<span class="fc" id="L168">        return value;</span>
+    }
+
+    private static String toHex(byte[] value) {
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        return value == null ? &quot;&quot; : HEX_FORMAT.formatHex(value);</span>
+    }
+
+    private String reportAreaCastExpression(int length) {
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if (isH2TestDatabase()) {</span>
+<span class="fc" id="L177">            return &quot;CAST(? AS VARCHAR(&quot; + length + &quot;))&quot;;</span>
+        }
+<span class="nc" id="L179">        return &quot;CAST(? AS VARCHAR(&quot; + length + &quot;) CCSID 930)&quot;;</span>
+    }
+
+    private boolean isH2TestDatabase() {
+<span class="fc" id="L183">        Object dialect = entityManager</span>
+<span class="fc" id="L184">                .getEntityManagerFactory()</span>
+<span class="fc" id="L185">                .getProperties()</span>
+<span class="fc" id="L186">                .get(&quot;hibernate.dialect&quot;);</span>
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">        return dialect != null &amp;&amp; dialect.toString().contains(&quot;H2&quot;);</span>
+    }
+
+<span class="fc" id="L190">    private record IdouktkEntityWriteRecord(</span>
+            Long okyakuNo,
+            LocalDate idohHkkYmd,
+            LocalTime idoHkokuJkk,
+            Integer idoRkkSeqNo,
+            String idoHkkGymCd,
+            String idoHkNySbCd,
+            String idoUserNamKn,
+            String idoUserNamKj,
+            String usNHjiSybCd,
+            String usNHjiHyjCd,
+            String usNKjhKhiCd,
+            String jigyosyoCd,
+            String kaCd,
+            String syokubaCd,
+            String riySubsysJCd,
+            String tanmatuNo,
+            String hkoksEmpNo,
+            String hkoksEmpNam,
+            Long syokyNo,
+            String uktkKeiroCd,
+            String syokaiTsyCd,
+            String nwKsyCd,
+            LocalDate idohYmd,
+            String kStKnsnJoho,
+            String sStKnsnJoho,
+            LocalDate hkzSsyMryYmd,
+            LocalDate hkgSsyMryYmd,
+            String gasKyksybCd,
+            String tjhkTrksCd,
+            String hkkNaiyoAr,
+            String teiseiFilAr) {
+    }
+
+    @Override
+    public Optional&lt;Integer&gt; findByOkyakuNoAndIdohHkkYmdAndIdoHkokuJkk(
+            Long okyakuNo, LocalDate idohHkkYmd, LocalTime idoHkokuJkk) {
+<span class="fc" id="L227">        Long safeOkyakuNo = WhereParamGuard.complement(okyakuNo, &quot;okyakuNo&quot;, 0L);</span>
+<span class="fc" id="L228">        BigDecimal safeIdohHkkYmd =</span>
+<span class="fc" id="L229">                WhereParamGuard.complement(</span>
+<span class="fc" id="L230">                        JpaDbWriteValues.ymd(idohHkkYmd), &quot;idohHkkYmd&quot;, BigDecimal.ZERO);</span>
+<span class="fc" id="L231">        BigDecimal safeIdoHkokuJkk =</span>
+<span class="fc" id="L232">                WhereParamGuard.complement(</span>
+<span class="fc" id="L233">                        JpaDbWriteValues.localTime(idoHkokuJkk),</span>
+                        &quot;idoHkokuJkk&quot;,
+                        BigDecimal.ZERO);
+
+<span class="fc" id="L237">        SqlCapture.set(FIND_MAX_SEQ_SQL);</span>
+<span class="fc" id="L238">        Query query = entityManager.createNativeQuery(FIND_MAX_SEQ_SQL);</span>
+<span class="fc" id="L239">        query.setParameter(&quot;okyakuNo&quot;, JpaDbWriteValues.bigDecimal(safeOkyakuNo));</span>
+<span class="fc" id="L240">        query.setParameter(&quot;idohHkkYmd&quot;, safeIdohHkkYmd);</span>
+<span class="fc" id="L241">        query.setParameter(&quot;idoHkokuJkk&quot;, safeIdoHkokuJkk);</span>
+
+<span class="fc" id="L243">        Object value = query.getSingleResult();</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L245">            return Optional.empty();</span>
+        }
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if (value instanceof BigDecimal bigDecimal) {</span>
+<span class="fc" id="L248">            return Optional.ofNullable(JpaDbReadValues.integerOrNullIfZero(bigDecimal));</span>
+        }
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="nc" id="L251">            return Optional.of(number.intValue());</span>
+        }
+<span class="nc" id="L253">        String text = value.toString();</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        if (text.isBlank()) {</span>
+<span class="nc" id="L255">            return Optional.empty();</span>
+        }
+<span class="nc" id="L257">        return Optional.of(Integer.parseInt(text));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

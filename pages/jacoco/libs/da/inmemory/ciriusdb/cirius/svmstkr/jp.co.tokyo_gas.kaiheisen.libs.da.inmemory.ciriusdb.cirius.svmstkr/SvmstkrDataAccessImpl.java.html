@@ -1,0 +1,679 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SvmstkrDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-svmstkr</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.svmstkr</a> &gt; <span class="el_source">SvmstkrDataAccessImpl.java</span></div><h1>SvmstkrDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.svmstkr;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrRkkiKnrnJtkbUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoOptionalUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** SVMSTKR データアクセスのインメモリ実装。 */
+public class SvmstkrDataAccessImpl extends DataAccessBase implements SvmstkrDataAccess {
+
+    private static final int RKKI_KNRN_JTKB_LENGTH = 2;
+
+<span class="fc" id="L39">    private static final LocalDate COMPLEMENT_YMD = LocalDate.MIN;</span>
+
+<span class="fc" id="L41">    private static final ReflectiveInMemoryRowMapper&lt;SvmstkrColumn, SvmstkrRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L42">            ReflectiveInMemoryRowMapper.create(SvmstkrColumn.class, SvmstkrRecord.class);</span>
+
+<span class="fc" id="L44">    private static final AutoNeutralValueResolver&lt;SvmstkrColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L45">            AutoNeutralValueResolver.create(SvmstkrColumn.class, SvmstkrRecord.class);</span>
+
+    private static final Comparator&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt;
+<span class="fc" id="L48">            ORDER_BY_RKKI_END_YMD_DESC_MTST_NO =</span>
+<span class="fc" id="L49">            Comparator.comparing(</span>
+                    (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L51">                        normalizeYmd(localDateValue(row, SvmstkrColumn.RKKI_END_YMD)),</span>
+<span class="fc" id="L52">                    Comparator.nullsLast(Comparator.reverseOrder()))</span>
+<span class="fc" id="L53">                    .thenComparing(</span>
+<span class="fc" id="L54">                        row -&gt; normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)),</span>
+<span class="fc" id="L55">                            Comparator.nullsLast(Comparator.naturalOrder()));</span>
+
+    private static final Comparator&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt;
+<span class="fc" id="L58">            ORDER_BY_MTST_NO_RKKI_STT_YMD_DESC =</span>
+<span class="fc" id="L59">            Comparator.comparing(</span>
+                    (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L61">                        normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)),</span>
+<span class="fc" id="L62">                    Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L63">                    .thenComparing(</span>
+                            (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L65">                            normalizeYmd(localDateValue(row, SvmstkrColumn.RKKI_STT_YMD)),</span>
+<span class="fc" id="L66">                            Comparator.nullsLast(Comparator.reverseOrder()));</span>
+
+<span class="fc" id="L68">    private static final Comparator&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt; ORDER_BY_MTST_NO =</span>
+<span class="fc" id="L69">            Comparator.comparing(</span>
+                    (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt;
+<span class="nc" id="L71">                    normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)),</span>
+<span class="fc" id="L72">                    Comparator.nullsLast(Comparator.naturalOrder()));</span>
+
+<span class="fc" id="L74">    private static final Comparator&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt; ORDER_BY_SKNO_DESC =</span>
+<span class="fc" id="L75">            Comparator.comparing(</span>
+<span class="fc" id="L76">                (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt; normalizeSkno(integerValue(row, SvmstkrColumn.SKNO)),</span>
+<span class="fc" id="L77">                    Comparator.nullsLast(Comparator.reverseOrder()));</span>
+
+    private static final Comparator&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt;
+<span class="fc" id="L80">            ORDER_BY_RKKI_STT_YMD_DESC =</span>
+<span class="fc" id="L81">                Comparator.comparing(</span>
+                        (EnumMap&lt;SvmstkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L83">                        normalizeYmd(localDateValue(row, SvmstkrColumn.RKKI_STT_YMD)),</span>
+<span class="fc" id="L84">                        Comparator.nullsLast(Comparator.reverseOrder()));</span>
+
+<span class="fc" id="L86">    private final List&lt;EnumMap&lt;SvmstkrColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;SvmstkrWriteRecord, SvmstkrColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;SvmstkrWriteRecord, SvmstkrColumn&gt; updateSupport;
+
+    /**
+     * デフォルトの時計と監査設定で初期化する。
+     */
+    public SvmstkrDataAccessImpl() {
+<span class="nc" id="L100">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L101">    }</span>
+
+    SvmstkrDataAccessImpl(
+            SystemDateTimeProvider clock,
+<span class="fc" id="L105">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L106">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L107">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L108">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L109">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(
+                        SvmstkrWriteDefinition.INSTANCE,
+                        NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L113">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        SvmstkrWriteDefinition.INSTANCE,
+                        NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param row 追加する行
+     * @return このインスタンス
+     */
+    public SvmstkrDataAccessImpl addRow(InternalRow row) {
+<span class="fc" id="L126">        rows.add(toRowMap(Objects.requireNonNull(row, &quot;row&quot;)));</span>
+<span class="fc" id="L127">        return this;</span>
+    }
+
+    @Override
+    public int insert(SvmstkrWriteRecord record, AuditContext context) {
+<span class="fc" id="L132">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L133">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L134">        rows.add(</span>
+<span class="fc" id="L135">                insertSupport.prepare(</span>
+                        record,
+<span class="fc" id="L137">                        values -&gt; auditColumnAutoSetter.applyForInsert(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(SvmstkrColumn.class, values),
+                                context,
+                                clock)));
+<span class="fc" id="L141">        return 1;</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndRkkiSttYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate rkkiSttYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L147">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L148">        LocalDate safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L149">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L150">        return rows.stream()</span>
+<span class="fc" id="L151">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L152">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeRkkiSttYmd))</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            .filter(row -&gt; !Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L154">                .sorted(ORDER_BY_RKKI_END_YMD_DESC_MTST_NO)</span>
+<span class="fc" id="L155">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L156">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L162">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L163">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L164">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L165">        return rows.stream()</span>
+<span class="fc" id="L166">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L167">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="fc" id="L168">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            .filter(row -&gt; !Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L170">                .sorted(ORDER_BY_MTST_NO_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L171">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L172">                .toList();</span>
+    }
+
+    @Override
+    public long findBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L178">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L179">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L180">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L182">            return 0;</span>
+        }
+<span class="fc" id="L184">        return rows.stream()</span>
+<span class="fc" id="L185">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L186">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="fc" id="L187">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="fc" id="L188">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L189">                .count();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNo(
+            Long svkyNo,
+            List&lt;String&gt; rkkiKnrnJtkbList,
+            LocalDate knskKjnYmd,
+            Long mtstNo) {
+<span class="fc" id="L198">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L199">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L200">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L201">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L203">            return List.of();</span>
+        }
+<span class="fc" id="L205">        return rows.stream()</span>
+<span class="pc" id="L206">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="pc" id="L207">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="pc" id="L208">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L209">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="pc bnc" id="L210" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="fc" id="L211">                .sorted(ORDER_BY_MTST_NO_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L212">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L213">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndMtstNoAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, String rkkiKnrnJtkb) {
+<span class="fc" id="L219">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L220">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L221">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L222">        return rows.stream()</span>
+<span class="pc" id="L223">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="pc" id="L224">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc bnc" id="L225" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L226">                .sorted(ORDER_BY_SKNO_DESC)</span>
+<span class="fc" id="L227">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L228">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndMtstNoAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L234">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L235">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L236">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L238">            return List.of();</span>
+        }
+<span class="fc" id="L240">        return rows.stream()</span>
+<span class="pc" id="L241">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="pc bnc" id="L242" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L243">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L244">                .sorted(ORDER_BY_MTST_NO)</span>
+<span class="fc" id="L245">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L246">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long svkyNo, Long mtstNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L252">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L253">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L254">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L255">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L256">        return rows.stream()</span>
+<span class="pc" id="L257">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="pc bnc" id="L258" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L259">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L260">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L261">            .filter(row -&gt; Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L262">                .sorted(ORDER_BY_MTST_NO)</span>
+<span class="fc" id="L263">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L264">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkb(Long mtstNo, String rkkiKnrnJtkb) {
+<span class="fc" id="L269">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L270">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L271">        return rows.stream()</span>
+<span class="pc" id="L272">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L273">            .filter(row -&gt; Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L274">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L275">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkb(
+            Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L281">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L282">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L284">            return Optional.empty();</span>
+        }
+<span class="fc" id="L286">        return rows.stream()</span>
+<span class="fc" id="L287">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="fc" id="L288">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L289">                .sorted(ORDER_BY_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L290">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L291">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate rkkiSttYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L297">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L298">        LocalDate safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L299">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L300">        return rows.stream()</span>
+<span class="pc" id="L301">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L302">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeRkkiSttYmd))</span>
+<span class="pc bnc" id="L303" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L304">                .sorted(ORDER_BY_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L305">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L306">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiKnrnJtkbAndRkkiEndYmd(
+            Long mtstNo, List&lt;String&gt; rkkiKnrnJtkbList, LocalDate rkkiEndYmd) {
+<span class="fc" id="L312">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L313">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L314">        LocalDate safeRkkiEndYmd = safeYmd(rkkiEndYmd, &quot;rkkiEndYmd&quot;);</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L316">            return Optional.empty();</span>
+        }
+<span class="fc" id="L318">        return rows.stream()</span>
+<span class="pc" id="L319">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L320">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="pc" id="L321">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_END_YMD, safeRkkiEndYmd))</span>
+<span class="fc" id="L322">                .sorted(ORDER_BY_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L323">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L324">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate knskKjnYmd, String rkkiKnrnJtkb) {
+<span class="fc" id="L330">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L331">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L332">        String safeRkkiKnrnJtkb = safeRkkiKnrnJtkb(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L333">        return rows.stream()</span>
+<span class="pc" id="L334">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L335">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L336">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="pc bnc" id="L337" title="All 2 branches missed.">            .filter(row -&gt; !Objects.equals(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB)), safeRkkiKnrnJtkb))</span>
+<span class="fc" id="L338">                .sorted(ORDER_BY_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L339">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L340">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(
+            Long mtstNo, LocalDate knskKjnYmd, List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L346">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L347">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L348">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L350">            return Optional.empty();</span>
+        }
+<span class="fc" id="L352">        return rows.stream()</span>
+<span class="pc" id="L353">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="pc" id="L354">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L355">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="pc" id="L356">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L357">                .sorted(ORDER_BY_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L358">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L359">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt;
+            findAllBySvkyNoAndRkkiKnrnJtkbAndRkkiSttYmdAndRkkiEndYmdAndMtstNoForR015(
+                    Long svkyNo,
+                    List&lt;String&gt; rkkiKnrnJtkbList,
+                    LocalDate rkkiSttYmd,
+                    LocalDate rkkiEndYmd,
+                    Long mtstNo) {
+<span class="fc" id="L370">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L371">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc" id="L372">        LocalDate safeRkkiSttYmd = safeYmd(rkkiSttYmd, &quot;rkkiSttYmd&quot;);</span>
+<span class="fc" id="L373">        LocalDate safeRkkiEndYmd = safeYmd(rkkiEndYmd, &quot;rkkiEndYmd&quot;);</span>
+<span class="fc" id="L374">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="nc" id="L376">            return List.of();</span>
+        }
+<span class="fc" id="L378">        return rows.stream()</span>
+<span class="fc" id="L379">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L380">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L381">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeRkkiSttYmd))</span>
+<span class="fc" id="L382">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeRkkiEndYmd))</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">            .filter(row -&gt; !Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="fc" id="L384">                .sorted(ORDER_BY_MTST_NO_RKKI_STT_YMD_DESC)</span>
+<span class="fc" id="L385">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L386">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findBySvkyNoAndMtstNo(Long svkyNo, Long mtstNo) {
+<span class="fc" id="L391">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L392">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L393">        return rows.stream()</span>
+<span class="fc" id="L394">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L395">            .filter(row -&gt; Objects.equals(normalizeMtstNo(longValue(row, SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="fc" id="L396">                .sorted(ORDER_BY_SKNO_DESC)</span>
+<span class="fc" id="L397">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L398">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvmstkrRecord&gt; findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkbList(
+            Long svkyNo,
+            LocalDate knskKjnYmd,
+            List&lt;String&gt; rkkiKnrnJtkbList) {
+<span class="fc" id="L406">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L407">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L408">        Objects.requireNonNull(rkkiKnrnJtkbList, &quot;rkkiKnrnJtkbList&quot;);</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (rkkiKnrnJtkbList.isEmpty()) {</span>
+<span class="fc" id="L410">            return List.of();</span>
+        }
+<span class="fc" id="L412">        return rows.stream()</span>
+<span class="fc" id="L413">            .filter(row -&gt; Objects.equals(normalizeSvkyNo(longValue(row, SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L414">            .filter(row -&gt; isOnOrBefore(row, SvmstkrColumn.RKKI_STT_YMD, safeKnskKjnYmd))</span>
+<span class="fc" id="L415">            .filter(row -&gt; isOnOrAfter(row, SvmstkrColumn.RKKI_END_YMD, safeKnskKjnYmd))</span>
+<span class="fc" id="L416">            .filter(row -&gt; rkkiKnrnJtkbList.contains(normalizeRkkiKnrnJtkb(stringValue(row, SvmstkrColumn.RKKI_KNRN_JTKB))))</span>
+<span class="fc" id="L417">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L418">                .toList();</span>
+    }
+
+    @Override
+    public int updateByMtstNoAndSvkyNoAndSkno(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrSknoOptionalUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L427">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L428">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L429">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L430">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L432">        return InMemoryOptimisticUpdateSupport.update(</span>
+            rows,
+            row -&gt;
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">                Objects.equals(row.get(SvmstkrColumn.MTST_NO), updateKey.mtstNo())</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(row.get(SvmstkrColumn.SVKY_NO), updateKey.svkyNo())</span>
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(row.get(SvmstkrColumn.SKNO), updateKey.skno()),</span>
+            row -&gt;
+<span class="fc" id="L439">                updateSupport.prepare(</span>
+                    record,
+                    targetColumns,
+<span class="fc" id="L442">                    values -&gt; auditColumnAutoSetter.applyForUpdate(</span>
+                        new MapBackedAuditColumnAccess&lt;&gt;(SvmstkrColumn.class, values),
+                        context,
+                        clock,
+<span class="fc" id="L446">                        integerValue(row, SvmstkrColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L447">            updateSupport::apply,</span>
+            SvmstkrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L449">            updateKey.recUpdJnjNo(),</span>
+            Identifiers.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO,
+<span class="fc" id="L451">            updateKey.mtstNo(),</span>
+<span class="fc" id="L452">            updateKey.svkyNo(),</span>
+<span class="fc" id="L453">            updateKey.skno());</span>
+    }
+
+    @Override
+    public int updateByMtstNoAndSvkyNoAndSkno(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrSknoUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L462">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L463">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L464">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L465">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L466">        return InMemoryOptimisticUpdateSupport.update(</span>
+            rows,
+            row -&gt;
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">                Objects.equals(row.get(SvmstkrColumn.MTST_NO), updateKey.mtstNo())</span>
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(row.get(SvmstkrColumn.SVKY_NO), updateKey.svkyNo())</span>
+<span class="pc bpc" id="L471" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(row.get(SvmstkrColumn.SKNO), updateKey.skno()),</span>
+            row -&gt;
+<span class="fc" id="L473">                updateSupport.prepare(</span>
+                    record,
+                    targetColumns,
+<span class="fc" id="L476">                    values -&gt; auditColumnAutoSetter.applyForUpdate(</span>
+                        new MapBackedAuditColumnAccess&lt;&gt;(SvmstkrColumn.class, values),
+                        context,
+                        clock,
+<span class="fc" id="L480">                        integerValue(row, SvmstkrColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L481">            updateSupport::apply,</span>
+            SvmstkrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L483">            updateKey.recUpdJnjNo(),</span>
+            Identifiers.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO_KEY_ONLY,
+<span class="fc" id="L485">            updateKey.mtstNo(),</span>
+<span class="fc" id="L486">            updateKey.svkyNo(),</span>
+<span class="fc" id="L487">            updateKey.skno());</span>
+    }
+
+    @Override
+    public int updateBySvkyNoAndRkkiKnrnJtkb(
+            SvmstkrWriteRecord record,
+            Set&lt;SvmstkrColumn&gt; targetColumns,
+            SvmstkrRkkiKnrnJtkbUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L496">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L497">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L498">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L499">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L500">        return InMemoryOptimisticUpdateSupport.update(</span>
+            rows,
+            row -&gt;
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">                Objects.equals(row.get(SvmstkrColumn.SVKY_NO), updateKey.svkyNo())</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">                    &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L505">                        row.get(SvmstkrColumn.RKKI_KNRN_JTKB), updateKey.rkkiKnrnJtkb()),</span>
+            row -&gt;
+<span class="fc" id="L507">                updateSupport.prepare(</span>
+                    record,
+                    targetColumns,
+<span class="fc" id="L510">                    values -&gt; auditColumnAutoSetter.applyForUpdate(</span>
+                        new MapBackedAuditColumnAccess&lt;&gt;(SvmstkrColumn.class, values),
+                        context,
+                        clock,
+<span class="fc" id="L514">                        integerValue(row, SvmstkrColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L515">            updateSupport::apply,</span>
+            SvmstkrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L517">            updateKey.recUpdJnjNo(),</span>
+                Identifiers.UPDATE_BY_SVKY_NO_AND_RKKI_KNRN_JTKB,
+<span class="fc" id="L519">                updateKey.svkyNo(),</span>
+<span class="fc" id="L520">                updateKey.rkkiKnrnJtkb());</span>
+    }
+
+    @Override
+    public Optional&lt;SvmstkrRecord&gt; findByPK(Long mtstNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L525">        Long safeMtstNo = safeMtstNo(mtstNo, &quot;mtstNo&quot;);</span>
+<span class="fc" id="L526">        Long safeSvkyNo = safeSvkyNo(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L527">        Integer safeSkno = safeSkno(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L528">        return rows.stream()</span>
+<span class="fc" id="L529">            .filter(row -&gt; Objects.equals(normalizeMtstNo((Long) row.get(SvmstkrColumn.MTST_NO)), safeMtstNo))</span>
+<span class="fc" id="L530">            .filter(row -&gt; Objects.equals(normalizeSvkyNo((Long) row.get(SvmstkrColumn.SVKY_NO)), safeSvkyNo))</span>
+<span class="fc" id="L531">            .filter(row -&gt; Objects.equals(normalizeSkno((Integer) row.get(SvmstkrColumn.SKNO)), safeSkno))</span>
+<span class="fc" id="L532">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L533">                .findFirst();</span>
+    }
+
+    private static boolean isOnOrBefore(
+            Map&lt;SvmstkrColumn, Object&gt; row,
+            SvmstkrColumn column,
+            LocalDate baseDate) {
+<span class="fc" id="L540">        LocalDate value = normalizeYmd(dateValue(row, column));</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        return !value.isAfter(normalizeYmd(baseDate));</span>
+    }
+
+    private static boolean isOnOrAfter(
+            Map&lt;SvmstkrColumn, Object&gt; row,
+            SvmstkrColumn column,
+            LocalDate baseDate) {
+<span class="fc" id="L548">        LocalDate value = normalizeYmd(dateValue(row, column));</span>
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">        return !value.isBefore(normalizeYmd(baseDate));</span>
+    }
+
+    private static EnumMap&lt;SvmstkrColumn, Object&gt; toRowMap(InternalRow row) {
+<span class="fc" id="L553">        EnumMap&lt;SvmstkrColumn, Object&gt; values = new EnumMap&lt;&gt;(SvmstkrColumn.class);</span>
+<span class="fc" id="L554">        values.put(SvmstkrColumn.MTST_NO, row.mtstNo());</span>
+<span class="fc" id="L555">        values.put(SvmstkrColumn.SVKY_NO, row.svkyNo());</span>
+<span class="fc" id="L556">        values.put(SvmstkrColumn.SKNO, row.skno());</span>
+<span class="fc" id="L557">        values.put(SvmstkrColumn.SUGU_KBN, row.suguKbn());</span>
+<span class="fc" id="L558">        values.put(SvmstkrColumn.SKNR_FLG, toBooleanFlag(row.sknrFlg()));</span>
+<span class="fc" id="L559">        values.put(SvmstkrColumn.RKKI_KNRN_JTKB, row.rkkiKnrnJtkb());</span>
+<span class="fc" id="L560">        values.put(SvmstkrColumn.RKKI_STT_YMD, toLocalDate(row.rkkiSttYmd()));</span>
+<span class="fc" id="L561">        values.put(SvmstkrColumn.RKKI_END_YMD, toLocalDate(row.rkkiEndYmd()));</span>
+<span class="fc" id="L562">        values.put(SvmstkrColumn.HISH_YTI_YMD, toLocalDate(row.hishYtiYmd()));</span>
+<span class="fc" id="L563">        values.put(SvmstkrColumn.REG_TSMP, row.regTsmp());</span>
+<span class="fc" id="L564">        values.put(SvmstkrColumn.REG_USR_ID, row.regUsrId());</span>
+<span class="fc" id="L565">        values.put(SvmstkrColumn.UPD_TSMP, row.updTsmp());</span>
+<span class="fc" id="L566">        values.put(SvmstkrColumn.UPD_USR_ID, row.updUsrId());</span>
+<span class="fc" id="L567">        values.put(SvmstkrColumn.UPD_KTN_KINO_ID, row.updKtnKinoId());</span>
+<span class="fc" id="L568">        values.put(SvmstkrColumn.REC_UPD_JNJ_NO, row.recUpdJnjNo());</span>
+<span class="fc" id="L569">        return values;</span>
+    }
+
+    private static Long longValue(Map&lt;SvmstkrColumn, Object&gt; row, SvmstkrColumn column) {
+<span class="fc" id="L573">        return (Long) row.get(column);</span>
+    }
+
+    private static Integer integerValue(Map&lt;SvmstkrColumn, Object&gt; row, SvmstkrColumn column) {
+<span class="fc" id="L577">        return (Integer) row.get(column);</span>
+    }
+
+    private static String stringValue(Map&lt;SvmstkrColumn, Object&gt; row, SvmstkrColumn column) {
+<span class="fc" id="L581">        return (String) row.get(column);</span>
+    }
+
+    private static LocalDate localDateValue(Map&lt;SvmstkrColumn, Object&gt; row, SvmstkrColumn column) {
+<span class="fc" id="L585">        return (LocalDate) row.get(column);</span>
+    }
+
+    private static LocalDate dateValue(Map&lt;SvmstkrColumn, Object&gt; row, SvmstkrColumn column) {
+<span class="fc" id="L589">        return localDateValue(row, column);</span>
+    }
+
+    private static Long safeMtstNo(Long value, String paramName) {
+<span class="fc" id="L593">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Long safeSvkyNo(Long value, String paramName) {
+<span class="fc" id="L597">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeSkno(Integer value, String paramName) {
+<span class="fc" id="L601">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L605">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String safeRkkiKnrnJtkb(String value, String paramName) {
+<span class="fc" id="L609">        return WhereParamGuard.fixedLengthNotNull(value, paramName, RKKI_KNRN_JTKB_LENGTH);</span>
+    }
+
+    private static Long normalizeMtstNo(Long value) {
+<span class="fc" id="L613">        return safeMtstNo(value, &quot;mtstNo&quot;);</span>
+    }
+
+    private static Long normalizeSvkyNo(Long value) {
+<span class="fc" id="L617">        return safeSvkyNo(value, &quot;svkyNo&quot;);</span>
+    }
+
+    private static Integer normalizeSkno(Integer value) {
+<span class="fc" id="L621">        return safeSkno(value, &quot;skno&quot;);</span>
+    }
+
+    private static LocalDate normalizeYmd(LocalDate value) {
+<span class="fc" id="L625">        return safeYmd(value, &quot;ymd&quot;);</span>
+    }
+
+    private static String normalizeRkkiKnrnJtkb(String value) {
+<span class="fc" id="L629">        return safeRkkiKnrnJtkb(value, &quot;rkkiKnrnJtkb&quot;);</span>
+    }
+
+    private static LocalDate toLocalDate(int ymd) {
+<span class="pc bpc" id="L633" title="1 of 2 branches missed.">        if (ymd &lt;= 0) {</span>
+<span class="nc" id="L634">            return null;</span>
+        }
+<span class="fc" id="L636">        return LocalDate.of(ymd / 10000, (ymd / 100) % 100, ymd % 100);</span>
+    }
+
+    private static Boolean toBooleanFlag(String value) {
+<span class="pc bpc" id="L640" title="1 of 2 branches missed.">        if (&quot;1&quot;.equals(value)) {</span>
+<span class="fc" id="L641">            return Boolean.TRUE;</span>
+        }
+<span class="nc bnc" id="L643" title="All 2 branches missed.">        if (&quot;0&quot;.equals(value)) {</span>
+<span class="nc" id="L644">            return Boolean.FALSE;</span>
+        }
+<span class="nc" id="L646">        return null;</span>
+    }
+
+    /** SVMSTKR のテストデータ行。 */
+    public static record InternalRow(
+            long mtstNo,
+            long svkyNo,
+            int skno,
+            String suguKbn,
+            String sknrFlg,
+            String rkkiKnrnJtkb,
+            int rkkiSttYmd,
+            int rkkiEndYmd,
+            int hishYtiYmd,
+            LocalDateTime regTsmp,
+            String regUsrId,
+            LocalDateTime updTsmp,
+            String updUsrId,
+            String updKtnKinoId,
+            int recUpdJnjNo) {
+        /** コンパクトコンストラクタ。 */
+<span class="fc" id="L667">        public InternalRow {</span>
+<span class="fc" id="L668">            Objects.requireNonNull(suguKbn, &quot;suguKbn&quot;);</span>
+<span class="fc" id="L669">            Objects.requireNonNull(sknrFlg, &quot;sknrFlg&quot;);</span>
+<span class="fc" id="L670">            Objects.requireNonNull(rkkiKnrnJtkb, &quot;rkkiKnrnJtkb&quot;);</span>
+<span class="fc" id="L671">            Objects.requireNonNull(regTsmp, &quot;regTsmp&quot;);</span>
+<span class="fc" id="L672">            Objects.requireNonNull(regUsrId, &quot;regUsrId&quot;);</span>
+<span class="fc" id="L673">            Objects.requireNonNull(updTsmp, &quot;updTsmp&quot;);</span>
+<span class="fc" id="L674">            Objects.requireNonNull(updUsrId, &quot;updUsrId&quot;);</span>
+<span class="fc" id="L675">            Objects.requireNonNull(updKtnKinoId, &quot;updKtnKinoId&quot;);</span>
+<span class="fc" id="L676">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

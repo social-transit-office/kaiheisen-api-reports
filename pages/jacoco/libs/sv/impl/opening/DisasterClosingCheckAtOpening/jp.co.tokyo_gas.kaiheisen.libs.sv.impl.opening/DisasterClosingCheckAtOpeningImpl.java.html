@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DisasterClosingCheckAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-disasterclosingcheckatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">DisasterClosingCheckAtOpeningImpl.java</span></div><h1>DisasterClosingCheckAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.DisasterClosingCheckAtOpening;
+
+/**
+ * 概要: SV-190（開栓時災害時閉栓チェック）の実装クラス。
+ * 主な仕様:
+ * - 閉栓事由種別が災害時閉栓であり、報告開栓事由種別が災害復旧以外の場合を禁止パターンとして判定する。
+ * - 禁止パターンに一致した場合は開栓共通エラー 020100041 を送出する。
+ * - 判定に使用する CIRIUS 定数はコンストラクタ初期化時に必須解決し、解決済みコードで比較する。
+ * - 下位 DA や他 SV 呼び出しは行わず、入力値のみで分岐判定を完結させる。
+ * 既知の制約:
+ * - 入力値の null 許可/不許可や前後空白補正は上位層責務とし、本クラスでは追加の正規化を行わない。
+ * - 必須定数が未登録の場合はコンストラクタ初期化時点で例外送出となり、インスタンス生成に失敗する。
+ */
+public final class DisasterClosingCheckAtOpeningImpl implements DisasterClosingCheckAtOpening {
+
+    private final String closureReasonClosedInCaseOfDisaster;
+
+    private final String openingReasonDisasterRecovery;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - 閉栓事由種別 J0273 の災害時閉栓を必須解決して保持する。
+     * - 報告開栓事由種別 04900 の災害復旧を必須解決して保持する。
+     * 既知の制約:
+     * - CIRIUS 定数取得サービスの null は許容しない。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+<span class="fc" id="L38">    public DisasterClosingCheckAtOpeningImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L39">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L40">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L41">        this.closureReasonClosedInCaseOfDisaster =</span>
+<span class="fc" id="L42">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L46">        this.openingReasonDisasterRecovery =</span>
+<span class="fc" id="L47">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.DISASTER_RECOVERY);
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * 概要: 開栓時災害時閉栓チェックを実行し、禁止パターンに該当する場合は開栓共通エラーを送出する。
+     * 主な仕様:
+     * - 閉栓事由種別が災害時閉栓であり、報告開栓事由種別が災害復旧以外のときに開栓共通エラーを送出する。
+     * - 上記以外の組み合わせでは正常終了する。
+     * 既知の制約:
+     * - `correlationId`、`hukkSysShbt`、`systemDatetime` は SV 規約に従い公開引数へ含めない。
+     * - public 引数の null ガードは追加せず、上位バリデーション済み前提で評価する。
+     *
+     * @param hesnJysb 閉栓事由種別
+     * @param hkkKasJysb 報告開栓事由種別
+     */
+    @Override
+    public void execute(String hesnJysb, String hkkKasJysb) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (closureReasonClosedInCaseOfDisaster.equals(hesnJysb)</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                &amp;&amp; !openingReasonDisasterRecovery.equals(hkkKasJysb)) {</span>
+<span class="fc" id="L69">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100041);</span>
+        }
+<span class="fc" id="L71">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InMemoryTargetColumnUpdateSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core</a> &gt; <span class="el_source">InMemoryTargetColumnUpdateSupport.java</span></div><h1>InMemoryTargetColumnUpdateSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core;
+
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Consumer;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.TableWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WriteColumnResolver;
+
+/**
+ * targetColumns 指定型 update payload を準備する reusable helper。
+ *
+ * @param &lt;TRecord&gt; write record 型
+ * @param &lt;TColumn&gt; 列型
+ */
+public final class InMemoryTargetColumnUpdateSupport&lt;
+        TRecord, TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn&gt; {
+
+    private final TableWriteDefinition&lt;TRecord, TColumn&gt; definition;
+
+    private final NeutralValueResolver&lt;TColumn&gt; neutralValueResolver;
+
+    /**
+     * helper を生成する。
+     *
+     * @param definition テーブル write 定義
+     * @param neutralValueResolver neutral value 解決
+     */
+    public InMemoryTargetColumnUpdateSupport(
+            TableWriteDefinition&lt;TRecord, TColumn&gt; definition,
+<span class="fc" id="L34">            NeutralValueResolver&lt;TColumn&gt; neutralValueResolver) {</span>
+<span class="fc" id="L35">        this.definition = Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+<span class="fc" id="L36">        this.neutralValueResolver =</span>
+<span class="fc" id="L37">                Objects.requireNonNull(neutralValueResolver, &quot;neutralValueResolver&quot;);</span>
+<span class="fc" id="L38">    }</span>
+
+    /**
+     * update payload を準備する。
+     *
+     * @param record write record
+     * @param targetColumns 公開 targetColumns
+     * @param defaultsApplier default 値適用
+     * @return update payload
+     */
+    public PreparedTargetColumnUpdate&lt;TColumn&gt; prepare(
+            TRecord record,
+            Set&lt;TColumn&gt; targetColumns,
+            Consumer&lt;EnumMap&lt;TColumn, Object&gt;&gt; defaultsApplier) {
+<span class="fc" id="L52">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L53">        Objects.requireNonNull(defaultsApplier, &quot;defaultsApplier&quot;);</span>
+
+<span class="fc" id="L55">        List&lt;TColumn&gt; orderedPublicColumns =</span>
+<span class="fc" id="L56">                WriteColumnResolver.resolveUpdatableColumns(definition, targetColumns, false);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (orderedPublicColumns.isEmpty()) {</span>
+<span class="fc" id="L58">            return PreparedTargetColumnUpdate.empty(definition.columnClass());</span>
+        }
+
+<span class="fc" id="L61">        List&lt;TColumn&gt; effectiveColumns =</span>
+<span class="fc" id="L62">                WriteColumnResolver.effectiveColumns(</span>
+<span class="fc" id="L63">                        orderedPublicColumns, definition.updateManagedColumns());</span>
+<span class="fc" id="L64">        EnumMap&lt;TColumn, Object&gt; values = WriteColumnResolver.extractValues(definition, record);</span>
+<span class="fc" id="L65">        defaultsApplier.accept(values);</span>
+<span class="fc" id="L66">        neutralValueResolver.complement(values, effectiveColumns);</span>
+<span class="fc" id="L67">        return PreparedTargetColumnUpdate.of(effectiveColumns, values);</span>
+    }
+
+    /**
+     * 準備済み payload を保存行へ反映する。
+     *
+     * @param row 保存行
+     * @param prepared 更新 payload
+     */
+    public void apply(Map&lt;TColumn, Object&gt; row, PreparedTargetColumnUpdate&lt;TColumn&gt; prepared) {
+<span class="fc" id="L77">        Objects.requireNonNull(row, &quot;row&quot;);</span>
+<span class="fc" id="L78">        Objects.requireNonNull(prepared, &quot;prepared&quot;);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (TColumn column : prepared.targetColumns()) {</span>
+<span class="fc" id="L80">            row.put(column, prepared.values().get(column));</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

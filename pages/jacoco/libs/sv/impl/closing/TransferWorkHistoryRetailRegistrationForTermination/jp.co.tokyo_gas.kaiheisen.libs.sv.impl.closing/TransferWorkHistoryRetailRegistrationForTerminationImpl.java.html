@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryRetailRegistrationForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-transferworkhistoryretailregistrationfortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">TransferWorkHistoryRetailRegistrationForTerminationImpl.java</span></div><h1>TransferWorkHistoryRetailRegistrationForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransferWorkHistoryRetailRegistrationForTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TransferWorkHistorySogoTmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ClosingCancellationHistoryDetailCodeRetailAcquisition;
+
+/**
+ * 概要: SV-036（異動・作業履歴（共通）＜小売＞登録（契約終了））の実装。
+ * 主な仕様:
+ * - SV-037 で異動・作業履歴業務詳細コード（小売）を取得し、他-004 の登録リクエストを編集して実行する。
+ * - 元メーター分の初回登録に加え、総合他ガスメーター情報リスト件数分の繰返し登録を行う。
+ * - 異動・作業履歴報告ユーザーIDは、入力値が非 null かつ異動・作業履歴業務コード（小売）が `CCBG63` 以外の場合のみ他-004 へ設定する。
+ * - 繰返し登録対象の `svmstkrInf.mtstNo` が未設定の場合、他-004 の登録依頼用お客さま番号は空文字で登録する。
+ * 既知の制約:
+ * - public メソッド引数の null / blank 判定は追加せず、登録リクエスト生成に必要な RequestContext.systemDatetime を fail-fast する。
+ * - 詳細情報は設計どおり空配列で登録する。
+ */
+public final class TransferWorkHistoryRetailRegistrationForTerminationImpl
+        implements TransferWorkHistoryRetailRegistrationForTermination {
+
+<span class="fc" id="L32">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L34">    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private final ClosingCancellationHistoryDetailCodeRetailAcquisition detailCodeAcquisition;
+
+    private final IdousagyourirekiKouriJouhouCiriusAdapter ciriusAdapter;
+
+    private final RequestContext requestContext;
+
+    private final String caseHistoryResultTransfer;
+
+    private final String itemHistoryRegistrationDestinationCustomer;
+
+    private final String endOfContract;
+
+    private final String closingRegistration;
+
+    private final String transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable;
+
+    private final String customerInfoAcquisitionPossible;
+
+    /**
+     * 概要: SV-036 実行に必要な依存と定数を初期化する。
+     * 主な仕様:
+     * - 下位 SV、RequestContext、他-004 adapter を保持する。
+     * - 判定・固定値設定に必要な CIRIUS 定数はコンストラクタ初期化時に fail-fast で解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須定数が未定義の場合はコンストラクタ初期化時点で失敗する。
+     *
+     * @param detailCodeAcquisition SV-037
+     * @param ciriusAdapter 他-004 adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public TransferWorkHistoryRetailRegistrationForTerminationImpl(
+            ClosingCancellationHistoryDetailCodeRetailAcquisition detailCodeAcquisition,
+            IdousagyourirekiKouriJouhouCiriusAdapter ciriusAdapter,
+            RequestContext requestContext,
+<span class="fc" id="L72">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L73">        this.detailCodeAcquisition = Objects.requireNonNull(detailCodeAcquisition, &quot;detailCodeAcquisition&quot;);</span>
+<span class="fc" id="L74">        this.ciriusAdapter = Objects.requireNonNull(ciriusAdapter, &quot;ciriusAdapter&quot;);</span>
+<span class="fc" id="L75">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L76">        CiriusConstantService nonNullCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L79">        this.caseHistoryResultTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.CaseHistory.TYPE,
+                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER);
+<span class="fc" id="L83">        this.itemHistoryRegistrationDestinationCustomer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.CUSTOMER);
+<span class="fc" id="L87">        this.endOfContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.END_OF_CONTRACT);
+<span class="fc" id="L91">        this.closingRegistration = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION);
+<span class="fc" id="L95">        this.transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.NOT_APPLICABLE_TO_DETAILS_ONLY);
+<span class="fc" id="L99">        this.customerInfoAcquisitionPossible = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate tyenYmd,
+            String svkyEndJysb,
+            List&lt;TransferWorkHistorySogoTmtrInf&gt; sogoTmtrInfList,
+            String isrrGymCd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String isrrHkkrKbn) {
+<span class="fc" id="L118">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L119">        String detailCode = detailCodeAcquisition.execute(svkyEndJysb).isrrGmssCd();</span>
+<span class="fc" id="L120">        String reportUserId = resolveReportUserId(isrrGymCd, isrrHusrId);</span>
+<span class="fc" id="L121">        ciriusAdapter.register(toRequest(</span>
+                gasMtstNo,
+                tyenYmd,
+                detailCode,
+                reportUserId,
+                isrrHkunKj,
+                isrrHkkrKbn,
+                systemDatetime));
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        for (TransferWorkHistorySogoTmtrInf sogoTmtrInf : normalizeSogoTmtrInfList(sogoTmtrInfList)) {</span>
+<span class="fc" id="L130">            ciriusAdapter.register(toRequest(</span>
+<span class="fc" id="L131">                    resolveRepeatGasMtstNo(sogoTmtrInf),</span>
+                    tyenYmd,
+                    detailCode,
+                    reportUserId,
+                    isrrHkunKj,
+                    isrrHkkrKbn,
+                    systemDatetime));
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">    }</span>
+
+    /**
+     * 概要: 他-004 の異動・作業履歴報告ユーザーＩＤへ設定する値を判定する。
+     *
+     * @param isrrGymCd 異動・作業履歴業務コード（小売）
+     * @param reportUserId 異動・作業履歴報告ユーザーＩＤ
+     * @return 条件成立時は入力ユーザーＩＤ、非成立時は未設定扱いの null
+     */
+    private String resolveReportUserId(String isrrGymCd, String reportUserId) {
+<span class="fc bfc" id="L149" title="All 4 branches covered.">        if (reportUserId == null || closingRegistration.equals(isrrGymCd)) {</span>
+<span class="fc" id="L150">            return null;</span>
+        }
+<span class="fc" id="L152">        return reportUserId;</span>
+    }
+
+    /**
+     * 概要: SV 入力を他-004 リクエストへ変換する。
+     *
+     * @param gasMtstNo メーター設置場所番号
+     * @param tyenYmd 適用終了年月日
+     * @param detailCode 異動・作業履歴業務詳細コード（小売）
+     * @param reportUserId 報告ユーザーID。設定対象外の場合は null
+     * @param reportUserName 報告ユーザー名漢字
+     * @param reportRouteCode 報告経路区分
+     * @param systemDatetime システム日時
+     * @return 他-004 リクエスト
+     */
+    private IdousagyourirekiKouriJouhouRequest toRequest(
+            Long gasMtstNo,
+            LocalDate tyenYmd,
+            String detailCode,
+            String reportUserId,
+            String reportUserName,
+            String reportRouteCode,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L175">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+                        new IdousagyourirekiKouriJouhouRequest.IdousagyourirekigyoumuKyoutsuuKouri(
+<span class="fc" id="L178">                                toCustomerNumber(gasMtstNo),</span>
+                                caseHistoryResultTransfer,
+                                itemHistoryRegistrationDestinationCustomer,
+<span class="fc" id="L181">                                nullToEmpty(endOfContract),</span>
+<span class="fc" id="L182">                                nullToEmpty(detailCode),</span>
+<span class="fc" id="L183">                                nullToEmpty(reportRouteCode),</span>
+                                transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable,
+<span class="fc" id="L185">                                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L186">                                toTimeText(systemDatetime),</span>
+<span class="fc" id="L187">                                toDateText(tyenYmd),</span>
+<span class="fc" id="L188">                                nullToEmpty(reportUserId),</span>
+<span class="fc" id="L189">                                nullToEmpty(reportUserName),</span>
+                                &quot;&quot;),
+<span class="fc" id="L191">                        List.of(),</span>
+                        customerInfoAcquisitionPossible,
+                        &quot;&quot;,
+<span class="fc" id="L194">                        toDateText(tyenYmd)));</span>
+    }
+
+    /**
+     * 概要: RequestContext から必須のシステム日時を取得する。
+     *
+     * @return RequestContext の必須システム日時
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L203">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L204">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 総合他ガスメーター情報リストを走査可能な値へ正規化する。
+     *
+     * @param sogoTmtrInfList 総合他ガスメーター情報リスト
+     * @return null の場合は空リスト
+     */
+    private List&lt;TransferWorkHistorySogoTmtrInf&gt; normalizeSogoTmtrInfList(
+            List&lt;TransferWorkHistorySogoTmtrInf&gt; sogoTmtrInfList) {
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        return sogoTmtrInfList == null ? List.of() : sogoTmtrInfList;</span>
+    }
+
+    /**
+     * 概要: 繰返し登録対象のメーター設置場所番号を取得する。
+     *
+     * @param sogoTmtrInf 総合他ガスメーター情報
+     * @return メーター設置場所番号。未設定時は null
+     */
+    private Long resolveRepeatGasMtstNo(TransferWorkHistorySogoTmtrInf sogoTmtrInf) {
+<span class="fc bfc" id="L225" title="All 4 branches covered.">        if (sogoTmtrInf == null || sogoTmtrInf.svmstkrInf() == null) {</span>
+<span class="fc" id="L226">            return null;</span>
+        }
+<span class="fc" id="L228">        return sogoTmtrInf.svmstkrInf().mtstNo();</span>
+    }
+
+    /**
+     * 概要: メーター設置場所番号を 11 桁文字列へ変換する。
+     *
+     * @param gasMtstNo メーター設置場所番号
+     * @return 11 桁文字列
+     */
+    private String toCustomerNumber(Long gasMtstNo) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (gasMtstNo == null) {</span>
+<span class="fc" id="L239">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L241">        return String.format(&quot;%011d&quot;, gasMtstNo);</span>
+    }
+
+    /**
+     * 概要: 日付を yyyyMMdd 文字列へ変換する。
+     *
+     * @param value 日付
+     * @return yyyyMMdd 文字列
+     */
+    private String toDateText(LocalDate value) {
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L252">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L254">        return value.format(DATE_FORMATTER);</span>
+    }
+
+    /**
+     * 概要: 文字列の null を空文字へ変換する。
+     *
+     * @param value 変換対象
+     * @return 非 null の文字列
+     */
+    private String nullToEmpty(String value) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    /**
+     * 概要: 時刻を HHmmss 文字列へ変換する。
+     *
+     * @param value システム日時
+     * @return HHmmss 文字列
+     */
+    private String toTimeText(LocalDateTime value) {
+<span class="fc" id="L274">        return value.format(TIME_FORMATTER);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

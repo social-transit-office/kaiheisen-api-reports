@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ErrorResponseResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.response</a> &gt; <span class="el_source">ErrorResponseResolver.java</span></div><h1>ErrorResponseResolver.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.response;
+
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCatalog;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+
+/**
+ * 例外を共通エラーレスポンスへ変換するユーティリティ。
+ */
+public final class ErrorResponseResolver {
+
+    private static final int HTTP_BAD_REQUEST = 400;
+
+    private static final int HTTP_INTERNAL_SERVER_ERROR = 500;
+
+    private ErrorResponseResolver() {
+    }
+
+    /**
+     * 開閉栓共通例外から HTTP ステータスを解決する。
+     *
+     * @param exception 開閉栓共通例外
+     * @return HTTPステータスコード
+     */
+    public static int resolveHttpStatus(KaiheisenException exception) {
+<span class="nc bnc" id="L31" title="All 2 branches missed.">        if (exception instanceof ValidationException) {</span>
+<span class="nc" id="L32">            return HTTP_BAD_REQUEST;</span>
+        }
+<span class="nc bnc" id="L34" title="All 2 branches missed.">        if (exception instanceof BusinessRuleException) {</span>
+<span class="nc" id="L35">            return HTTP_BAD_REQUEST;</span>
+        }
+<span class="nc" id="L37">        return HTTP_INTERNAL_SERVER_ERROR;</span>
+    }
+
+    /**
+     * 開閉栓共通例外を共通エラーレスポンスへ変換する。
+     *
+     * @param exception 開閉栓共通例外
+     * @return エラーレスポンス
+     */
+    public static ErrorResponseBody fromKaiheisenException(KaiheisenException exception) {
+<span class="fc" id="L47">        String originalCode = normalize(exception.getErrorCode());</span>
+<span class="fc" id="L48">        String resolvedCode = normalize(ErrorCatalog.resolveFinalErrorCode(originalCode));</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (resolvedCode == null) {</span>
+<span class="nc" id="L50">            resolvedCode = originalCode;</span>
+        }
+
+<span class="fc" id="L53">        List&lt;String&gt; errorEmbedded = copyOrEmpty(exception.getErrorMessageEmbeddedStringList());</span>
+<span class="fc" id="L54">        List&lt;String&gt; errorDetailList = resolveErrorDetailList(exception, errorEmbedded);</span>
+<span class="fc" id="L55">        List&lt;String&gt; crsMsgEmbStrList = List.of();</span>
+<span class="fc" id="L56">        String crsMsgIdByException = null;</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (exception instanceof BusinessRuleException businessRuleException) {</span>
+<span class="fc" id="L58">            crsMsgEmbStrList = copyOrEmpty(businessRuleException.getCiriusMessageEmbeddedStringList());</span>
+<span class="fc" id="L59">            crsMsgIdByException = normalize(businessRuleException.getCiriusMessageId());</span>
+        }
+
+<span class="fc" id="L62">        String errorDescription = normalize(ErrorCatalog.resolveErrorMessage(originalCode, errorEmbedded));</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (errorDescription == null) {</span>
+<span class="nc" id="L64">            errorDescription = normalize(exception.getMessage());</span>
+        }
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (errorDescription == null) {</span>
+<span class="nc" id="L67">            errorDescription = &quot;error&quot;;</span>
+        }
+
+<span class="fc" id="L70">        String crsMsgId = normalize(ErrorCatalog.resolveCiriusMessageId(originalCode));</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (crsMsgId == null) {</span>
+<span class="fc" id="L72">            crsMsgId = crsMsgIdByException;</span>
+        }
+
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (exception instanceof KaisenRuleException kaisenRuleException) {</span>
+<span class="fc" id="L76">            return new KaisenRuleErrorResponse(</span>
+                    resolvedCode,
+                    errorDescription,
+                    errorDetailList,
+                    crsMsgId,
+                    crsMsgEmbStrList,
+<span class="fc" id="L82">                    normalize(kaisenRuleException.getKaisenErrorReasonCode()));</span>
+        }
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (exception instanceof HeisenRuleException heisenRuleException) {</span>
+<span class="fc" id="L86">            return new HeisenRuleErrorResponse(</span>
+                    resolvedCode,
+                    errorDescription,
+                    errorDetailList,
+                    crsMsgId,
+                    crsMsgEmbStrList,
+<span class="fc" id="L92">                    normalize(heisenRuleException.getHeisenErrorReasonCode()));</span>
+        }
+
+<span class="fc" id="L95">        return new CommonErrorResponse(</span>
+                resolvedCode,
+                errorDescription,
+                errorDetailList,
+                crsMsgId,
+                crsMsgEmbStrList);
+    }
+
+    /**
+     * バリデーション系レスポンスを生成する。
+     *
+     * @param description エラー概要
+     * @param detailList エラー詳細
+     * @return 共通エラーレスポンス
+     */
+    public static CommonErrorResponse fromValidation(String description, List&lt;String&gt; detailList) {
+<span class="nc" id="L111">        List&lt;String&gt; details = copyOrEmpty(detailList);</span>
+<span class="nc" id="L112">        String normalizedDescription = normalize(description);</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        if (normalizedDescription == null) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">            normalizedDescription = details.isEmpty() ? &quot;validation error&quot; : details.getFirst();</span>
+        }
+<span class="nc" id="L116">        String catalogMessage = normalize(</span>
+<span class="nc" id="L117">                ErrorCatalog.resolveErrorMessage(ErrorCodeConstants.ERROR_CODE_010000001, List.of()));</span>
+<span class="nc" id="L118">        return new CommonErrorResponse(</span>
+                ErrorCodeConstants.ERROR_CODE_010000001,
+<span class="nc bnc" id="L120" title="All 2 branches missed.">                catalogMessage == null ? normalizedDescription : catalogMessage,</span>
+                details,
+                null,
+<span class="nc" id="L123">                List.of());</span>
+    }
+
+    private static List&lt;String&gt; copyOrEmpty(List&lt;String&gt; values) {
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        return values == null ? List.of() : List.copyOf(values);</span>
+    }
+
+    private static List&lt;String&gt; resolveErrorDetailList(
+            KaiheisenException exception,
+            List&lt;String&gt; defaultDetailList) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (exception instanceof ValidationException validationException) {</span>
+<span class="fc" id="L134">            return copyOrEmpty(validationException.getErrorDetailList());</span>
+        }
+<span class="fc" id="L136">        return defaultDetailList;</span>
+    }
+
+    private static String normalize(String value) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L141">            return null;</span>
+        }
+<span class="fc" id="L143">        String trimmed = value.trim();</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        return trimmed.isEmpty() ? null : trimmed;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

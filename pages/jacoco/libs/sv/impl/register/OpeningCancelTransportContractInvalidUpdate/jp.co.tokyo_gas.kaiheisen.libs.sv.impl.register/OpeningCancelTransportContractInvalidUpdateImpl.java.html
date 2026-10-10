@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCancelTransportContractInvalidUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-openingcanceltransportcontractinvalidupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">OpeningCancelTransportContractInvalidUpdateImpl.java</span></div><h1>OpeningCancelTransportContractInvalidUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.OpeningCancelTransportContractInvalidUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.OpeningCancelTransportContractInvalidUpdateGmtsetdInf;
+
+/**
+ * 概要: SV-063（開栓取消託送サービス契約無効更新）のサービス実装。
+ * 主な仕様:
+ * - 専用ガスメーター以外では top-level のガスメーター設置場所番号に対して無効更新を行う。
+ * - 元ガスメーターでは導管側ガスメーター設置場所情報リストを追加で反復し、東京ガスの場合は導管通知確定使用量も削除する。
+ * - 更新件数または削除件数が 0 件の場合は DataInconsistencyException を送出する。
+ */
+public final class OpeningCancelTransportContractInvalidUpdateImpl
+        implements OpeningCancelTransportContractInvalidUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS063&quot;;
+
+    static final int DELETE_KNS_KKA_TSNO = 0;
+
+<span class="fc" id="L44">    private static final String RELATION_READ_DA_IDENTIFIER =</span>
+            TskgmstDataAccess.CallSpecs.FIND_ALL_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_TKSU_SVKK_JTKB
+<span class="fc" id="L46">                    .identifier();</span>
+
+<span class="fc" id="L48">    private static final String CONTRACT_READ_DA_IDENTIFIER =</span>
+<span class="fc" id="L49">            TkssvkyDataAccess.CallSpecs.FIND_ALL_BY_TKSU_SVKY_NO_AND_KNSK_KJN_YMD_AND_TKSU_SVKY_JTKB.identifier();</span>
+
+<span class="fc" id="L51">    private static final String CONTRACT_UPDATE_DA_IDENTIFIER =</span>
+<span class="fc" id="L52">            TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier();</span>
+
+<span class="fc" id="L54">    private static final String RELATION_UPDATE_DA_IDENTIFIER =</span>
+            TskgmstDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L56">                    .identifier();</span>
+
+<span class="fc" id="L58">    private static final String DELETE_DA_IDENTIFIER =</span>
+<span class="fc" id="L59">            DktksryDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO.identifier();</span>
+
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final DktksryDataAccess dktksryDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String originalGasMeterStatus;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String tokyoGasRetailerCode;
+
+    private final String applyingRelationStatus;
+
+    private final String invalidRelationStatus;
+
+    private final String underContractStatus;
+
+    private final String invalidContractStatus;
+
+    /**
+     * 必須依存と定数を初期化する。
+     */
+    public OpeningCancelTransportContractInvalidUpdateImpl(
+            TskgmstDataAccess tskgmstDataAccess,
+            TkssvkyDataAccess tkssvkyDataAccess,
+            DktksryDataAccess dktksryDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L94">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L95">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L96">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L97">        this.dktksryDataAccess = Objects.requireNonNull(dktksryDataAccess, &quot;dktksryDataAccess&quot;);</span>
+<span class="fc" id="L98">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L99">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L100">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L101">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L102">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L103">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L107">        this.dedicatedGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L111">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L115">        this.applyingRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L119">        this.invalidRelationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.INVALID);
+<span class="fc" id="L123">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L127">        this.invalidContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.INVALID);
+<span class="fc" id="L131">    }</span>
+
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate trkKnsYmd,
+            String tksuKijsCd,
+            String ckrtGmscJtkb,
+            List&lt;OpeningCancelTransportContractInvalidUpdateGmtsetdInf&gt; gmtsetdInfList) {
+<span class="fc" id="L140">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L141">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (!dedicatedGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L144">            invalidateTransportContract(gasMtstNo, trkKnsYmd, false, auditContext, decodedOriginFunctionId);</span>
+        }
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L148">            boolean shouldDeleteDktksry = tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            for (OpeningCancelTransportContractInvalidUpdateGmtsetdInf gmtsetdInf : gmtsetdInfList) {</span>
+<span class="fc" id="L150">                invalidateTransportContract(</span>
+<span class="fc" id="L151">                        gmtsetdInf.gasMtstNo(),</span>
+                        trkKnsYmd,
+                        shouldDeleteDktksry,
+                        auditContext,
+                        decodedOriginFunctionId);
+<span class="fc" id="L156">            }</span>
+        }
+<span class="fc" id="L158">    }</span>
+
+    private void invalidateTransportContract(
+            Long gasMtstNo,
+            LocalDate trkKnsYmd,
+            boolean shouldDeleteDktksry,
+            AuditContext auditContext,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L166">        TskgmstRecord relationRecord = findRelationRecord(gasMtstNo, trkKnsYmd);</span>
+<span class="fc" id="L167">        TkssvkyRecord contractRecord = findContractRecord(relationRecord.tksuSvkyNo(), trkKnsYmd);</span>
+
+<span class="fc" id="L169">        int updatedContractCount = tkssvkyDataAccess.updateByTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                new TkssvkyWriteRecord(
+<span class="fc" id="L171">                        contractRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L172">                        contractRecord.skno(),</span>
+                        invalidContractStatus,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L183">                Set.of(TkssvkyColumn.TKSU_SVKY_JTKB),</span>
+<span class="fc" id="L184">                new TkssvkySknoJnjUpdateKey(contractRecord.tksuSvkyNo(), contractRecord.skno()),</span>
+                auditContext);
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (updatedContractCount == 0) {</span>
+<span class="fc" id="L187">            throw createContractUpdateException(contractRecord, decodedOriginFunctionId);</span>
+        }
+
+<span class="fc" id="L190">        int updatedRelationCount = tskgmstDataAccess.updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+                new TskgmstWriteRecord(
+<span class="fc" id="L192">                        relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L193">                        relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L194">                        relationRecord.skno(),</span>
+                        invalidRelationStatus,
+                        null,
+                        null),
+<span class="fc" id="L198">                Set.of(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                new TskgmstUpdateKey(
+<span class="fc" id="L200">                        relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L201">                        relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L202">                        relationRecord.skno()),</span>
+                auditContext);
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (updatedRelationCount == 0) {</span>
+<span class="fc" id="L205">            throw createRelationUpdateException(relationRecord, decodedOriginFunctionId);</span>
+        }
+
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (shouldDeleteDktksry) {</span>
+<span class="fc" id="L209">            int deletedCount = dktksryDataAccess.deleteByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L210">                    relationRecord.gasMtstNo(),</span>
+                    trkKnsYmd,
+<span class="fc" id="L212">                    DELETE_KNS_KKA_TSNO,</span>
+                    null);
+<span class="fc bfc" id="L214" title="All 2 branches covered.">            if (deletedCount == 0) {</span>
+<span class="fc" id="L215">                throw createDktksryDeleteException(relationRecord.gasMtstNo(), trkKnsYmd);</span>
+            }
+        }
+<span class="fc" id="L218">    }</span>
+
+    private TskgmstRecord findRelationRecord(Long gasMtstNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L221">        List&lt;TskgmstRecord&gt; relationRecords =</span>
+<span class="fc" id="L222">                tskgmstDataAccess.findAllByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        trkKnsYmd,
+                        applyingRelationStatus);
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (relationRecords.isEmpty()) {</span>
+<span class="fc" id="L227">            throw createRelationReadException(gasMtstNo, trkKnsYmd);</span>
+        }
+<span class="fc" id="L229">        return relationRecords.getFirst();</span>
+    }
+
+    private TkssvkyRecord findContractRecord(Long tksuSvkyNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L233">        List&lt;TkssvkyRecord&gt; contractRecords =</span>
+<span class="fc" id="L234">                tkssvkyDataAccess.findAllByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(</span>
+                        tksuSvkyNo,
+                        trkKnsYmd,
+                        underContractStatus);
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        if (contractRecords.isEmpty()) {</span>
+<span class="fc" id="L239">            throw createContractReadException(tksuSvkyNo, trkKnsYmd);</span>
+        }
+<span class="fc" id="L241">        return contractRecords.getFirst();</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L245">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L246">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L247">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        if (decodedOriginFunctionId == null) {</span>
+<span class="nc" id="L251">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L255">        return decodedOriginFunctionId;</span>
+    }
+
+    private RuntimeException createRelationReadException(Long gasMtstNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L259">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L260">                tskgmstDataAccess.tableName(),</span>
+                RELATION_READ_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L263">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L264">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L265">                        .put(&quot;tksuSvkkJtkb&quot;, applyingRelationStatus));</span>
+    }
+
+    private RuntimeException createContractReadException(Long tksuSvkyNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L269">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L270">                tkssvkyDataAccess.tableName(),</span>
+                CONTRACT_READ_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L273">                        .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L274">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L275">                        .put(&quot;tksuSvkyJtkb&quot;, underContractStatus));</span>
+    }
+
+    private RuntimeException createContractUpdateException(
+            TkssvkyRecord contractRecord,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L281">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L282">                tkssvkyDataAccess.tableName(),</span>
+                CONTRACT_UPDATE_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L285">                        .put(&quot;tksuSvkyNo&quot;, contractRecord.tksuSvkyNo())</span>
+<span class="fc" id="L286">                        .put(&quot;skno&quot;, contractRecord.skno())</span>
+<span class="fc" id="L287">                        .put(&quot;tksuSvkyJtkb&quot;, invalidContractStatus)</span>
+<span class="fc" id="L288">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L289">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private RuntimeException createRelationUpdateException(
+            TskgmstRecord relationRecord,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L295">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L296">                tskgmstDataAccess.tableName(),</span>
+                RELATION_UPDATE_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L299">                        .put(&quot;gasMtstNo&quot;, relationRecord.gasMtstNo())</span>
+<span class="fc" id="L300">                        .put(&quot;tksuSvkyNo&quot;, relationRecord.tksuSvkyNo())</span>
+<span class="fc" id="L301">                        .put(&quot;skno&quot;, relationRecord.skno())</span>
+<span class="fc" id="L302">                        .put(&quot;tksuSvkkJtkb&quot;, invalidRelationStatus)</span>
+<span class="fc" id="L303">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L304">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private RuntimeException createDktksryDeleteException(Long gasMtstNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L308">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L309">                dktksryDataAccess.tableName(),</span>
+                DELETE_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L312">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L313">                        .put(&quot;knsYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L314">                        .put(&quot;knsKkaTsno&quot;, DELETE_KNS_KKA_TSNO));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

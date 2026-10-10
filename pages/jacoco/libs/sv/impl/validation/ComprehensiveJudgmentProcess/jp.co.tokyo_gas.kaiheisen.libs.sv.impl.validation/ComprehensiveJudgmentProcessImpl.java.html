@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComprehensiveJudgmentProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-comprehensivejudgmentprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ComprehensiveJudgmentProcessImpl.java</span></div><h1>ComprehensiveJudgmentProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.comprehensivejudgmentprocess.model.SuguGmtInf;
+
+/**
+ * 概要: SV-049（総合判定処理）の実装クラス。
+ * 主な仕様:
+ * - 総合判定処理区分に応じて検索基準日と料金計算関連状態区分一覧を切り替える。
+ * - DA-041-R013 で主契約を特定し、存在する場合のみ DA-041-R017 で関連メーター一覧を取得する。
+ * - 関連メーター一覧が 2 件以上の場合だけ総合判定フラグを true とする。
+ * 既知の制約:
+ * - `systemDatetime` は `KH029 1` の分岐で RequestContext から取得する。
+ * - public 引数の null ガードや入力補正は追加せず、上位バリデーション済み入力を前提とする。
+ */
+public final class ComprehensiveJudgmentProcessImpl implements ComprehensiveJudgmentProcess {
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String overallJudgmentNoRelatedEnd;
+
+    private final String overallJudgmentRelatedEnd;
+
+    private final String relatedValid;
+
+    private final String relatedEndWait;
+
+    private final String relatedEnd;
+
+    /**
+     * 概要: 必須依存と定数を解決して初期化する。
+     * 主な仕様:
+     * - DA-041 と RequestContext を保持する。
+     * - 開閉栓定数 KH029 と CIRIUS 定数 J0611 の必須値を fail-fast で検証する。
+     *
+     * @param svmstkrDataAccess DA-041 サービス契約・メーター設置場所関連データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public ComprehensiveJudgmentProcessImpl(
+            final SvmstkrDataAccess svmstkrDataAccess,
+            final RequestContext requestContext,
+            final CiriusConstantService ciriusConstantService,
+<span class="fc" id="L61">            final KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L62">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L66">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L67">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L68">        this.overallJudgmentNoRelatedEnd =</span>
+<span class="fc" id="L69">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        resolvedKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing
+                                .OVERALL_JUDGMENT_NO_RELATED_END);
+<span class="fc" id="L74">        this.overallJudgmentRelatedEnd =</span>
+<span class="fc" id="L75">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        resolvedKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing
+                                .OVERALL_JUDGMENT_RELATED_END);
+<span class="fc" id="L80">        this.relatedValid =</span>
+<span class="fc" id="L81">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L85">        this.relatedEndWait =</span>
+<span class="fc" id="L86">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L90">        this.relatedEnd =</span>
+<span class="fc" id="L91">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ComprehensiveJudgmentProcessOutput execute(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd,
+            final String suguHntShrKbn) {
+<span class="fc" id="L105">        SearchCriteria criteria = resolveSearchCriteria(knskKjnYmd, suguHntShrKbn);</span>
+<span class="fc" id="L106">        Optional&lt;SvmstkrRecord&gt; baseRelation =</span>
+<span class="fc" id="L107">                svmstkrDataAccess.findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(</span>
+                        gasMtstNo,
+<span class="fc" id="L109">                        criteria.knskKjnYmd(),</span>
+<span class="fc" id="L110">                        criteria.rkkiKnrnJtkbList());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (baseRelation.isEmpty()) {</span>
+<span class="fc" id="L112">            return nonComprehensiveOutput();</span>
+        }
+
+<span class="fc" id="L115">        List&lt;SvmstkrRecord&gt; relatedMeterRelations =</span>
+<span class="fc" id="L116">                defaultList(</span>
+<span class="fc" id="L117">                        svmstkrDataAccess.findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkbList(</span>
+<span class="fc" id="L118">                                baseRelation.get().svkyNo(),</span>
+<span class="fc" id="L119">                                criteria.knskKjnYmd(),</span>
+<span class="fc" id="L120">                                criteria.rkkiKnrnJtkbList()));</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (relatedMeterRelations.size() == 1) {</span>
+<span class="fc" id="L122">            return nonComprehensiveOutput();</span>
+        }
+
+<span class="fc" id="L125">        return new ComprehensiveJudgmentProcessOutput(</span>
+<span class="fc" id="L126">                toSuguGmtInfList(relatedMeterRelations),</span>
+<span class="fc" id="L127">                true);</span>
+    }
+
+    private SearchCriteria resolveSearchCriteria(
+            final LocalDate knskKjnYmd,
+            final String suguHntShrKbn) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (overallJudgmentNoRelatedEnd.equals(suguHntShrKbn)) {</span>
+<span class="fc" id="L134">            return new SearchCriteria(</span>
+<span class="fc" id="L135">                    requireSystemDatetime().toLocalDate(),</span>
+<span class="fc" id="L136">                    List.of(relatedValid, relatedEndWait));</span>
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (overallJudgmentRelatedEnd.equals(suguHntShrKbn)) {</span>
+<span class="fc" id="L139">            return new SearchCriteria(</span>
+                    knskKjnYmd,
+<span class="fc" id="L141">                    List.of(relatedValid, relatedEndWait, relatedEnd));</span>
+        }
+<span class="fc" id="L143">        return new SearchCriteria(</span>
+                knskKjnYmd,
+<span class="fc" id="L145">                List.of(relatedValid, relatedEndWait, relatedEnd));</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L149">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L150">                .orElseThrow(</span>
+<span class="fc" id="L151">                        () -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private static List&lt;SvmstkrRecord&gt; defaultList(final List&lt;SvmstkrRecord&gt; source) {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        return source == null ? List.of() : source;</span>
+    }
+
+    private static ArrayList&lt;SuguGmtInf&gt; toSuguGmtInfList(
+            final List&lt;SvmstkrRecord&gt; relatedMeterRelations) {
+<span class="fc" id="L160">        ArrayList&lt;SuguGmtInf&gt; results = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (SvmstkrRecord relatedMeterRelation : relatedMeterRelations) {</span>
+<span class="fc" id="L162">            results.add(new SuguGmtInf(relatedMeterRelation.mtstNo()));</span>
+<span class="fc" id="L163">        }</span>
+<span class="fc" id="L164">        return results;</span>
+    }
+
+    private static ComprehensiveJudgmentProcessOutput nonComprehensiveOutput() {
+<span class="fc" id="L168">        return new ComprehensiveJudgmentProcessOutput(null, false);</span>
+    }
+
+<span class="fc" id="L171">    private record SearchCriteria(LocalDate knskKjnYmd, List&lt;String&gt; rkkiKnrnJtkbList) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
