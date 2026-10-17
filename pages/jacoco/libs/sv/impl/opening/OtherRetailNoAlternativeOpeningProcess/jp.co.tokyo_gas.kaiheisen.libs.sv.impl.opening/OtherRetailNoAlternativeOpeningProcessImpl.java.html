@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OtherRetailNoAlternativeOpeningProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-otherretailnoalternativeopeningprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OtherRetailNoAlternativeOpeningProcessImpl.java</span></div><h1>OtherRetailNoAlternativeOpeningProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ApplicationEndStartDateConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ApplicationEndStartDateConfirmationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerRegistrationUpdateOtherRetailAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerRegistrationUpdateOtherRetailAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerUpdatePatternJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractCustomerUpdatePatternJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OtherRetailNoAlternativeOpeningProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OtherRetailNoAlternativeOpeningProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreConfirmationGasMeterReadingResultRegistrationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransportServiceContractNumberConfirmationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransportServiceContractNumberConfirmationAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstHsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstKsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.MtgInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ClosingCustomerInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ClosingPipelineContractCustomerInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ConfirmedAddressInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ConfirmedContractCustomerInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasMeterLocationInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.JusyoKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningProcessGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningProcessGmtsetdSystemDateInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransportServiceContractConfirmationDedicatedMeterInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.PipelinePhoneNumberRegistration;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TelnoUpdInf;
+
+/**
+ * 概要: SV-213（他小売代替なし開栓処理）の実装クラス。
+ * 主な仕様:
+ * - SV-214、SV-217、SV-220、SV-222、SV-019、SV-230、SV-232 を順次呼び出し、後続ステップへ必要値を受け渡す。
+ * - SV-220 と開栓処理入力から得た値をそのまま後続 SV へ受け渡し、SV-217 の結果を専用メーター出力へ再構成する。
+ */
+public final class OtherRetailNoAlternativeOpeningProcessImpl
+        implements OtherRetailNoAlternativeOpeningProcess {
+
+    private final ApplicationEndStartDateConfirmation applicationEndStartDateConfirmation;
+
+    private final TransportServiceContractNumberConfirmationAtOpening
+            transportServiceContractNumberConfirmationAtOpening;
+
+    private final ContractCustomerUpdatePatternJudgmentAtOpening
+            contractCustomerUpdatePatternJudgmentAtOpening;
+
+    private final ContractCustomerRegistrationUpdateOtherRetailAtOpening
+            contractCustomerRegistrationUpdateOtherRetailAtOpening;
+
+    private final PipelinePhoneNumberRegistration pipelinePhoneNumberRegistration;
+
+    private final OpeningProcess openingProcess;
+
+    private final PreConfirmationGasMeterReadingResultRegistrationAtOpening
+            preConfirmationGasMeterReadingResultRegistrationAtOpening;
+
+    /**
+     * 概要: 必須依存を初期化する。
+     *
+     * @param applicationEndStartDateConfirmationService SV-214
+     * @param transportServiceContractNumberConfirmationService SV-217
+     * @param contractCustomerUpdatePatternJudgmentService SV-220
+     * @param contractCustomerRegistrationUpdateOtherRetailService SV-222
+     * @param pipelinePhoneNumberRegistrationService SV-019
+     * @param openingProcessService SV-230
+     * @param preConfirmationGasMeterReadingResultRegistrationService SV-232
+     */
+    @Inject
+    public OtherRetailNoAlternativeOpeningProcessImpl(
+            final ApplicationEndStartDateConfirmation
+                    applicationEndStartDateConfirmationService,
+            final TransportServiceContractNumberConfirmationAtOpening
+                    transportServiceContractNumberConfirmationService,
+            final ContractCustomerUpdatePatternJudgmentAtOpening
+                    contractCustomerUpdatePatternJudgmentService,
+            final ContractCustomerRegistrationUpdateOtherRetailAtOpening
+                    contractCustomerRegistrationUpdateOtherRetailService,
+            final PipelinePhoneNumberRegistration
+                    pipelinePhoneNumberRegistrationService,
+            final OpeningProcess openingProcessService,
+            final PreConfirmationGasMeterReadingResultRegistrationAtOpening
+<span class="fc" id="L93">                    preConfirmationGasMeterReadingResultRegistrationService) {</span>
+<span class="fc" id="L94">        this.applicationEndStartDateConfirmation = Objects.requireNonNull(</span>
+                applicationEndStartDateConfirmationService,
+                &quot;applicationEndStartDateConfirmation&quot;);
+<span class="fc" id="L97">        this.transportServiceContractNumberConfirmationAtOpening = Objects.requireNonNull(</span>
+                transportServiceContractNumberConfirmationService,
+                &quot;transportServiceContractNumberConfirmationAtOpening&quot;);
+<span class="fc" id="L100">        this.contractCustomerUpdatePatternJudgmentAtOpening = Objects.requireNonNull(</span>
+                contractCustomerUpdatePatternJudgmentService,
+                &quot;contractCustomerUpdatePatternJudgmentAtOpening&quot;);
+<span class="fc" id="L103">        this.contractCustomerRegistrationUpdateOtherRetailAtOpening = Objects.requireNonNull(</span>
+                contractCustomerRegistrationUpdateOtherRetailService,
+                &quot;contractCustomerRegistrationUpdateOtherRetailAtOpening&quot;);
+<span class="fc" id="L106">        this.pipelinePhoneNumberRegistration = Objects.requireNonNull(</span>
+                pipelinePhoneNumberRegistrationService,
+                &quot;pipelinePhoneNumberRegistration&quot;);
+<span class="fc" id="L109">        this.openingProcess = Objects.requireNonNull(</span>
+                openingProcessService,
+                &quot;openingProcess&quot;);
+<span class="fc" id="L112">        this.preConfirmationGasMeterReadingResultRegistrationAtOpening = Objects.requireNonNull(</span>
+                preConfirmationGasMeterReadingResultRegistrationService,
+                &quot;preConfirmationGasMeterReadingResultRegistrationAtOpening&quot;);
+<span class="fc" id="L115">    }</span>
+
+    @Override
+    public OtherRetailNoAlternativeOpeningProcessOutput execute(
+            final Long gasMtstNo,
+            final String tgTkurKbn,
+            final LocalDate kasgYmd,
+            final String kasJysb,
+            final Long gmtShjSu,
+            final String ohmKj,
+            final String sgytSinNo,
+            final Boolean snyTkmtFlg,
+            final Boolean suguHtkFlg,
+            final Boolean digwrHntFlg,
+            final Boolean syoriHnt3XFlg,
+            final Boolean syoriHntFkktFlg,
+            final Boolean ksenYmdTskgmstUmFlg,
+            final Boolean cstTkssvkyTrkZmFlg,
+            final Long tksuSvkyNo,
+            final KiycstInf kiycstInf,
+            final GasmtrdInf gasmtrdInf,
+            final OpeningProcessGmtsetdKsenSaymdInf gmtsetdInf,
+            final OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            final TatemonInf tatemonInf,
+            final CstHsenjInf cstHsenjInf,
+            final CstKsenjInf cstKsenjInf,
+            final MtgInf mtgInf,
+            final Long kktGmtShjSu,
+            final JusyoKktInf jusyoKktInf,
+            final Long uketkjCstRegNo,
+            final List&lt;TelnoUpdInf&gt; telnoUpdInfList,
+            final String kktGmtsetdGasYtCd,
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="fc" id="L148">        ApplicationEndStartDateConfirmationOutput applicationDates =</span>
+<span class="fc" id="L149">                applicationEndStartDateConfirmation.execute(</span>
+                        gasMtstNo,
+                        kasgYmd,
+                        tksuSvkyNo,
+                        digwrHntFlg);
+        TransportServiceContractNumberConfirmationAtOpeningOutput
+<span class="fc" id="L155">                transportConfirmation =</span>
+<span class="fc" id="L156">                transportServiceContractNumberConfirmationAtOpening.execute(</span>
+<span class="fc" id="L157">                        gmtsetdInf.ckrtGmscJtkb(),</span>
+                        digwrHntFlg,
+                        tksuSvkyNo,
+<span class="fc" id="L160">                        toTransportServiceConfirmationSnyInfList(snyInfList));</span>
+<span class="fc" id="L161">        ContractCustomerUpdatePatternJudgmentAtOpeningOutput updatePattern =</span>
+<span class="fc" id="L162">                contractCustomerUpdatePatternJudgmentAtOpening.execute(</span>
+                        tgTkurKbn,
+                        kasJysb,
+                        snyTkmtFlg,
+                        digwrHntFlg,
+                        syoriHnt3XFlg,
+                        syoriHntFkktFlg,
+                        cstTkssvkyTrkZmFlg,
+<span class="fc" id="L170">                        toPipelineOnlyClosingCustomerInfo(cstHsenjInf),</span>
+<span class="fc" id="L171">                        toPipelineOnlyOpeningCustomerInfo(cstKsenjInf),</span>
+                        mtgInf);
+        ContractCustomerRegistrationUpdateOtherRetailAtOpeningOutput
+<span class="fc" id="L174">                registration =</span>
+<span class="fc" id="L175">                contractCustomerRegistrationUpdateOtherRetailAtOpening.execute(</span>
+                        snyTkmtFlg,
+<span class="fc" id="L177">                        updatePattern.cstUpdPtnKb(),</span>
+<span class="fc" id="L178">                        updatePattern.kktSyoKyoTrno(),</span>
+<span class="fc" id="L179">                        toConfirmedContractCustomerInfo(updatePattern.kiycstKktInf()),</span>
+<span class="fc" id="L180">                        toConfirmedAddressInfo(jusyoKktInf),</span>
+                        kiycstInf,
+<span class="fc" id="L182">                        toGasMeterLocationInfo(gmtsetdInf),</span>
+<span class="fc" id="L183">                        toClosingCustomerInfo(cstHsenjInf));</span>
+<span class="fc" id="L184">        Long confirmedCustomerRegistrationNo = updatePattern.kktSyoKyoTrno();</span>
+<span class="fc" id="L185">        pipelinePhoneNumberRegistration.execute(</span>
+                uketkjCstRegNo,
+                confirmedCustomerRegistrationNo,
+<span class="fc" id="L188">                toArrayList(telnoUpdInfList));</span>
+<span class="fc" id="L189">        OpeningProcessOutput openingOutput = openingProcess.execute(</span>
+                gasMtstNo,
+                kasgYmd,
+                kasJysb,
+<span class="fc" id="L193">                applicationDates.kktTyenYmd(),</span>
+<span class="fc" id="L194">                applicationDates.kktTkysYmd(),</span>
+                snyTkmtFlg,
+                digwrHntFlg,
+                suguHtkFlg,
+                ksenYmdTskgmstUmFlg,
+                gmtsetdInf,
+                gmtsetdSystemDateInf,
+                tatemonInf,
+                ohmKj,
+                kktGmtsetdGasYtCd,
+                jusyoKktInf);
+<span class="fc" id="L205">        preConfirmationGasMeterReadingResultRegistrationAtOpening.execute(</span>
+                gasMtstNo,
+                kasgYmd,
+                gmtShjSu,
+<span class="fc" id="L209">                openingOutput.knsytiInf().knsHuhuKbn(),</span>
+<span class="fc" id="L210">                gmtsetdInf.ckrtGmscJtkb(),</span>
+<span class="fc" id="L211">                gmtsetdInf.mtgMtstNo(),</span>
+<span class="fc" id="L212">                gasmtrdInf.gmb(),</span>
+<span class="fc" id="L213">                gasmtrdInf.gmbTsno(),</span>
+<span class="fc" id="L214">                transportConfirmation.kktTksuSvkyNo(),</span>
+                sgytSinNo,
+                kasJysb);
+<span class="fc" id="L217">        return new OtherRetailNoAlternativeOpeningProcessOutput(</span>
+<span class="fc" id="L218">                applicationDates.kktTyenYmd(),</span>
+<span class="fc" id="L219">                applicationDates.kktTkysYmd(),</span>
+<span class="fc" id="L220">                transportConfirmation.kktTksuSvkyNo(),</span>
+<span class="fc" id="L221">                toConfirmedSnyInfList(snyInfList, transportConfirmation.snyInfList()),</span>
+                confirmedCustomerRegistrationNo,
+<span class="fc" id="L223">                openingOutput.knsytiInf(),</span>
+<span class="fc" id="L224">                registration.kiycstKktInf());</span>
+    }
+
+    private List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt;
+            toTransportServiceConfirmationSnyInfList(
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (snyInfList == null) {</span>
+<span class="nc" id="L231">            return null;</span>
+        }
+<span class="fc" id="L233">        return snyInfList.stream()</span>
+<span class="fc" id="L234">                .map(info -&gt; new TransportServiceContractConfirmationDedicatedMeterInfo(</span>
+<span class="fc" id="L235">                        info.kktTksuSvkyNo(),</span>
+                        null))
+<span class="fc" id="L237">                .toList();</span>
+    }
+
+    private ArrayList&lt;TelnoUpdInf&gt; toArrayList(
+            final List&lt;TelnoUpdInf&gt; telnoUpdInfList) {
+<span class="fc" id="L242">        return new ArrayList&lt;&gt;(telnoUpdInfList);</span>
+    }
+
+    private List&lt;SnyInf&gt; toConfirmedSnyInfList(
+            final List&lt;SnyInf&gt; sourceSnyInfList,
+            final List&lt;TransportServiceContractConfirmationDedicatedMeterInfo&gt;
+                    confirmedDedicatedMeterInfoList) {
+<span class="pc bpc" id="L249" title="1 of 4 branches missed.">        if (sourceSnyInfList == null || confirmedDedicatedMeterInfoList == null) {</span>
+<span class="fc" id="L250">            return null;</span>
+        }
+<span class="fc" id="L252">        int resultSize = Math.min(sourceSnyInfList.size(), confirmedDedicatedMeterInfoList.size());</span>
+<span class="fc" id="L253">        List&lt;SnyInf&gt; results = new ArrayList&lt;&gt;(resultSize);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        for (int index = 0; index &lt; resultSize; index++) {</span>
+<span class="fc" id="L255">            results.add(new SnyInf(</span>
+<span class="fc" id="L256">                    sourceSnyInfList.get(index).gasMtstNo(),</span>
+<span class="fc" id="L257">                    confirmedDedicatedMeterInfoList.get(index).kktTksuSvkyNo()));</span>
+        }
+<span class="fc" id="L259">        return results;</span>
+    }
+
+    private ConfirmedContractCustomerInfo toConfirmedContractCustomerInfo(
+            final KiycstKktInf kiycstKktInf) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (kiycstKktInf == null) {</span>
+<span class="fc" id="L265">            return null;</span>
+        }
+<span class="fc" id="L267">        return new ConfirmedContractCustomerInfo(</span>
+<span class="fc" id="L268">                kiycstKktInf.kyoTrkNo(),</span>
+<span class="fc" id="L269">                kiycstKktInf.ctnmKj1(),</span>
+<span class="fc" id="L270">                kiycstKktInf.ctnmKn1(),</span>
+<span class="fc" id="L271">                kiycstKktInf.ctnm1HujnShbt(),</span>
+<span class="fc" id="L272">                kiycstKktInf.ctnm1HshiShbt(),</span>
+<span class="fc" id="L273">                kiycstKktInf.ctnmKj2(),</span>
+<span class="fc" id="L274">                kiycstKktInf.ctnmKn2(),</span>
+<span class="fc" id="L275">                kiycstKktInf.ctnm2HujnShbt(),</span>
+<span class="fc" id="L276">                kiycstKktInf.ctnm2HshiShbt(),</span>
+<span class="fc" id="L277">                kiycstKktInf.ctnmKjhkFlg(),</span>
+<span class="fc" id="L278">                kiycstKktInf.kynmKj(),</span>
+<span class="fc" id="L279">                kiycstKktInf.kynmKn(),</span>
+<span class="fc" id="L280">                kiycstKktInf.kynmHujnShbt(),</span>
+<span class="fc" id="L281">                kiycstKktInf.kynmHshiShbt(),</span>
+<span class="fc" id="L282">                kiycstKktInf.kynmKjhkFlg(),</span>
+<span class="fc" id="L283">                kiycstKktInf.shkiLvShbt(),</span>
+<span class="fc" id="L284">                kiycstKktInf.yubnNo(),</span>
+<span class="fc" id="L285">                kiycstKktInf.gkkCd(),</span>
+<span class="fc" id="L286">                kiycstKktInf.mchCd(),</span>
+<span class="fc" id="L287">                kiycstKktInf.cmazCd(),</span>
+<span class="fc" id="L288">                kiycstKktInf.cbgSuj1(),</span>
+<span class="fc" id="L289">                kiycstKktInf.cbgKn2(),</span>
+<span class="fc" id="L290">                kiycstKktInf.cbgKn3(),</span>
+<span class="fc" id="L291">                kiycstKktInf.cbgKn4(),</span>
+<span class="fc" id="L292">                kiycstKktInf.bldNo(),</span>
+<span class="fc" id="L293">                kiycstKktInf.bldnKj(),</span>
+<span class="fc" id="L294">                kiycstKktInf.bldnKn(),</span>
+<span class="fc" id="L295">                kiycstKktInf.bldnKjhkFlg(),</span>
+<span class="fc" id="L296">                kiycstKktInf.jutKbn(),</span>
+<span class="fc" id="L297">                kiycstKktInf.tunoKn(),</span>
+<span class="fc" id="L298">                kiycstKktInf.hynKn(),</span>
+<span class="fc" id="L299">                kiycstKktInf.htuFlg(),</span>
+<span class="fc" id="L300">                kiycstKktInf.recUpdJnjNo());</span>
+    }
+
+    private ConfirmedAddressInfo toConfirmedAddressInfo(final JusyoKktInf jusyoKktInf) {
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">        if (jusyoKktInf == null) {</span>
+<span class="nc" id="L305">            return null;</span>
+        }
+<span class="fc" id="L307">        return new ConfirmedAddressInfo(</span>
+<span class="fc" id="L308">                jusyoKktInf.kktCbgSuj1(),</span>
+<span class="fc" id="L309">                jusyoKktInf.kktCbgKn2(),</span>
+<span class="fc" id="L310">                jusyoKktInf.kktCbgKn3(),</span>
+<span class="fc" id="L311">                jusyoKktInf.kktCbgKn4(),</span>
+<span class="fc" id="L312">                jusyoKktInf.kktTunoKn(),</span>
+<span class="fc" id="L313">                jusyoKktInf.kktHynKn(),</span>
+<span class="fc" id="L314">                jusyoKktInf.kktHynUmFlg());</span>
+    }
+
+    private GasMeterLocationInfo toGasMeterLocationInfo(
+            final OpeningProcessGmtsetdKsenSaymdInf gmtsetdInf) {
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        if (gmtsetdInf == null) {</span>
+<span class="nc" id="L320">            return null;</span>
+        }
+<span class="fc" id="L322">        return new GasMeterLocationInfo(</span>
+<span class="fc" id="L323">                gmtsetdInf.szcGkkCd(),</span>
+<span class="fc" id="L324">                gmtsetdInf.szcMchCd(),</span>
+<span class="fc" id="L325">                gmtsetdInf.szcCmazCd(),</span>
+<span class="fc" id="L326">                gmtsetdInf.bldNo());</span>
+    }
+
+    private ClosingCustomerInfo toClosingCustomerInfo(final CstHsenjInf cstHsenjInf) {
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (cstHsenjInf == null) {</span>
+<span class="nc" id="L331">            return null;</span>
+        }
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        if (cstHsenjInf.kiycstdInf() == null) {</span>
+<span class="nc" id="L334">            return new ClosingCustomerInfo(null);</span>
+        }
+<span class="fc" id="L336">        return new ClosingCustomerInfo(</span>
+                new ClosingPipelineContractCustomerInfo(
+<span class="fc" id="L338">                        cstHsenjInf.kiycstdInf().shkiLvShbt()));</span>
+    }
+
+    private CstHsenjInf toPipelineOnlyClosingCustomerInfo(final CstHsenjInf source) {
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L343">            return null;</span>
+        }
+<span class="fc" id="L345">        return new CstHsenjInf(source.kiycstdInf(), null);</span>
+    }
+
+    private CstKsenjInf toPipelineOnlyOpeningCustomerInfo(final CstKsenjInf source) {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L350">            return null;</span>
+        }
+<span class="fc" id="L352">        return new CstKsenjInf(source.kiycstdInf(), null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AlternativeJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-alternativejudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">AlternativeJudgmentAtOpeningImpl.java</span></div><h1>AlternativeJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AlternativeJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AlternativeJudgmentAtOpeningOutput;
+
+/**
+ * 概要: 開栓時代替判定サービスを実装する。
+ * 主な仕様: CIRIUS 定数から開栓事由種別を解決し、直列専用通過メーターフラグ、開栓事由種別、処理判定_4x_フラグに応じて代替判定結果を返却する。
+ * 既知の制約: 必須定数の不足はコンストラクタ初期化時点で fail-fast し、Boolean 引数はアンボクシングにより null を許容しない。
+ */
+public class AlternativeJudgmentAtOpeningImpl implements AlternativeJudgmentAtOpening {
+
+    private final String continuedUseReason;
+
+    private final Set&lt;String&gt; falseResultReasons;
+
+    /**
+     * 概要: 開栓事由判定に使用する CIRIUS 定数を初期化する。
+     * 主な仕様: 継続使用と false 判定対象 4 事由の定数値を `CiriusConstantService` から解決して保持する。
+     * 既知の制約: 必須依存が null の場合と必須定数が取得できない場合は、コンストラクタ初期化時点で fail-fast する。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+<span class="fc" id="L29">    public AlternativeJudgmentAtOpeningImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L30">        CiriusConstantService resolvedService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L33">        this.continuedUseReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L37">        this.falseResultReasons = Set.of(</span>
+<span class="fc" id="L38">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.SUPPLY_RESUMED),
+<span class="fc" id="L42">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.START_SUPPLYING_TO_OTHER_PARTIES),
+<span class="fc" id="L46">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION),
+<span class="fc" id="L50">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.DISASTER_RECOVERY));
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * 概要: 開栓時の代替判定を行う。
+     * 主な仕様: 直列専用通過メーターフラグを最優先で評価し、継続使用時は処理判定_4x_フラグ、その他の特定 4 事由は false 固定、それ以外は主関連有無フラグを維持して返却する。
+     * 既知の制約: 必須定数不足はコンストラクタで fail-fast 済みであることを前提とし、Boolean 引数はアンボクシングにより null の場合 `NullPointerException` となる。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param snyTkmtFlg 直列専用通過メーターフラグ
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param sknrUmFlg 主関連有無フラグ
+     * @return 代替判定結果
+     */
+    @Override
+    public AlternativeJudgmentAtOpeningOutput execute(
+            String kasJysb,
+            Boolean snyTkmtFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean sknrUmFlg) {
+<span class="fc" id="L73">        boolean seriesDedicatedMeterFlag = snyTkmtFlg;</span>
+<span class="fc" id="L74">        boolean fourXJudgmentFlag = syoriHnt4XFlg;</span>
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (seriesDedicatedMeterFlag) {</span>
+<span class="fc" id="L77">            return falseResult();</span>
+        }
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (continuedUseReason.equals(kasJysb)) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            if (!fourXJudgmentFlag) {</span>
+<span class="fc" id="L82">                return trueResult(sknrUmFlg);</span>
+            }
+<span class="fc" id="L84">            return falseResult();</span>
+        }
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (falseResultReasons.contains(kasJysb)) {</span>
+<span class="fc" id="L88">            return falseResult();</span>
+        }
+
+<span class="fc" id="L91">        return trueResult(sknrUmFlg);</span>
+    }
+
+    /**
+     * 概要: false 固定の判定結果を生成する。
+     * 主な仕様: 代替判定結果フラグと主関連有無フラグの両方に `false` を設定して返却する。
+     * 既知の制約: 呼出元の入力値は参照せず、常に固定値を返却する。
+     *
+     * @return false 固定の判定結果
+     */
+    private static AlternativeJudgmentAtOpeningOutput falseResult() {
+<span class="fc" id="L102">        return new AlternativeJudgmentAtOpeningOutput(Boolean.FALSE, Boolean.FALSE);</span>
+    }
+
+    /**
+     * 概要: true 判定の結果を生成する。
+     * 主な仕様: 代替判定結果フラグに `true` を設定し、主関連有無フラグには入力値をそのまま設定して返却する。
+     * 既知の制約: 主関連有無フラグの null は補正せず、そのまま出力 DTO へ格納する。
+     *
+     * @param sknrUmFlg 主関連有無フラグ
+     * @return true 判定の結果
+     */
+    private static AlternativeJudgmentAtOpeningOutput trueResult(Boolean sknrUmFlg) {
+<span class="fc" id="L114">        return new AlternativeJudgmentAtOpeningOutput(Boolean.TRUE, sknrUmFlg);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

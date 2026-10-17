@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataAccessProxyFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">DataAccessProxyFactory.java</span></div><h1>DataAccessProxyFactory.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import jakarta.enterprise.context.ContextNotActiveException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext.DataAccessInvocation;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DatabaseException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+
+/**
+ * DataAccess インターフェース向けの共通ラッパ生成ファクトリです.
+ */
+public final class DataAccessProxyFactory {
+
+    /** 開始時のイベント名. */
+    private static final String DATA_ACCESS_STARTED_EVENT =
+            &quot;dataaccess.started&quot;;
+
+    /** 開始時の要約. */
+    private static final String DATA_ACCESS_STARTED_SUMMARY =
+            &quot;DataAccess execution started&quot;;
+
+    /** 失敗時のイベント名. */
+    private static final String DATA_ACCESS_FAILED_EVENT = &quot;dataaccess.failed&quot;;
+
+    /** 失敗時の要約. */
+    private static final String DATA_ACCESS_FAILED_SUMMARY =
+            &quot;DataAccess execution failed&quot;;
+
+    /** 正常終了時のイベント名. */
+    private static final String DATA_ACCESS_COMPLETED_EVENT =
+            &quot;dataaccess.completed&quot;;
+
+    /** 正常終了時の要約. */
+    private static final String DATA_ACCESS_COMPLETED_SUMMARY =
+            &quot;DataAccess execution completed&quot;;
+
+    /** 機能 ID 属性名. */
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    /** 名称属性名. */
+    private static final String NAME_ATTRIBUTE = &quot;name&quot;;
+
+    /** パラメータ属性名. */
+    private static final String PARAMS_ATTRIBUTE = &quot;params&quot;;
+
+    /** SQL 属性名. */
+    private static final String SQL_ATTRIBUTE = &quot;sql&quot;;
+
+    private DataAccessProxyFactory() {
+    }
+
+    /**
+     * DataAccess インターフェースの例外変換プロキシを生成します.
+     *
+     * &lt;p&gt;プロキシは {@link DataAccess} アノテーション付きメソッドで発生した例外を
+     * {@link DatabaseException} へ変換し、開始時および失敗時のログを出力する。&lt;/p&gt;
+     *
+     * @param &lt;T&gt;      DataAccess インターフェースの型
+     * @param api      DataAccess インターフェースクラス
+     * @param delegate 実際の処理を行うデリゲート
+     * @param logger   開始時および失敗時ログの出力先
+     * @return 例外変換を行う動的プロキシ
+     */
+    public static &lt;T&gt; T create(
+            final Class&lt;T&gt; api,
+            final T delegate,
+            final CommonDataAccessLogger logger) {
+<span class="fc" id="L79">        return createInternal(api, delegate, logger, null);</span>
+    }
+
+    /**
+     * DataAccess インターフェースの例外変換プロキシを生成します.
+     *
+     * &lt;p&gt;プロキシは {@link DataAccess} アノテーション付きメソッドで発生した例外を
+     * {@link DatabaseException} へ変換し、開始時および失敗時のログを出力する。&lt;/p&gt;
+     *
+     * @param &lt;T&gt; DataAccess インターフェースの型
+     * @param api DataAccess インターフェースクラス
+     * @param delegate 実際の処理を行うデリゲート
+     * @param logger 開始時および失敗時ログの出力先
+     * @param requestContext リクエストコンテキスト
+     * @return 例外変換を行う動的プロキシ
+     */
+    public static &lt;T&gt; T create(
+            final Class&lt;T&gt; api,
+            final T delegate,
+            final CommonDataAccessLogger logger,
+            final RequestContext requestContext) {
+<span class="fc" id="L100">        Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L101">        return createInternal(api, delegate, logger, requestContext);</span>
+    }
+
+    private static &lt;T&gt; T createInternal(
+            final Class&lt;T&gt; api,
+            final T delegate,
+            final CommonDataAccessLogger logger,
+            final RequestContext requestContext) {
+<span class="fc" id="L109">        Objects.requireNonNull(api, &quot;api&quot;);</span>
+<span class="fc" id="L110">        Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L111">        Objects.requireNonNull(logger, &quot;logger&quot;);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (!api.isInterface()) {</span>
+<span class="nc" id="L113">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L114">                    &quot;api must be interface: &quot; + api.getName());</span>
+        }
+<span class="fc" id="L116">        return api.cast(Proxy.newProxyInstance(</span>
+<span class="fc" id="L117">                api.getClassLoader(),</span>
+                new Class&lt;?&gt;[] {api},
+                (proxy, method, args) -&gt; {
+<span class="fc" id="L120">                    DataAccess meta = method.getAnnotation(DataAccess.class);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    if (meta == null) {</span>
+<span class="nc" id="L122">                        return invokeWithoutWrap(method, delegate, args);</span>
+                    }
+<span class="fc" id="L124">                    long startNanos = System.nanoTime();</span>
+<span class="fc" id="L125">                    boolean phaseMeasurementEnabled =</span>
+<span class="fc" id="L126">                            DataAccessPhaseRecorder.isEnabledFor(meta.identifier());</span>
+<span class="fc" id="L127">                    Measurement measurement = beginMeasurement(</span>
+                            requestContext,
+<span class="fc" id="L129">                            meta.identifier(),</span>
+                            phaseMeasurementEnabled);
+<span class="fc" id="L131">                    DataAccessPhaseRecorder.Scope phaseScope = DataAccessPhaseRecorder.open(</span>
+                            phaseMeasurementEnabled,
+<span class="fc" id="L133">                            meta.identifier(),</span>
+<span class="fc" id="L134">                            safeGetCorrelationId(requestContext).orElse(null),</span>
+<span class="fc" id="L135">                            measurement.sequence(),</span>
+<span class="fc" id="L136">                            measurement.unavailable(),</span>
+                            startNanos,
+                            logger);
+                    try {
+<span class="fc" id="L140">                        logInfoSafely(logger, buildStartedEvent(</span>
+<span class="fc" id="L141">                                meta.identifier(),</span>
+<span class="fc" id="L142">                                meta.name(),</span>
+                                args,
+                                requestContext,
+                                measurement));
+<span class="fc" id="L146">                        Object result = method.invoke(delegate, args);</span>
+<span class="fc" id="L147">                        String sql = SqlCapture.getAndClear();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                        if (measurement.enabled()) {</span>
+<span class="fc" id="L149">                            logInfoSafely(logger, buildTerminalEvent(</span>
+                                    DATA_ACCESS_COMPLETED_EVENT,
+                                    DATA_ACCESS_COMPLETED_SUMMARY,
+<span class="fc" id="L152">                                    meta.identifier(),</span>
+<span class="fc" id="L153">                                    meta.name(),</span>
+                                    args,
+                                    sql,
+                                    requestContext,
+                                    measurement,
+<span class="fc" id="L158">                                    elapsedMillis(startNanos)));</span>
+                        }
+<span class="fc" id="L160">                        return result;</span>
+<span class="fc" id="L161">                    } catch (InvocationTargetException ex) {</span>
+<span class="fc" id="L162">                        Throwable cause = ex.getCause();</span>
+<span class="fc" id="L163">                        String sql = SqlCapture.getAndClear();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                        if (measurement.enabled()) {</span>
+<span class="fc" id="L165">                            logErrorSafely(logger, buildTerminalEvent(</span>
+                                    DATA_ACCESS_FAILED_EVENT,
+                                    DATA_ACCESS_FAILED_SUMMARY,
+<span class="fc" id="L168">                                    meta.identifier(),</span>
+<span class="fc" id="L169">                                    meta.name(),</span>
+                                    args,
+                                    sql,
+                                    requestContext,
+                                    measurement,
+<span class="fc" id="L174">                                    elapsedMillis(startNanos)), cause);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                        } else if (!(cause instanceof Error)) {</span>
+<span class="fc" id="L176">                            logger.error(buildTerminalEvent(</span>
+                                    DATA_ACCESS_FAILED_EVENT,
+                                    DATA_ACCESS_FAILED_SUMMARY,
+<span class="fc" id="L179">                                    meta.identifier(),</span>
+<span class="fc" id="L180">                                    meta.name(),</span>
+                                    args,
+                                    sql,
+                                    requestContext,
+                                    measurement,
+                                    null), cause);
+                        }
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                        switch (cause) {</span>
+<span class="fc" id="L188">                            case Error error -&gt; throw error;</span>
+                            case null, default -&gt; {
+<span class="fc" id="L190">                                String message = buildFailureMessage(</span>
+<span class="fc" id="L191">                                        meta.identifier(),</span>
+<span class="fc" id="L192">                                        meta.name(),</span>
+                                        args,
+                                        sql,
+                                        requestContext);
+<span class="fc" id="L196">                                throw new DatabaseException(</span>
+<span class="fc" id="L197">                                        meta.identifier(),</span>
+                                        sql,
+                                        args,
+                                        new RuntimeException(message, cause));
+                            }
+                        }
+<span class="nc" id="L203">                    } catch (ReflectiveOperationException | RuntimeException exception) {</span>
+<span class="nc" id="L204">                        String sql = SqlCapture.getAndClear();</span>
+<span class="nc" id="L205">                        logErrorSafely(logger, buildTerminalEvent(</span>
+                                DATA_ACCESS_FAILED_EVENT,
+                                DATA_ACCESS_FAILED_SUMMARY,
+<span class="nc" id="L208">                                meta.identifier(),</span>
+<span class="nc" id="L209">                                meta.name(),</span>
+                                args,
+                                sql,
+                                requestContext,
+                                measurement,
+<span class="nc" id="L214">                                elapsedMillis(startNanos)), exception);</span>
+<span class="nc" id="L215">                        throw exception;</span>
+                    } finally {
+<span class="fc" id="L217">                        SqlCapture.getAndClear();</span>
+<span class="fc" id="L218">                        phaseScope.close();</span>
+<span class="fc" id="L219">                        endMeasurement(requestContext, measurement);</span>
+                    }
+                }
+        ));
+    }
+
+    private static Object invokeWithoutWrap(
+            final Method method,
+            final Object delegate,
+            final Object[] args)
+            throws Throwable {
+        try {
+<span class="nc" id="L231">            return method.invoke(delegate, args);</span>
+<span class="fc" id="L232">        } catch (InvocationTargetException ex) {</span>
+<span class="fc" id="L233">            Throwable cause = ex.getCause();</span>
+<span class="pc bpc" id="L234" title="2 of 3 branches missed.">            switch (cause) {</span>
+<span class="nc" id="L235">                case Error error -&gt; throw error;</span>
+<span class="fc" id="L236">                case RuntimeException runtimeException -&gt;</span>
+<span class="fc" id="L237">                    throw runtimeException;</span>
+<span class="nc" id="L238">                case null, default -&gt; throw new RuntimeException(cause);</span>
+            }
+        }
+    }
+
+    private static LogEvent buildStartedEvent(
+            final String identifier,
+            final String name,
+            final Object[] params,
+            final RequestContext requestContext,
+            final Measurement measurement) {
+<span class="fc" id="L249">        return new LogEvent(</span>
+                DATA_ACCESS_STARTED_EVENT,
+                DATA_ACCESS_STARTED_SUMMARY,
+                LogLayer.DA,
+                null,
+                null,
+<span class="fc" id="L255">                buildAttributes(</span>
+                    identifier,
+                    name,
+                    params,
+                    null,
+                    requestContext,
+                    measurement,
+                    null));
+    }
+
+    private static LogEvent buildTerminalEvent(
+            final String event,
+            final String summary,
+            final String identifier,
+            final String name,
+            final Object[] params,
+            final String sql,
+            final RequestContext requestContext,
+            final Measurement measurement,
+            final Long latencyMs) {
+<span class="fc" id="L275">        return new LogEvent(</span>
+                event,
+                summary,
+                LogLayer.DA,
+                null,
+                null,
+<span class="fc" id="L281">                buildAttributes(</span>
+                        identifier,
+                        name,
+                        params,
+                        sql,
+                        requestContext,
+                        measurement,
+                        latencyMs));
+    }
+
+    private static Map&lt;String, Object&gt; buildAttributes(
+            final String identifier,
+            final String name,
+            final Object[] params,
+            final String sql,
+            final RequestContext requestContext,
+            final Measurement measurement,
+            final Long latencyMs) {
+<span class="fc" id="L299">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L300">        safeGetCorrelationId(requestContext)</span>
+<span class="fc" id="L301">            .ifPresent(correlationId -&gt;</span>
+<span class="fc" id="L302">                attributes.put(</span>
+<span class="fc" id="L303">                    LogField.CORRELATION_ID.key(),</span>
+                    correlationId));
+<span class="fc" id="L305">        attributes.put(FUNCTION_ID_ATTRIBUTE, identifier);</span>
+<span class="fc" id="L306">        attributes.put(NAME_ATTRIBUTE, name);</span>
+<span class="fc" id="L307">        String callPath = safeBuildCallPath(requestContext, identifier);</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (callPath != null) {</span>
+<span class="fc" id="L309">            attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+        }
+<span class="fc" id="L311">        attributes.put(</span>
+            PARAMS_ATTRIBUTE,
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            params == null ? null : Arrays.asList(params));</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">        if (sql != null) {</span>
+<span class="nc" id="L315">            attributes.put(SQL_ATTRIBUTE, sql);</span>
+        }
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (measurement.sequence() != null) {</span>
+<span class="fc" id="L318">            attributes.put(LogField.DA_INVOCATION_SEQUENCE.key(), measurement.sequence());</span>
+        }
+<span class="fc bfc" id="L320" title="All 2 branches covered.">        if (latencyMs != null) {</span>
+<span class="fc" id="L321">            attributes.put(LogField.LATENCY_MS.key(), latencyMs);</span>
+        }
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        if (measurement.unavailable()) {</span>
+<span class="fc" id="L324">            attributes.put(LogField.MEASUREMENT_UNAVAILABLE.key(), true);</span>
+        }
+<span class="fc" id="L326">        return attributes;</span>
+    }
+
+    private static Measurement beginMeasurement(
+            final RequestContext requestContext,
+            final String identifier,
+            final boolean phaseMeasurementEnabled) {
+<span class="fc bfc" id="L333" title="All 4 branches covered.">        if (!PerformanceObservabilitySettings.isEnabled() &amp;&amp; !phaseMeasurementEnabled) {</span>
+<span class="fc" id="L334">            return Measurement.disabled();</span>
+        }
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L337">            return Measurement.unavailableMeasurement();</span>
+        }
+        try {
+<span class="fc" id="L340">            DataAccessInvocation invocation = requestContext.beginDataAccess(identifier);</span>
+<span class="fc" id="L341">            return new Measurement(true, invocation, invocation.sequence(), false);</span>
+<span class="nc" id="L342">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L343">            return Measurement.unavailableMeasurement();</span>
+        }
+    }
+
+    private static void endMeasurement(
+            final RequestContext requestContext,
+            final Measurement measurement) {
+<span class="fc bfc" id="L350" title="All 4 branches covered.">        if (requestContext == null || measurement.invocation() == null) {</span>
+<span class="fc" id="L351">            return;</span>
+        }
+        try {
+<span class="fc" id="L354">            requestContext.endDataAccess(measurement.invocation());</span>
+<span class="nc" id="L355">        } catch (RuntimeException exception) {</span>
+            // 計測失敗は業務処理へ伝播させない
+<span class="fc" id="L357">        }</span>
+<span class="fc" id="L358">    }</span>
+
+    private static long elapsedMillis(final long startNanos) {
+<span class="fc" id="L361">        return Math.max(0L, System.nanoTime() - startNanos) / 1_000_000L;</span>
+    }
+
+    private static void logInfoSafely(
+            final CommonDataAccessLogger logger,
+            final LogEvent event) {
+        try {
+<span class="fc" id="L368">            logger.info(event);</span>
+<span class="nc" id="L369">        } catch (RuntimeException exception) {</span>
+            // 計測失敗は業務処理へ伝播させない
+<span class="fc" id="L371">        }</span>
+<span class="fc" id="L372">    }</span>
+
+    private static void logErrorSafely(
+            final CommonDataAccessLogger logger,
+            final LogEvent event,
+            final Throwable cause) {
+        try {
+<span class="fc" id="L379">            logger.error(event, cause);</span>
+<span class="nc" id="L380">        } catch (RuntimeException exception) {</span>
+            // 計測失敗は業務処理へ伝播させない
+<span class="fc" id="L382">        }</span>
+<span class="fc" id="L383">    }</span>
+
+    private static String buildFailureMessage(
+            final String identifier,
+            final String name,
+            final Object[] params,
+            final String sql,
+            final RequestContext requestContext) {
+<span class="fc" id="L391">        StringBuilder builder = new StringBuilder();</span>
+<span class="fc" id="L392">        appendCorrelationPrefix(builder, requestContext);</span>
+<span class="fc" id="L393">        builder.append(&quot;DataAccess failure: functionId=&quot;).append(identifier)</span>
+<span class="fc" id="L394">                .append(&quot;, name=&quot;).append(name);</span>
+<span class="fc" id="L395">        String callPath = safeBuildCallPath(requestContext, identifier);</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (callPath != null) {</span>
+<span class="fc" id="L397">            builder.append(&quot;, callPath=&quot;).append(callPath);</span>
+        }
+<span class="fc" id="L399">        builder.append(&quot;, params=&quot;).append(Arrays.toString(params));</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">        if (sql != null) {</span>
+<span class="nc" id="L401">            builder.append(&quot;, sql=&quot;).append(sql);</span>
+        }
+<span class="fc" id="L403">        return builder.toString();</span>
+    }
+
+    private static void appendCorrelationPrefix(
+            final StringBuilder builder,
+            final RequestContext requestContext) {
+<span class="fc" id="L409">        safeGetCorrelationId(requestContext)</span>
+<span class="fc" id="L410">                .ifPresent(correlationId -&gt;</span>
+<span class="fc" id="L411">                        builder.append(&quot;correlationId=&quot;)</span>
+<span class="fc" id="L412">                                .append(correlationId)</span>
+<span class="fc" id="L413">                                .append(' '));</span>
+<span class="fc" id="L414">    }</span>
+
+    private static Optional&lt;String&gt; safeGetCorrelationId(
+            final RequestContext requestContext) {
+<span class="fc bfc" id="L418" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L419">            return Optional.empty();</span>
+        }
+        try {
+<span class="fc" id="L422">            return requestContext.getCorrelationId();</span>
+<span class="fc" id="L423">        } catch (ContextNotActiveException ex) {</span>
+<span class="fc" id="L424">            return Optional.empty();</span>
+        }
+    }
+
+    private static String safeBuildCallPath(
+            final RequestContext requestContext,
+            final String identifier) {
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L432">            return null;</span>
+        }
+        try {
+<span class="fc" id="L435">            return requestContext.buildCallPath(identifier);</span>
+<span class="fc" id="L436">        } catch (ContextNotActiveException ex) {</span>
+<span class="fc" id="L437">            return null;</span>
+        }
+    }
+
+<span class="fc" id="L441">    private record Measurement(</span>
+            boolean enabled,
+            DataAccessInvocation invocation,
+            Long sequence,
+            boolean unavailable) {
+
+        private static Measurement disabled() {
+<span class="fc" id="L448">            return new Measurement(false, null, null, false);</span>
+        }
+
+        private static Measurement unavailableMeasurement() {
+<span class="fc" id="L452">            return new Measurement(true, null, null, true);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

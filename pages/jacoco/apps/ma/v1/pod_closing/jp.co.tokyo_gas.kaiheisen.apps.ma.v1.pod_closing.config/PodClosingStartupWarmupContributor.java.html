@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PodClosingStartupWarmupContributor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.config</a> &gt; <span class="el_source">PodClosingStartupWarmupContributor.java</span></div><h1>PodClosingStartupWarmupContributor.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.config;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_other.ClosingCommonNormalOtherRetailResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg.ClosingCommonNormalTgRetailResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg.ClosingCommonSupplyStopResource;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.warmup.CdiBeanInitializer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.warmup.StartupWarmupContributor;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.warmup.StartupWarmupStep;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.sysibm.sysdummy1.Sysdummy1DataAccess;
+
+/** 閉栓MAの起動時ウォームアップ定義。 */
+@ApplicationScoped
+public class PodClosingStartupWarmupContributor implements StartupWarmupContributor {
+
+    private static final long WARMUP_GAS_MTST_NO = 99_999_999_999L;
+
+<span class="fc" id="L25">    private static final LocalDate WARMUP_KNSK_KJN_YMD = LocalDate.of(9999, 12, 31);</span>
+
+    private final CdiBeanInitializer beanInitializer;
+
+    private final Sysdummy1DataAccess databaseWarmupDataAccess;
+
+    private final GmtsetdDataAccess businessDataAccess;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param beanInitializer CDI Bean初期化処理
+     * @param databaseWarmupDataAccess DBウォームアップDA
+     * @param businessDataAccess 業務参照DA
+     */
+    @Inject
+    public PodClosingStartupWarmupContributor(
+            final CdiBeanInitializer beanInitializer,
+            final Sysdummy1DataAccess databaseWarmupDataAccess,
+<span class="fc" id="L44">            final GmtsetdDataAccess businessDataAccess) {</span>
+<span class="fc" id="L45">        this.beanInitializer = beanInitializer;</span>
+<span class="fc" id="L46">        this.databaseWarmupDataAccess = databaseWarmupDataAccess;</span>
+<span class="fc" id="L47">        this.businessDataAccess = businessDataAccess;</span>
+<span class="fc" id="L48">    }</span>
+
+    @Override
+    public String applicationName() {
+<span class="nc" id="L52">        return &quot;ma-closing&quot;;</span>
+    }
+
+    @Override
+    public LogLayer logLayer() {
+<span class="nc" id="L57">        return LogLayer.MA;</span>
+    }
+
+    @Override
+    public void initializeResources() {
+<span class="fc" id="L62">        beanInitializer.initialize(</span>
+                ClosingCommonNormalTgRetailResource.class,
+                ClosingCommonSupplyStopResource.class,
+                ClosingCommonNormalOtherRetailResource.class,
+                ClosingCommonForceTgRetailResource.class,
+                ClosingCommonForceOtherRetailResource.class);
+<span class="fc" id="L68">    }</span>
+
+    @Override
+    public int warmUpDatabase() {
+<span class="nc" id="L72">        return databaseWarmupDataAccess.fetchWarmupValue().value();</span>
+    }
+
+    @Override
+    public List&lt;StartupWarmupStep&gt; businessDataAccessWarmupSteps() {
+<span class="fc" id="L77">        return List.of(new StartupWarmupStep(</span>
+                GmtsetdDataAccess.Identifiers.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD,
+                () -&gt; {
+<span class="fc" id="L80">                    if (businessDataAccess</span>
+<span class="fc" id="L81">                            .findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+<span class="fc" id="L82">                                    WARMUP_GAS_MTST_NO, WARMUP_KNSK_KJN_YMD)</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                            .isPresent()) {</span>
+<span class="fc" id="L84">                        throw new IllegalStateException(</span>
+                                &quot;Startup business DA warmup dummy value collision&quot;);
+                    }
+<span class="fc" id="L87">                }));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

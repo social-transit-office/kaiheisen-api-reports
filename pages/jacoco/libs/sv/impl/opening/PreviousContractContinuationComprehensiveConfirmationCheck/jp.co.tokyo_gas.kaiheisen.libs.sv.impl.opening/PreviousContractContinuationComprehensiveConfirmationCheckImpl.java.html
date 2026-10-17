@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreviousContractContinuationComprehensiveConfirmationCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-previouscontractcontinuationcomprehensiveconfirmationcheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">PreviousContractContinuationComprehensiveConfirmationCheckImpl.java</span></div><h1>PreviousContractContinuationComprehensiveConfirmationCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreviousContractContinuationComprehensiveConfirmationCheck;
+
+/**
+ * 概要: 前契約継続（総合）確認チェックサービス実装。
+ * 主な仕様:
+ * - 前契約継続確認フラグが false かつ継続使用扱いコードが総合ワーニング対象の場合のみ詳細判定へ進む。
+ * - 契約終了判定と異動・作業履歴業務コード（導管）の組み合わせに応じて業務例外を送出する。
+ * 既知の制約:
+ * - RequestContext 値は public 引数へ含めず、本クラスでも参照しない。
+ */
+public final class PreviousContractContinuationComprehensiveConfirmationCheckImpl
+        implements PreviousContractContinuationComprehensiveConfirmationCheck {
+
+    private final String comprehensiveWarningTarget;
+
+    private final String contractEnded;
+
+    private final String openingRegistration;
+
+    private final String openingSystemProcessing;
+
+    /**
+     * 概要: 判定に必要な定数値を初期化する。
+     * 主な仕様:
+     * - KH007、J0566、J0497 の必須定数を constructor で fail-fast 解決する。
+     * 既知の制約:
+     * - 必須定数不足時は初期化時点で失敗する。
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public PreviousContractContinuationComprehensiveConfirmationCheckImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L42">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L43">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L44">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L45">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L46">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L47">        this.comprehensiveWarningTarget = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode
+                        .COMPREHENSIVE_WARNING_TARGET);
+<span class="fc" id="L52">        this.contractEnded = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.END_OF_CONTRACT);
+<span class="fc" id="L56">        this.openingRegistration = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.OPENING_REGISTRATION);
+<span class="fc" id="L60">        this.openingSystemProcessing = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit
+                        .OPENING_SYSTEM_PROCESSING);
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * 概要: 前契約継続に関する総合確認を行う。
+     * 主な仕様:
+     * - 判定入口を満たさない場合は正常終了する。
+     * - 判定入口を満たす場合は step 設計どおりに業務例外を送出する。
+     * @param zkyKzkKknFlg 前契約継続確認フラグ
+     * @param kzksyAtkCd 継続使用扱いコード
+     * @param svkyJtkb サービス契約状態区分
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     */
+    @Override
+    public void execute(
+            Boolean zkyKzkKknFlg,
+            String kzksyAtkCd,
+            String svkyJtkb,
+            Boolean syoriHnt4XFlg,
+            String duknIsrgCd) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (!shouldEvaluate(zkyKzkKknFlg, kzksyAtkCd)) {</span>
+<span class="fc" id="L86">            return;</span>
+        }
+
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (isContractEnded(svkyJtkb)) {</span>
+<span class="fc" id="L90">            evaluateContractEndedBranch(syoriHnt4XFlg, duknIsrgCd);</span>
+<span class="fc" id="L91">            return;</span>
+        }
+
+<span class="nc" id="L94">        evaluateNotContractEndedBranch(duknIsrgCd);</span>
+<span class="nc" id="L95">    }</span>
+
+    /**
+     * 概要: 詳細判定に進むべきかを判定する。
+     * 主な仕様:
+     * - 前契約継続確認フラグが false かつ継続使用扱いコードが総合ワーニング対象のときのみ true を返す。
+     * @param zkyKzkKknFlg 前契約継続確認フラグ
+     * @param kzksyAtkCd 継続使用扱いコード
+     * @return 詳細判定に進む場合 true
+     */
+    private boolean shouldEvaluate(Boolean zkyKzkKknFlg, String kzksyAtkCd) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        return Boolean.FALSE.equals(zkyKzkKknFlg)</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                &amp;&amp; comprehensiveWarningTarget.equals(kzksyAtkCd);</span>
+    }
+
+    /**
+     * 概要: 契約終了状態かどうかを判定する。
+     * 主な仕様:
+     * - J0566 の契約終了コードとの一致で判定する。
+     * @param svkyJtkb サービス契約状態区分
+     * @return 契約終了の場合 true
+     */
+    private boolean isContractEnded(String svkyJtkb) {
+<span class="fc" id="L118">        return contractEnded.equals(svkyJtkb);</span>
+    }
+
+    /**
+     * 概要: 契約終了側の分岐を評価する。
+     * 主な仕様:
+     * - 処理判定_4x_フラグが true で、異動業務コードが開栓登録系以外なら 020110051 を送出する。
+     * - 処理判定_4x_フラグが true で、異動業務コードが開栓登録系なら 020100051 を送出する。
+     * - 処理判定_4x_フラグが false の場合は正常終了する。
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     */
+    private void evaluateContractEndedBranch(Boolean syoriHnt4XFlg, String duknIsrgCd) {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(syoriHnt4XFlg)) {</span>
+<span class="fc" id="L132">            return;</span>
+        }
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (isNonOpeningWorkCode(duknIsrgCd)) {</span>
+<span class="fc" id="L135">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020110051);</span>
+        }
+<span class="fc" id="L137">        throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100051);</span>
+    }
+
+    /**
+     * 概要: 契約終了以外側の分岐を評価する。
+     * 主な仕様:
+     * - 異動業務コードが開栓登録系以外なら 020120051 を送出する。
+     * - 異動業務コードが開栓登録系なら 020100051 を送出する。
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     */
+    private void evaluateNotContractEndedBranch(String duknIsrgCd) {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (isNonOpeningWorkCode(duknIsrgCd)) {</span>
+<span class="fc" id="L149">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020120051);</span>
+        }
+<span class="fc" id="L151">        throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100051);</span>
+    }
+
+    /**
+     * 概要: 開栓登録系以外の異動業務コードかどうかを判定する。
+     * 主な仕様:
+     * - J0497 の開栓登録および開栓（システム処理）以外を true とする。
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     * @return 開栓登録系以外の場合 true
+     */
+    private boolean isNonOpeningWorkCode(String duknIsrgCd) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        return !openingRegistration.equals(duknIsrgCd)</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                &amp;&amp; !openingSystemProcessing.equals(duknIsrgCd);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

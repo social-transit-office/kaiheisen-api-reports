@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CompanyTransferUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-companytransferupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">CompanyTransferUpdateImpl.java</span></div><h1>CompanyTransferUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.shyfrke.ShyfrkeDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.shyfrke.write.ShyfrkeColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.shyfrke.write.ShyfrkeUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.shyfrke.write.ShyfrkeWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CompanyTransferUpdate;
+
+/**
+ * 概要: SV-030（社用振替更新）のサービス実装。
+ * 主な仕様:
+ * - 社用区分が社用以外の場合は更新を行わず、そのまま終了する。
+ * - 社用区分が社用の場合は SHYFRKE の適用終了年月日（TYEN_YMD）を更新し、監査情報に固定更新ユーザー ID と報告元機能 ID を設定する。
+ * - 更新件数が 0 件の場合はデータ不整合例外を送出する。
+ * 既知の制約:
+ * - RequestContext の値設定と妥当性確認は上位層責務とし、本クラスでは補完や追加検証を行わない。
+ * - 社用判定に使う CIRIUS 定数はコンストラクタ初期化時に fail-fast で解決する。
+ */
+public class CompanyTransferUpdateImpl implements CompanyTransferUpdate {
+
+    // 監査更新で使用する固定の更新ユーザー ID。
+    static final String SERVICE_USER_ID = &quot;KHSS030&quot;;
+
+    // SHYFRKE 更新を担当するデータアクセス。
+    private final ShyfrkeDataAccess shyfrkeDataAccess;
+
+    // 実行時の監査・システム情報を保持するリクエストコンテキスト。
+    private final RequestContext requestContext;
+
+    // 報告元機能 ID の復号に使用する開閉栓定数サービス。
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    // 社用区分判定に使用する CIRIUS の社用定数値。
+    private final String companyUseDivision;
+
+    /**
+     * 概要: 社用振替更新に必要な依存オブジェクトと定数を初期化する。
+     * 主な仕様:
+     * - SHYFRKE 更新、RequestContext、開閉栓定数サービスを保持する。
+     * - 社用区分判定に必要な CIRIUS 定数を初期化時に解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須 CIRIUS 定数が不足している場合はコンストラクタ初期化時点で失敗する。
+     * @param shyfrkeDataAccess SHYFRKE データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public CompanyTransferUpdateImpl(
+            ShyfrkeDataAccess shyfrkeDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L64">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L65">        this.shyfrkeDataAccess = Objects.requireNonNull(shyfrkeDataAccess, &quot;shyfrkeDataAccess&quot;);</span>
+<span class="fc" id="L66">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L67">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L70">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L71">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L72">        this.companyUseDivision = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.FOR_COMPANY_USE);
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * 概要: 社用区分に該当する契約の振替更新を実行する。
+     * 主な仕様:
+     * - 実行前に RequestContext の必須値を検証する。
+     * - 社用区分が社用以外の場合は更新せずそのまま終了する。
+     * - 社用区分が社用の場合は指定契約番号の適用終了年月日を更新し、更新件数 0 件はデータ不整合として扱う。
+     * 既知の制約:
+     * - 引数の null 検証は明示的に行わず、下位処理で実行時例外となる可能性がある。
+     * - 更新対象は SHYFRKE の TYEN_YMD 列に限定される。
+     * @param syaKbn 社用区分
+     * @param sihKiyNo 支払契約番号
+     * @param updYmd 更新後の適用終了年月日
+     * @param tyenYmd 検索条件に使用する適用終了年月日
+     */
+    @Override
+    public void execute(
+            String syaKbn,
+            Long sihKiyNo,
+            LocalDate updYmd,
+            LocalDate tyenYmd) {
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!companyUseDivision.equals(syaKbn)) {</span>
+<span class="fc" id="L99">            return;</span>
+        }
+
+<span class="fc" id="L102">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L103">        int updatedCount = shyfrkeDataAccess.updateBySihKiyNoAndTkysYmdAndTyenYmd(</span>
+                new ShyfrkeWriteRecord(sihKiyNo, null, updYmd, null, null, null, null, null),
+<span class="fc" id="L105">                Set.of(ShyfrkeColumn.TYEN_YMD),</span>
+                new ShyfrkeUpdateKey(sihKiyNo, tyenYmd),
+<span class="fc" id="L107">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L109">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L110">                    shyfrkeDataAccess.tableName(),</span>
+                    ShyfrkeDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_TKYS_YMD_AND_TYEN_YMD
+<span class="fc" id="L112">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L114">                            .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L115">                            .put(&quot;knskKjnYmd&quot;, tyenYmd)</span>
+<span class="fc" id="L116">                            .put(&quot;tyenYmd&quot;, updYmd)</span>
+<span class="fc" id="L117">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L118">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * 概要: RequestContext の報告元システム種別から監査用の機能 ID を取得する。
+     * 主な仕様:
+     * - RequestContext から hukkSysShbt を取得し、開閉栓定数サービスで名称へ変換する。
+     * - 返却値は監査情報の updKtnKinoId に設定する。
+     * 既知の制約:
+        * - hukkSysShbt の値設定と妥当性確認は上位層責務とし、本メソッドでは補完しない。
+     * - 定数変換結果の妥当性は KaiheisenConstantService の解決結果に依存する。
+     * @return 監査用の報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L133">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L135">                                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L136">                                                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

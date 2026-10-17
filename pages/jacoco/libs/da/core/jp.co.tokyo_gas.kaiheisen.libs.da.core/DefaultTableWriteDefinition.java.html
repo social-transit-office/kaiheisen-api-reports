@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultTableWriteDefinition.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">DefaultTableWriteDefinition.java</span></div><h1>DefaultTableWriteDefinition.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * {@link TableWriteDefinition} の汎用デフォルト実装。
+ *
+ * &lt;p&gt;各テーブル固有の {@code TableWriteDefinition} を手書きする代わりに、
+ * PK 列セットと監査列パターンから全メタデータを自動導出する。
+ * 60 テーブルへの横展開においてボイラープレートを排除するための中核クラス。&lt;/p&gt;
+ *
+ * @param &lt;RecordT&gt; write record 型（Java record）
+ * @param &lt;ColumnT&gt; canonical 列 enum 型
+ */
+public final class DefaultTableWriteDefinition&lt;
+        RecordT extends Record,
+        ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn
+        &gt; implements TableWriteDefinition&lt;RecordT, ColumnT&gt; {
+
+    private final Class&lt;ColumnT&gt; columnClass;
+
+    private final List&lt;ColumnT&gt; columnOrder;
+
+    private final List&lt;ColumnT&gt; insertManagedColumns;
+
+    private final List&lt;ColumnT&gt; updateManagedColumns;
+
+    private final Set&lt;ColumnT&gt; updatableColumns;
+
+    private final EnumMap&lt;ColumnT, Function&lt;RecordT, Object&gt;&gt; valueExtractors;
+
+    private DefaultTableWriteDefinition(
+            Class&lt;ColumnT&gt; columnClass,
+            Class&lt;RecordT&gt; recordClass,
+            Set&lt;ColumnT&gt; pkColumns,
+            AuditColumnEnum&lt;?&gt; auditColumnEnum
+<span class="fc" id="L45">    ) {</span>
+<span class="fc" id="L46">        this.columnClass = Objects.requireNonNull(columnClass, &quot;columnClass&quot;);</span>
+<span class="fc" id="L47">        this.columnOrder = List.copyOf(Arrays.asList(columnClass.getEnumConstants()));</span>
+<span class="fc" id="L48">        this.insertManagedColumns = resolveManagedColumns(columnClass, auditColumnEnum, DataAccessWriteOperation.INSERT);</span>
+<span class="fc" id="L49">        this.updateManagedColumns = resolveManagedColumns(columnClass, auditColumnEnum, DataAccessWriteOperation.UPDATE);</span>
+<span class="fc" id="L50">        this.updatableColumns = buildUpdatableColumns(columnClass, pkColumns, auditColumnEnum);</span>
+<span class="fc" id="L51">        this.valueExtractors = ReflectiveValueExtractors.build(columnClass, recordClass);</span>
+<span class="fc" id="L52">    }</span>
+
+    /**
+     * 汎用 write 定義を生成する。
+     *
+     * @param columnClass canonical 列 enum クラス
+     * @param recordClass write record クラス（Java record）
+     * @param pkColumns 主キー列の集合
+     * @param auditColumnEnum 監査列 enum（{@link NcisCisAuditColumn} 等）
+     * @param &lt;RecordT&gt; write record 型
+     * @param &lt;ColumnT&gt; 列 enum 型
+     * @return write 定義
+     */
+    public static &lt;RecordT extends Record, ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt;
+        DefaultTableWriteDefinition&lt;RecordT, ColumnT&gt; of(
+            Class&lt;ColumnT&gt; columnClass,
+            Class&lt;RecordT&gt; recordClass,
+            Set&lt;ColumnT&gt; pkColumns,
+            AuditColumnEnum&lt;?&gt; auditColumnEnum
+    ) {
+<span class="fc" id="L72">        Objects.requireNonNull(pkColumns, &quot;pkColumns&quot;);</span>
+<span class="fc" id="L73">        Objects.requireNonNull(auditColumnEnum, &quot;auditColumnEnum&quot;);</span>
+<span class="fc" id="L74">        return new DefaultTableWriteDefinition&lt;&gt;(columnClass, recordClass, pkColumns, auditColumnEnum);</span>
+    }
+
+    @Override
+    public Class&lt;ColumnT&gt; columnClass() {
+<span class="fc" id="L79">        return columnClass;</span>
+    }
+
+    @Override
+    public List&lt;ColumnT&gt; columnOrder() {
+<span class="fc" id="L84">        return columnOrder;</span>
+    }
+
+    @Override
+    public List&lt;ColumnT&gt; insertManagedColumns() {
+<span class="fc" id="L89">        return insertManagedColumns;</span>
+    }
+
+    @Override
+    public List&lt;ColumnT&gt; updateManagedColumns() {
+<span class="fc" id="L94">        return updateManagedColumns;</span>
+    }
+
+    @Override
+    public Set&lt;ColumnT&gt; updatableColumns() {
+<span class="fc" id="L99">        return updatableColumns;</span>
+    }
+
+    @Override
+    public EnumMap&lt;ColumnT, Object&gt; extractValues(RecordT record) {
+<span class="fc" id="L104">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L105">        EnumMap&lt;ColumnT, Object&gt; values = new EnumMap&lt;&gt;(columnClass);</span>
+<span class="fc" id="L106">        valueExtractors.forEach((column, extractor) -&gt; values.put(column, extractor.apply(record)));</span>
+<span class="fc" id="L107">        return values;</span>
+    }
+
+    /**
+     * 監査列 enum の操作種別ごとの列一覧を解決する共通契約。
+     *
+     * @param &lt;A&gt; 監査列 enum 型
+     */
+    public interface AuditColumnEnum&lt;A extends Enum&lt;A&gt; &amp; DataAccessColumn&gt; {
+
+        /**
+         * 操作種別ごとの監査列名一覧を返す。
+         *
+         * @param operation 操作種別
+         * @return 監査列名一覧
+         */
+        List&lt;String&gt; columnNamesFor(DataAccessWriteOperation operation);
+
+        /**
+         * 監査列名の全集合を返す。
+         *
+         * @return 監査列名集合
+         */
+        Set&lt;String&gt; allColumnNames();
+    }
+
+    /**
+     * {@link NcisCisAuditColumn} を {@link AuditColumnEnum} として提供する。
+     */
+<span class="fc" id="L136">    public static final AuditColumnEnum&lt;NcisCisAuditColumn&gt; NCIS_CIS = new AuditColumnEnum&lt;&gt;() {</span>
+        @Override
+        public List&lt;String&gt; columnNamesFor(DataAccessWriteOperation operation) {
+<span class="fc" id="L139">            return NcisCisAuditColumn.columnsFor(operation).stream()</span>
+<span class="fc" id="L140">                    .map(NcisCisAuditColumn::name)</span>
+<span class="fc" id="L141">                    .toList();</span>
+        }
+
+        @Override
+        public Set&lt;String&gt; allColumnNames() {
+<span class="fc" id="L146">            return EnumSet.allOf(NcisCisAuditColumn.class).stream()</span>
+<span class="fc" id="L147">                    .map(NcisCisAuditColumn::name)</span>
+<span class="fc" id="L148">                    .collect(Collectors.toSet());</span>
+        }
+    };
+
+    /**
+     * {@link NcisSubsetAuditColumn} を {@link AuditColumnEnum} として提供する。
+     *
+     * &lt;p&gt;KOSIN 列を持たない NCIS テーブル（TATEMON 等）に使用する。&lt;/p&gt;
+     */
+<span class="fc" id="L157">    public static final AuditColumnEnum&lt;NcisSubsetAuditColumn&gt; NCIS_SUBSET = new AuditColumnEnum&lt;&gt;() {</span>
+        @Override
+        public List&lt;String&gt; columnNamesFor(DataAccessWriteOperation operation) {
+<span class="nc" id="L160">            return NcisSubsetAuditColumn.columnsFor(operation).stream()</span>
+<span class="nc" id="L161">                    .map(NcisSubsetAuditColumn::name)</span>
+<span class="nc" id="L162">                    .toList();</span>
+        }
+
+        @Override
+        public Set&lt;String&gt; allColumnNames() {
+<span class="nc" id="L167">            return EnumSet.allOf(NcisSubsetAuditColumn.class).stream()</span>
+<span class="nc" id="L168">                    .map(NcisSubsetAuditColumn::name)</span>
+<span class="nc" id="L169">                    .collect(Collectors.toSet());</span>
+        }
+    };
+
+    /**
+     * {@link CiriusAuditColumn} を {@link AuditColumnEnum} として提供する。
+     */
+<span class="fc" id="L176">    public static final AuditColumnEnum&lt;CiriusAuditColumn&gt; CIRIUS = new AuditColumnEnum&lt;&gt;() {</span>
+        @Override
+        public List&lt;String&gt; columnNamesFor(DataAccessWriteOperation operation) {
+<span class="nc" id="L179">            return CiriusAuditColumn.columnsFor(operation).stream()</span>
+<span class="nc" id="L180">                    .map(CiriusAuditColumn::name)</span>
+<span class="nc" id="L181">                    .toList();</span>
+        }
+
+        @Override
+        public Set&lt;String&gt; allColumnNames() {
+<span class="nc" id="L186">            return EnumSet.allOf(CiriusAuditColumn.class).stream()</span>
+<span class="nc" id="L187">                    .map(CiriusAuditColumn::name)</span>
+<span class="nc" id="L188">                    .collect(Collectors.toSet());</span>
+        }
+    };
+
+    private static &lt;ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt; List&lt;ColumnT&gt; resolveManagedColumns(
+            Class&lt;ColumnT&gt; columnClass,
+            AuditColumnEnum&lt;?&gt; auditColumnEnum,
+            DataAccessWriteOperation operation
+    ) {
+<span class="fc" id="L197">        return auditColumnEnum.columnNamesFor(operation).stream()</span>
+<span class="fc" id="L198">                .map(name -&gt; Enum.valueOf(columnClass, name))</span>
+<span class="fc" id="L199">                .toList();</span>
+    }
+
+    private static &lt;ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt; Set&lt;ColumnT&gt; buildUpdatableColumns(
+            Class&lt;ColumnT&gt; columnClass,
+            Set&lt;ColumnT&gt; pkColumns,
+            AuditColumnEnum&lt;?&gt; auditColumnEnum
+    ) {
+<span class="fc" id="L207">        Set&lt;String&gt; auditNames = auditColumnEnum.allColumnNames();</span>
+<span class="fc" id="L208">        EnumSet&lt;ColumnT&gt; updatable = EnumSet.allOf(columnClass);</span>
+<span class="fc" id="L209">        updatable.removeAll(pkColumns);</span>
+<span class="fc" id="L210">        updatable.removeIf(col -&gt; auditNames.contains(col.name()));</span>
+<span class="fc" id="L211">        return Collections.unmodifiableSet(updatable);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

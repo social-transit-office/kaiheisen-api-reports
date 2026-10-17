@@ -1,0 +1,1913 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCommonRecoveryResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-opening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.pipeline.retail_tg</a> &gt; <span class="el_source">OpeningCommonRecoveryResource.java</span></div><h1>OpeningCommonRecoveryResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.pipeline.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_tg.OpeningCommonRecoveryEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_tg.OpeningCommonRecoveryRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.pipeline.retail_tg.OpeningCommonRecoveryResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.livalit.retail.customer_numbering_relation_update.CustomerNumberingRelationUpdateLivalitAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.livalit.retail.customer_numbering_relation_update.CustomerNumberingRelationUpdateRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.livalit.retail.customer_numbering_relation_update.CustomerNumberingRelationUpdateResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.filter.CorrelationIdFilter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AddressEditAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.AddressEditAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckEndDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckFutureDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckInstallationDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckRecentMeterReadingDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckSeriesDedicatedMeterOpeningDate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckSeriesInstallationStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckSwitchingCompletion;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningInProgressCheckAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReadingCheckPreviousReading;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReasonCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportVariousJudgmentProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportVariousJudgmentProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OriginMeterClosingInProgressCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OtherRetailTransportContractCheckAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreOpeningInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreOpeningInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.SameDayOpeningDateCheckMultipleOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TgRetailNoAlternativeOpeningProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TgRetailNoAlternativeOpeningProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryRegistrationOpeningAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UsageCodeConfirmationAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.UsageCodeConfirmationAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdSystemDateInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.LivalitInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TsigInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.TgPipelineReadingJudgment;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-053 開栓共通処理-保安復旧・災害復旧-導管-TG小売 API のリソース実装。
+ */
+@Path(OpeningCommonRecoveryEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;開栓共通処理-保安復旧・災害復旧-導管-TG小売&quot;, description = &quot;MA-053 開栓共通処理-保安復旧・災害復旧-導管-TG小売 API&quot;)
+@MainService(identifier = &quot;MA-053&quot;, name = &quot;開栓共通処理-保安復旧・災害復旧-導管-TG小売&quot;)
+public final class OpeningCommonRecoveryResource extends BaseResource&lt;OpeningCommonRecoveryRequest&gt; {
+
+<span class="fc" id="L90">    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private static final String INVALID_TRANSPORT_SERVICE_CONTRACT_STATUS = &quot;00&quot;;
+
+    private static final String OTHER028_DELETE_FLAG = &quot;0&quot;;
+
+    private static final long OTHER028_CUSTOMER_NUMBER = 0L;
+
+    private static final String OPENING_PROCESSING_DIVISION = &quot;1&quot;;
+
+    private static final String SECURITY_RESTORATION_CLOSING_REASON = &quot;5&quot;;
+
+<span class="fc" id="L102">    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private static final String SECURITY_RESTORATION_OPENING_REASON =
+            ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION;
+
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    private final OpeningDateCheckFutureDate openingDateCheckFutureDate;
+
+    private final PreOpeningInfoAcquisition preOpeningInfoAcquisition;
+
+    private final CustomerInfoAcquisition customerInfoAcquisition;
+
+    private final OpeningReportVariousJudgmentProcess openingReportVariousJudgmentProcess;
+
+    private final OpeningInProgressCheckAtOpening openingInProgressCheckAtOpening;
+
+    private final OpeningDateCheckSeriesInstallationStatus openingDateCheckSeriesInstallationStatus;
+
+    private final OriginMeterClosingInProgressCheck originMeterClosingInProgressCheck;
+
+    private final OpeningDateCheckInstallationDate openingDateCheckInstallationDate;
+
+    private final OpeningDateCheckRecentMeterReadingDate openingDateCheckRecentMeterReadingDate;
+
+    private final OpeningDateCheckSeriesDedicatedMeterOpeningDate openingDateCheckSeriesDedicatedMeterOpeningDate;
+
+    private final OpeningDateCheckEndDate openingDateCheckEndDate;
+
+    private final OpeningDateCheckSwitchingCompletion openingDateCheckSwitchingCompletion;
+
+    private final SameDayOpeningDateCheckMultipleOpening sameDayOpeningDateCheckMultipleOpening;
+
+    private final OtherRetailTransportContractCheckAtOpening otherRetailTransportContractCheckAtOpening;
+
+    private final OpeningReasonCheck openingReasonCheck;
+
+    private final OpeningReadingCheckPreviousReading openingReadingCheckPreviousReading;
+
+    private final TgPipelineReadingJudgment tgPipelineReadingJudgment;
+
+    private final UsageCodeConfirmationAtOpening usageCodeConfirmationAtOpening;
+
+    private final AddressEditAtOpening addressEditAtOpening;
+
+    private final TgRetailNoAlternativeOpeningProcess tgRetailNoAlternativeOpeningProcess;
+
+    private final CustomerNumberingRelationUpdateLivalitAdapter customerNumberingRelationUpdateLivalitAdapter;
+
+    private final TransferWorkHistoryRegistrationOpeningAtOpening transferWorkHistoryRegistrationOpeningAtOpening;
+
+    private final String tgRetailCategory;
+
+    private final String invalidTransportServiceContractStatus;
+
+    /**
+     * CDI 用の本番コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエストバリデータ
+     * @param clock システム時刻プロバイダ
+     * @param tkssvkyDataAccess 託送サービス契約 DA
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param customerNumberingRelationUpdateLivalitAdapter 他-028 adapter
+     * @param customerInfoAcquisition SV-164
+     * @param preOpeningInfoAcquisition SV-163
+     * @param openingReportVariousJudgmentProcess SV-165
+     * @param openingDateCheckFutureDate SV-180
+     * @param openingInProgressCheckAtOpening SV-177
+     * @param openingDateCheckSeriesInstallationStatus SV-178
+     * @param originMeterClosingInProgressCheck SV-179
+     * @param openingDateCheckInstallationDate SV-181
+     * @param openingDateCheckRecentMeterReadingDate SV-182
+     * @param openingDateCheckSeriesDedicatedMeterOpeningDate SV-183
+     * @param openingDateCheckEndDate SV-184
+     * @param openingDateCheckSwitchingCompletion SV-186
+     * @param sameDayOpeningDateCheckMultipleOpening SV-188
+     * @param otherRetailTransportContractCheckAtOpening SV-191
+     * @param openingReasonCheck SV-202
+     * @param openingReadingCheckPreviousReading SV-205
+     * @param tgPipelineReadingJudgment SV-279
+     * @param usageCodeConfirmationAtOpening SV-215
+     * @param addressEditAtOpening SV-216
+     * @param tgRetailNoAlternativeOpeningProcess SV-212
+     * @param transferWorkHistoryRegistrationOpeningAtOpening SV-244
+     */
+    @Inject
+    public OpeningCommonRecoveryResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            TkssvkyDataAccess tkssvkyDataAccess,
+            KaiheisenConstantService kaiheisenConstantService,
+            CustomerNumberingRelationUpdateLivalitAdapter customerNumberingRelationUpdateLivalitAdapter,
+            CustomerInfoAcquisition customerInfoAcquisition,
+            PreOpeningInfoAcquisition preOpeningInfoAcquisition,
+            OpeningDateCheckFutureDate openingDateCheckFutureDate,
+            OpeningInProgressCheckAtOpening openingInProgressCheckAtOpening,
+            OpeningReportVariousJudgmentProcess openingReportVariousJudgmentProcess,
+            OpeningDateCheckSeriesInstallationStatus openingDateCheckSeriesInstallationStatus,
+            OriginMeterClosingInProgressCheck originMeterClosingInProgressCheck,
+            OpeningDateCheckInstallationDate openingDateCheckInstallationDate,
+            OpeningDateCheckRecentMeterReadingDate openingDateCheckRecentMeterReadingDate,
+            OpeningDateCheckSeriesDedicatedMeterOpeningDate openingDateCheckSeriesDedicatedMeterOpeningDate,
+            OpeningDateCheckEndDate openingDateCheckEndDate,
+            OpeningDateCheckSwitchingCompletion openingDateCheckSwitchingCompletion,
+            SameDayOpeningDateCheckMultipleOpening sameDayOpeningDateCheckMultipleOpening,
+            OtherRetailTransportContractCheckAtOpening otherRetailTransportContractCheckAtOpening,
+            OpeningReasonCheck openingReasonCheck,
+            OpeningReadingCheckPreviousReading openingReadingCheckPreviousReading,
+            TgPipelineReadingJudgment tgPipelineReadingJudgment,
+            UsageCodeConfirmationAtOpening usageCodeConfirmationAtOpening,
+            AddressEditAtOpening addressEditAtOpening,
+            TgRetailNoAlternativeOpeningProcess tgRetailNoAlternativeOpeningProcess,
+            TransferWorkHistoryRegistrationOpeningAtOpening transferWorkHistoryRegistrationOpeningAtOpening) {
+<span class="nc" id="L217">        this(</span>
+                requestContext,
+                requestDtoValidator,
+                clock,
+                tkssvkyDataAccess,
+                openingDateCheckFutureDate,
+                preOpeningInfoAcquisition,
+                customerInfoAcquisition,
+                openingReportVariousJudgmentProcess,
+                openingInProgressCheckAtOpening,
+                openingDateCheckSeriesInstallationStatus,
+                originMeterClosingInProgressCheck,
+                openingDateCheckInstallationDate,
+                openingDateCheckRecentMeterReadingDate,
+                openingDateCheckSeriesDedicatedMeterOpeningDate,
+                openingDateCheckEndDate,
+                openingDateCheckSwitchingCompletion,
+                sameDayOpeningDateCheckMultipleOpening,
+                otherRetailTransportContractCheckAtOpening,
+                openingReasonCheck,
+                openingReadingCheckPreviousReading,
+                tgPipelineReadingJudgment,
+                usageCodeConfirmationAtOpening,
+                addressEditAtOpening,
+                tgRetailNoAlternativeOpeningProcess,
+                customerNumberingRelationUpdateLivalitAdapter,
+                transferWorkHistoryRegistrationOpeningAtOpening,
+<span class="nc" id="L244">                resolveTgRetailCategory(kaiheisenConstantService),</span>
+                INVALID_TRANSPORT_SERVICE_CONTRACT_STATUS);
+<span class="nc" id="L246">    }</span>
+
+    /**
+     * テスト差し替え用のコンストラクタ。
+     */
+    OpeningCommonRecoveryResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            TkssvkyDataAccess tkssvkyDataAccess,
+            OpeningDateCheckFutureDate openingDateCheckFutureDate,
+            PreOpeningInfoAcquisition preOpeningInfoAcquisition,
+            CustomerInfoAcquisition customerInfoAcquisition,
+            OpeningReportVariousJudgmentProcess openingReportVariousJudgmentProcess,
+            OpeningInProgressCheckAtOpening openingInProgressCheckAtOpening,
+            OpeningDateCheckSeriesInstallationStatus openingDateCheckSeriesInstallationStatus,
+            OriginMeterClosingInProgressCheck originMeterClosingInProgressCheck,
+            OpeningDateCheckInstallationDate openingDateCheckInstallationDate,
+            OpeningDateCheckRecentMeterReadingDate openingDateCheckRecentMeterReadingDate,
+            OpeningDateCheckSeriesDedicatedMeterOpeningDate openingDateCheckSeriesDedicatedMeterOpeningDate,
+            OpeningDateCheckEndDate openingDateCheckEndDate,
+            OpeningDateCheckSwitchingCompletion openingDateCheckSwitchingCompletion,
+            SameDayOpeningDateCheckMultipleOpening sameDayOpeningDateCheckMultipleOpening,
+            OtherRetailTransportContractCheckAtOpening otherRetailTransportContractCheckAtOpening,
+            OpeningReasonCheck openingReasonCheck,
+            OpeningReadingCheckPreviousReading openingReadingCheckPreviousReading,
+            TgPipelineReadingJudgment tgPipelineReadingJudgment,
+            UsageCodeConfirmationAtOpening usageCodeConfirmationAtOpening,
+            AddressEditAtOpening addressEditAtOpening,
+            TgRetailNoAlternativeOpeningProcess tgRetailNoAlternativeOpeningProcess,
+            CustomerNumberingRelationUpdateLivalitAdapter customerNumberingRelationUpdateLivalitAdapter,
+            TransferWorkHistoryRegistrationOpeningAtOpening transferWorkHistoryRegistrationOpeningAtOpening,
+            String tgRetailCategory,
+            String invalidTransportServiceContractStatus) {
+<span class="fc" id="L280">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L281">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L282">        this.openingDateCheckFutureDate =</span>
+<span class="fc" id="L283">                Objects.requireNonNull(openingDateCheckFutureDate, &quot;openingDateCheckFutureDate&quot;);</span>
+<span class="fc" id="L284">        this.preOpeningInfoAcquisition =</span>
+<span class="fc" id="L285">                Objects.requireNonNull(preOpeningInfoAcquisition, &quot;preOpeningInfoAcquisition&quot;);</span>
+<span class="fc" id="L286">        this.customerInfoAcquisition =</span>
+<span class="fc" id="L287">                Objects.requireNonNull(customerInfoAcquisition, &quot;customerInfoAcquisition&quot;);</span>
+<span class="fc" id="L288">        this.openingReportVariousJudgmentProcess = Objects.requireNonNull(</span>
+                openingReportVariousJudgmentProcess,
+                &quot;openingReportVariousJudgmentProcess&quot;);
+<span class="fc" id="L291">        this.openingInProgressCheckAtOpening = Objects.requireNonNull(</span>
+                openingInProgressCheckAtOpening,
+                &quot;openingInProgressCheckAtOpening&quot;);
+<span class="fc" id="L294">        this.openingDateCheckSeriesInstallationStatus = Objects.requireNonNull(</span>
+                openingDateCheckSeriesInstallationStatus,
+                &quot;openingDateCheckSeriesInstallationStatus&quot;);
+<span class="fc" id="L297">        this.originMeterClosingInProgressCheck = Objects.requireNonNull(</span>
+                originMeterClosingInProgressCheck,
+                &quot;originMeterClosingInProgressCheck&quot;);
+<span class="fc" id="L300">        this.openingDateCheckInstallationDate = Objects.requireNonNull(</span>
+                openingDateCheckInstallationDate,
+                &quot;openingDateCheckInstallationDate&quot;);
+<span class="fc" id="L303">        this.openingDateCheckRecentMeterReadingDate = Objects.requireNonNull(</span>
+                openingDateCheckRecentMeterReadingDate,
+                &quot;openingDateCheckRecentMeterReadingDate&quot;);
+<span class="fc" id="L306">        this.openingDateCheckSeriesDedicatedMeterOpeningDate = Objects.requireNonNull(</span>
+                openingDateCheckSeriesDedicatedMeterOpeningDate,
+                &quot;openingDateCheckSeriesDedicatedMeterOpeningDate&quot;);
+<span class="fc" id="L309">        this.openingDateCheckEndDate =</span>
+<span class="fc" id="L310">                Objects.requireNonNull(openingDateCheckEndDate, &quot;openingDateCheckEndDate&quot;);</span>
+<span class="fc" id="L311">        this.openingDateCheckSwitchingCompletion = Objects.requireNonNull(</span>
+                openingDateCheckSwitchingCompletion,
+                &quot;openingDateCheckSwitchingCompletion&quot;);
+<span class="fc" id="L314">        this.sameDayOpeningDateCheckMultipleOpening = Objects.requireNonNull(</span>
+                sameDayOpeningDateCheckMultipleOpening,
+                &quot;sameDayOpeningDateCheckMultipleOpening&quot;);
+<span class="fc" id="L317">        this.otherRetailTransportContractCheckAtOpening = Objects.requireNonNull(</span>
+                otherRetailTransportContractCheckAtOpening,
+                &quot;otherRetailTransportContractCheckAtOpening&quot;);
+<span class="fc" id="L320">        this.openingReasonCheck = Objects.requireNonNull(openingReasonCheck, &quot;openingReasonCheck&quot;);</span>
+<span class="fc" id="L321">        this.openingReadingCheckPreviousReading = Objects.requireNonNull(</span>
+                openingReadingCheckPreviousReading,
+                &quot;openingReadingCheckPreviousReading&quot;);
+<span class="fc" id="L324">        this.tgPipelineReadingJudgment = Objects.requireNonNull(</span>
+                tgPipelineReadingJudgment,
+                &quot;tgPipelineReadingJudgment&quot;);
+<span class="fc" id="L327">        this.usageCodeConfirmationAtOpening = Objects.requireNonNull(</span>
+                usageCodeConfirmationAtOpening,
+                &quot;usageCodeConfirmationAtOpening&quot;);
+<span class="fc" id="L330">        this.addressEditAtOpening =</span>
+<span class="fc" id="L331">                Objects.requireNonNull(addressEditAtOpening, &quot;addressEditAtOpening&quot;);</span>
+<span class="fc" id="L332">        this.tgRetailNoAlternativeOpeningProcess = Objects.requireNonNull(</span>
+                tgRetailNoAlternativeOpeningProcess,
+                &quot;tgRetailNoAlternativeOpeningProcess&quot;);
+<span class="fc" id="L335">        this.customerNumberingRelationUpdateLivalitAdapter = Objects.requireNonNull(</span>
+                customerNumberingRelationUpdateLivalitAdapter,
+                &quot;customerNumberingRelationUpdateLivalitAdapter&quot;);
+<span class="fc" id="L338">        this.transferWorkHistoryRegistrationOpeningAtOpening = Objects.requireNonNull(</span>
+                transferWorkHistoryRegistrationOpeningAtOpening,
+                &quot;transferWorkHistoryRegistrationOpeningAtOpening&quot;);
+<span class="fc" id="L341">        this.tgRetailCategory = Objects.requireNonNull(tgRetailCategory, &quot;tgRetailCategory&quot;);</span>
+<span class="fc" id="L342">        this.invalidTransportServiceContractStatus = Objects.requireNonNull(</span>
+                invalidTransportServiceContractStatus,
+                &quot;invalidTransportServiceContractStatus&quot;);
+<span class="fc" id="L345">    }</span>
+
+    /**
+     * MA-053 を実行する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;開栓共通処理-保安復旧・災害復旧-導管-TG小売&quot;,
+            description = &quot;step.tsv 1-26 に従って各判定・TG小売開栓処理・LIVALIT連携・異動作業履歴登録を順に実行し、相関IDを返却する。&quot;,
+            operationId = &quot;postOpeningCommonRecovery&quot;)
+    @Parameter(
+            name = CorrelationIdFilter.HEADER_NAME,
+            in = ParameterIn.HEADER,
+            description = &quot;相関ID。未指定時はサーバで採番する。&quot;,
+            schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;開栓共通処理の実行結果&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = OpeningCommonRecoveryResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public OpeningCommonRecoveryResponse endpoint(OpeningCommonRecoveryRequest request) {
+<span class="fc" id="L395">        OpeningCommonRecoveryRequest normalizedRequest = normalizeRequest(request);</span>
+<span class="fc" id="L396">        return execute(normalizedRequest, () -&gt; handle(normalizedRequest));</span>
+    }
+
+    private OpeningCommonRecoveryRequest normalizeRequest(OpeningCommonRecoveryRequest request) {
+<span class="fc" id="L400">        String normalizedGmb = stripTrailingSpaces(request.gmb());</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        if (Objects.equals(normalizedGmb, request.gmb())) {</span>
+<span class="fc" id="L402">            return request;</span>
+        }
+<span class="fc" id="L404">        return new OpeningCommonRecoveryRequest(</span>
+<span class="fc" id="L405">                request.duknIsrgCd(),</span>
+<span class="fc" id="L406">                request.duknIsrsCd(),</span>
+<span class="fc" id="L407">                request.isrrGymCd(),</span>
+<span class="fc" id="L408">                request.isrrGmssCd(),</span>
+<span class="fc" id="L409">                request.isrrHkkrKbn(),</span>
+<span class="fc" id="L410">                request.kasHukkYmd(),</span>
+<span class="fc" id="L411">                request.kasgYmd(),</span>
+<span class="fc" id="L412">                request.gasMtstNo(),</span>
+<span class="fc" id="L413">                request.syoKyoTrno(),</span>
+                normalizedGmb,
+<span class="fc" id="L415">                request.kasJysb(),</span>
+<span class="fc" id="L416">                request.gmtShjSu(),</span>
+<span class="fc" id="L417">                request.hukkUsrId(),</span>
+<span class="fc" id="L418">                request.hukkUnmKj(),</span>
+<span class="fc" id="L419">                request.rirekiMemo(),</span>
+<span class="fc" id="L420">                request.hukkSysShbt(),</span>
+<span class="fc" id="L421">                request.systemDatetime());</span>
+    }
+
+    private OpeningCommonRecoveryResponse handle(OpeningCommonRecoveryRequest request) {
+<span class="fc" id="L425">        LocalDate kasgYmd = parseRequestDate(request.kasgYmd());</span>
+
+<span class="fc" id="L427">        PreOpeningState preOpeningState = loadPreOpeningState(request, kasgYmd);</span>
+<span class="fc" id="L428">        CustomerState customerState = loadCustomerState(request);</span>
+
+<span class="fc bfc" id="L430" title="All 2 branches covered.">        if (SECURITY_RESTORATION_OPENING_REASON.equals(request.kasJysb())</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">                &amp;&amp; ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE.equals(</span>
+<span class="fc" id="L432">                        preOpeningState.hesnJysb())) {</span>
+<span class="fc" id="L433">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000094);</span>
+        }
+
+<span class="fc" id="L436">        boolean hasInvalidTransportContract = tkssvkyDataAccess</span>
+<span class="fc" id="L437">                .findBySyoKyoTrnoAndTksuSvkyJtkb(</span>
+<span class="fc" id="L438">                        request.syoKyoTrno(),</span>
+                        invalidTransportServiceContractStatus)
+<span class="fc" id="L440">                .isPresent();</span>
+<span class="fc" id="L441">        boolean wkSyoKyoTrnoUmFlg = hasInvalidTransportContract;</span>
+<span class="fc" id="L442">        JudgmentState judgmentState = processJudgmentState(</span>
+                request,
+                preOpeningState,
+                customerState,
+                wkSyoKyoTrnoUmFlg);
+
+<span class="fc" id="L448">        openingInProgressCheckAtOpening.execute(preOpeningState.gmtKhsJtkb());</span>
+<span class="fc" id="L449">        openingDateCheckSeriesInstallationStatus.execute(</span>
+<span class="fc" id="L450">                preOpeningState.systemDateCkrtGmscJtkb(),</span>
+<span class="fc" id="L451">                preOpeningState.ksenYmdCkrtGmscJtkb());</span>
+<span class="fc" id="L452">        originMeterClosingInProgressCheck.execute(</span>
+<span class="fc" id="L453">                preOpeningState.ksenYmdCkrtGmscJtkb(),</span>
+<span class="fc" id="L454">                preOpeningState.originGmtKhsJtkb());</span>
+<span class="fc" id="L455">        openingDateCheckFutureDate.execute(kasgYmd);</span>
+<span class="pc bpc" id="L456" title="1 of 2 branches missed.">        if (preOpeningState.tusoGmtkYmd() != null) {</span>
+<span class="fc" id="L457">            openingDateCheckInstallationDate.execute(kasgYmd, preOpeningState.tusoGmtkYmd());</span>
+        }
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">        if (preOpeningState.ksenHkkKnuKigenYmd() != null) {</span>
+<span class="fc" id="L460">            openingDateCheckRecentMeterReadingDate.execute(</span>
+                    kasgYmd,
+<span class="fc" id="L462">                    preOpeningState.ksenHkkKnuKigenYmd());</span>
+        }
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">        if (preOpeningState.kasYmd() != null) {</span>
+<span class="fc" id="L465">            openingDateCheckSeriesDedicatedMeterOpeningDate.execute(</span>
+<span class="fc" id="L466">                    preOpeningState.ksenYmdCkrtGmscJtkb(),</span>
+<span class="fc" id="L467">                    preOpeningState.kasYmd(),</span>
+                    kasgYmd);
+        }
+<span class="fc" id="L470">        openingDateCheckEndDate.execute(</span>
+<span class="fc" id="L471">                preOpeningState.tksuKijsCd(),</span>
+<span class="fc" id="L472">                preOpeningState.rkkiKnrnJtkb(),</span>
+<span class="fc" id="L473">                request.kasJysb(),</span>
+<span class="fc" id="L474">                preOpeningState.rkkiEndYmd(),</span>
+                kasgYmd);
+<span class="fc" id="L476">        openingDateCheckSwitchingCompletion.execute(preOpeningState.swKnsUmFlg());</span>
+<span class="fc" id="L477">        sameDayOpeningDateCheckMultipleOpening.execute(preOpeningState.kasYmd(), kasgYmd);</span>
+<span class="fc" id="L478">        otherRetailTransportContractCheckAtOpening.execute(</span>
+<span class="fc" id="L479">                judgmentState.kiyUmFlg(),</span>
+<span class="fc" id="L480">                preOpeningState.taksmtrHntrUmFlg(),</span>
+<span class="fc" id="L481">                preOpeningState.taksmtrKtrUmFlg(),</span>
+<span class="fc" id="L482">                preOpeningState.tksuKijsCd(),</span>
+<span class="fc" id="L483">                preOpeningState.tkykCisjCd());</span>
+
+<span class="fc bfc" id="L485" title="All 2 branches covered.">        if (SECURITY_RESTORATION_OPENING_REASON.equals(request.kasJysb())) {</span>
+<span class="fc" id="L486">            openingReasonCheck.execute(</span>
+<span class="fc" id="L487">                    judgmentState.kiyUmFlg(),</span>
+<span class="fc" id="L488">                    preOpeningState.ctnmKn1Hsen(),</span>
+<span class="fc" id="L489">                    judgmentState.chkzKsenCtnmKn(),</span>
+<span class="fc" id="L490">                    request.kasJysb(),</span>
+<span class="fc" id="L491">                    preOpeningState.ksenYmdTskgmstUmFlg(),</span>
+<span class="fc" id="L492">                    preOpeningState.hesnJysb());</span>
+        }
+
+<span class="fc" id="L495">        openingReadingCheckPreviousReading.execute(</span>
+<span class="fc" id="L496">                preOpeningState.hesnJysb(),</span>
+<span class="fc" id="L497">                request.gmtShjSu(),</span>
+<span class="pc bpc" id="L498" title="1 of 4 branches missed.">                preOpeningState.rawOutput() != null &amp;&amp; preOpeningState.rawOutput().knsKkaKsenInf() != null</span>
+<span class="fc" id="L499">                        ? preOpeningState.rawOutput().knsKkaKsenInf().skinGmtShjSu()</span>
+<span class="fc" id="L500">                        : null);</span>
+<span class="fc" id="L501">        tgPipelineReadingJudgment.execute(</span>
+                OPENING_PROCESSING_DIVISION,
+<span class="fc" id="L503">                preOpeningState.sjskHticSu(),</span>
+<span class="fc" id="L504">                preOpeningState.sjsuMincSu(),</span>
+<span class="fc" id="L505">                request.gmtShjSu());</span>
+
+<span class="fc" id="L507">        UsageCodeState usageCodeState = confirmUsageCode(</span>
+                request,
+                preOpeningState,
+                judgmentState);
+<span class="fc" id="L511">        AddressState addressState = editAddress(preOpeningState);</span>
+<span class="fc" id="L512">        OpeningProcessState openingProcessState = executeTgRetailNoAlternativeOpeningProcess(</span>
+                request,
+                preOpeningState,
+                customerState,
+                judgmentState,
+                usageCodeState,
+                addressState,
+                wkSyoKyoTrnoUmFlg);
+<span class="fc" id="L520">        OpeningProcessDerivedState openingProcessDerivedState =</span>
+<span class="fc" id="L521">                OpeningProcessDerivedState.from(openingProcessState);</span>
+
+<span class="fc" id="L523">        callOther028(</span>
+                new Other028Request(
+<span class="fc" id="L525">                        normalizeBlank(request.hukkUsrId()),</span>
+<span class="fc" id="L526">                        preOpeningState.gasMtstNo(),</span>
+<span class="fc" id="L527">                        formatYmd(openingProcessDerivedState.wkKktTkysYmd()),</span>
+<span class="fc" id="L528">                        formatYmd(openingProcessState.kktTyenYmd()),</span>
+<span class="fc" id="L529">                        toFlag(judgmentState.digwrHntFlg()),</span>
+                        OTHER028_DELETE_FLAG,
+<span class="fc" id="L531">                        OTHER028_CUSTOMER_NUMBER));</span>
+
+<span class="fc" id="L533">        registerTransferWorkHistory(</span>
+                request,
+                preOpeningState,
+                usageCodeState,
+                openingProcessState,
+<span class="fc" id="L538">                requestContext.getSystemDatetime().orElse(null));</span>
+
+<span class="fc" id="L540">        return new OpeningCommonRecoveryResponse(</span>
+<span class="fc" id="L541">                resolveResponseCorrelationId(),</span>
+                null,
+                null,
+                null,
+                null);
+    }
+
+    static String resolveTgRetailCategory(KaiheisenConstantService kaiheisenConstantService) {
+<span class="nc" id="L549">        return RequiredConstantResolver.requireKaiheisenConstant(</span>
+                kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TG_RETAIL);
+    }
+
+    private LocalDate parseRequestDate(String rawDateTime) {
+        try {
+<span class="fc" id="L557">            return LocalDate.parse(rawDateTime);</span>
+<span class="nc" id="L558">        } catch (DateTimeParseException ignored) {</span>
+            try {
+<span class="nc" id="L560">                return OffsetDateTime.parse(rawDateTime).toLocalDate();</span>
+<span class="nc" id="L561">            } catch (DateTimeParseException ex) {</span>
+<span class="nc" id="L562">                throw new IllegalArgumentException(&quot;date must follow RFC3339&quot;, ex);</span>
+            }
+        }
+    }
+
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L568">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L569">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="fc" id="L570">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L571">            return generated;</span>
+        });
+    }
+
+    private static String formatYmd(LocalDate value) {
+<span class="pc bpc" id="L576" title="1 of 2 branches missed.">        return value == null ? null : YYYYMMDD.format(value);</span>
+    }
+
+    private static String toFlag(Boolean value) {
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">        return Boolean.TRUE.equals(value) ? &quot;1&quot; : &quot;0&quot;;</span>
+    }
+
+    private static String normalizeBlank(String value) {
+<span class="pc bpc" id="L584" title="3 of 4 branches missed.">        return value == null || value.isBlank() ? null : value;</span>
+    }
+
+    private static String stripTrailingSpaces(String value) {
+<span class="pc bpc" id="L588" title="1 of 2 branches missed.">        return value == null ? null : value.stripTrailing();</span>
+    }
+
+    private PreOpeningState loadPreOpeningState(OpeningCommonRecoveryRequest request, LocalDate kasgYmd) {
+<span class="fc" id="L592">        PreOpeningInfoAcquisitionOutput output = preOpeningInfoAcquisition.execute(</span>
+<span class="fc" id="L593">                request.gmb(),</span>
+<span class="fc" id="L594">                request.gasMtstNo(),</span>
+                kasgYmd,
+                tgRetailCategory,
+<span class="fc" id="L597">                request.gmtShjSu());</span>
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L599">            return PreOpeningState.defaultFrom(request, kasgYmd);</span>
+        }
+<span class="fc" id="L601">        return new PreOpeningState(</span>
+                output,
+<span class="fc" id="L603">                valueOrNull(</span>
+<span class="fc" id="L604">                        output.gmtsetdKsenSaymdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdKsenSaymdInf::gasMtstNo),
+<span class="fc" id="L606">                valueOrNull(</span>
+<span class="fc" id="L607">                        output.gmtsetdSystemDateInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdSystemDateInf::gmtKhsJtkb),
+<span class="fc" id="L609">                valueOrNull(</span>
+<span class="fc" id="L610">                        output.gmtsetdSystemDateInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdSystemDateInf::ckrtGmscJtkb),
+<span class="fc" id="L612">                valueOrNull(</span>
+<span class="fc" id="L613">                        output.gmtsetdKsenSaymdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdKsenSaymdInf::ckrtGmscJtkb),
+<span class="fc" id="L615">                valueOrNull(</span>
+<span class="fc" id="L616">                        output.gmtsetdKsenSaymdOgaInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdKsenSaymdOgaInf::gmtKhsJtkb),
+<span class="fc" id="L618">                valueOrNull(</span>
+<span class="fc" id="L619">                        output.gmtsetdSystemDateInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdSystemDateInf::tusoGmtkYmd),
+<span class="fc" id="L621">                valueOrNull(output.dktksryInf(), jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.DktksryInf::knsYmd),</span>
+<span class="fc" id="L622">                valueOrNull(</span>
+<span class="fc" id="L623">                        output.gmtsetdSystemDateInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdSystemDateInf::kasYmd),
+<span class="fc" id="L625">                valueOrNull(</span>
+<span class="fc" id="L626">                        output.tkssvkyInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTkssvkyInf::tksuKijsCd),
+<span class="pc bpc" id="L628" title="3 of 4 branches missed.">                output.kiyInf() == null || output.kiyInf().svmstkrInf() == null</span>
+<span class="fc" id="L629">                        ? null</span>
+<span class="nc" id="L630">                        : output.kiyInf().svmstkrInf().rkkiKnrnJtkb(),</span>
+<span class="pc bpc" id="L631" title="3 of 4 branches missed.">                output.kiyInf() == null || output.kiyInf().svmstkrInf() == null</span>
+<span class="fc" id="L632">                        ? null</span>
+<span class="pc" id="L633">                        : output.kiyInf().svmstkrInf().rkkiEndYmd(),</span>
+<span class="fc" id="L634">                output.swKnsUmFlg(),</span>
+<span class="fc" id="L635">                valueOrNull(</span>
+<span class="fc" id="L636">                        output.kbagmstInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KbagmstInf::kbabCktkCd),
+<span class="fc" id="L638">                output.ksenYmdTskgmstUmFlg(),</span>
+<span class="fc" id="L639">                valueOrNull(</span>
+<span class="fc" id="L640">                        output.gmtsetdKsenSaymdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdKsenSaymdInf::hesnJysb),
+<span class="fc" id="L642">                output.kktGmtShjSu(),</span>
+<span class="fc" id="L643">                valueOrNull(</span>
+<span class="fc" id="L644">                        output.gasmtrdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf::sjskHticSu),
+<span class="fc" id="L646">                valueOrNull(</span>
+<span class="fc" id="L647">                        output.gasmtrdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf::sjsuMincSu),
+<span class="fc" id="L649">                output.taksmtrHntrUmFlg(),</span>
+<span class="fc" id="L650">                output.taksmtrKtrUmFlg(),</span>
+<span class="fc" id="L651">                toLivalitState(output),</span>
+                CorrectionState.EMPTY);
+    }
+
+    private CustomerState loadCustomerState(OpeningCommonRecoveryRequest request) {
+<span class="fc" id="L656">        CustomerInfoAcquisitionOutput output =</span>
+<span class="fc" id="L657">                customerInfoAcquisition.execute(request.syoKyoTrno(), &quot;&quot;, &quot;1&quot;);</span>
+<span class="pc bpc" id="L658" title="3 of 4 branches missed.">        if (output == null || output.kiycstkInf() == null) {</span>
+<span class="fc" id="L659">            return CustomerState.EMPTY;</span>
+        }
+<span class="nc" id="L661">        return new CustomerState(</span>
+                output,
+<span class="nc" id="L663">                output.kiycstkInf().ctnmKn1(),</span>
+<span class="nc" id="L664">                output.kiycstkInf().ctnm1HujnShbt(),</span>
+<span class="nc" id="L665">                output.kiycstkInf().ctnm1HshiShbt());</span>
+    }
+
+    private JudgmentState processJudgmentState(
+            OpeningCommonRecoveryRequest request,
+            PreOpeningState preOpeningState,
+            CustomerState customerState,
+            boolean wkSyoKyoTrnoUmFlg) {
+<span class="pc bpc" id="L673" title="1 of 2 branches missed.">        if (preOpeningState.rawOutput() == null) {</span>
+<span class="nc" id="L674">            return JudgmentState.defaultFrom(wkSyoKyoTrnoUmFlg);</span>
+        }
+<span class="fc" id="L676">        var svckyaInf = toOpeningReportSvckyaInf(preOpeningState.rawOutput());</span>
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">        if (svckyaInf == null) {</span>
+<span class="fc" id="L678">            return JudgmentState.defaultFrom(wkSyoKyoTrnoUmFlg);</span>
+        }
+<span class="nc" id="L680">        OpeningReportVariousJudgmentProcessOutput output = openingReportVariousJudgmentProcess.execute(</span>
+<span class="nc" id="L681">                request.kasJysb(),</span>
+                tgRetailCategory,
+<span class="nc" id="L683">                parseDateOrNull(request.kasgYmd()),</span>
+<span class="nc" id="L684">                customerState.ctnmKn1Ksen(),</span>
+<span class="nc" id="L685">                customerState.ctnm1HujnShbtKsen(),</span>
+<span class="nc" id="L686">                customerState.ctnm1HshiShbtKsen(),</span>
+<span class="nc" id="L687">                toOpeningReportTskgmstInf(preOpeningState.rawOutput()),</span>
+<span class="nc" id="L688">                toOpeningReportTkssvkyInf(preOpeningState.rawOutput()),</span>
+<span class="nc" id="L689">                toOpeningReportSvmstkrInf(preOpeningState.rawOutput()),</span>
+                svckyaInf,
+<span class="nc" id="L691">                toOpeningReportGmtsetdInf(preOpeningState.rawOutput()),</span>
+<span class="nc" id="L692">                toOpeningReportSihakyInf(preOpeningState.rawOutput()),</span>
+<span class="nc" id="L693">                toOpeningReportKiycstInf(preOpeningState.rawOutput()),</span>
+<span class="nc" id="L694">                Boolean.TRUE.equals(preOpeningState.rawOutput().ksenYmdTskgmstUmFlg()),</span>
+<span class="nc" id="L695">                Boolean.TRUE.equals(preOpeningState.rawOutput().ksenYmdSvmstkrUmFlg()),</span>
+<span class="nc" id="L696">                valueOrNull(</span>
+<span class="nc" id="L697">                        preOpeningState.rawOutput().kiyInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf::snyTkmtFlg),
+<span class="nc" id="L699">                Boolean.TRUE.equals(preOpeningState.rawOutput().sknrUmFlg()),</span>
+<span class="nc bnc" id="L700" title="All 2 branches missed.">                preOpeningState.rawOutput().kiyInf() == null ? null : preOpeningState.rawOutput().kiyInf().kzksyAtkCd());</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L702">            return JudgmentState.defaultFrom(wkSyoKyoTrnoUmFlg);</span>
+        }
+<span class="nc" id="L704">        return new JudgmentState(</span>
+                output,
+<span class="nc" id="L706">                Boolean.TRUE.equals(output.kiyUmFlg()),</span>
+<span class="nc" id="L707">                output.syoriHnt2XFlg(),</span>
+<span class="nc" id="L708">                output.syoriHnt3XFlg(),</span>
+<span class="nc" id="L709">                output.syoriHntFkktFlg(),</span>
+<span class="nc" id="L710">                output.sknrUmFlg(),</span>
+<span class="nc" id="L711">                output.digwrHntFlg(),</span>
+<span class="nc" id="L712">                output.chkzKsenCtnmKn());</span>
+    }
+
+    private UsageCodeState confirmUsageCode(
+            OpeningCommonRecoveryRequest request,
+            PreOpeningState preOpeningState,
+            JudgmentState judgmentState) {
+<span class="pc bpc" id="L719" title="1 of 2 branches missed.">        if (preOpeningState.rawOutput() == null) {</span>
+<span class="nc" id="L720">            return UsageCodeState.EMPTY;</span>
+        }
+<span class="fc" id="L722">        UsageCodeConfirmationAtOpeningOutput output = usageCodeConfirmationAtOpening.execute(</span>
+                &quot;&quot;,
+<span class="fc" id="L724">                judgmentState.digwrHntFlg(),</span>
+<span class="fc" id="L725">                valueOrNull(</span>
+<span class="fc" id="L726">                        preOpeningState.rawOutput().kiyInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf::suguHtkFlg),
+                null,
+<span class="fc" id="L729">                valueOrNull(</span>
+<span class="fc" id="L730">                        valueOrNull(</span>
+<span class="fc" id="L731">                                preOpeningState.rawOutput().kiyInf(),</span>
+                                jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf::svckyaInf),
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvckyaInf::gasYtCd),
+<span class="fc" id="L734">                valueOrNull(</span>
+<span class="fc" id="L735">                        preOpeningState.rawOutput().gmtsetdKsenSaymdInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdKsenSaymdInf::gasYtCd));
+<span class="pc bpc" id="L737" title="1 of 2 branches missed.">        return output == null</span>
+<span class="nc" id="L738">                ? UsageCodeState.EMPTY</span>
+<span class="fc" id="L739">                : new UsageCodeState(output.kktGmtsetdGasYtCd(), output.kktSvckyaGasYtCd());</span>
+    }
+
+    private AddressState editAddress(PreOpeningState preOpeningState) {
+<span class="fc" id="L743">        AddressEditAtOpeningOutput output = addressEditAtOpening.execute(</span>
+                new LivalitInf(
+<span class="fc" id="L745">                        preOpeningState.livalitState().cbgSuj1(),</span>
+<span class="fc" id="L746">                        preOpeningState.livalitState().cbgKn2(),</span>
+<span class="fc" id="L747">                        preOpeningState.livalitState().cbgKn3(),</span>
+<span class="fc" id="L748">                        preOpeningState.livalitState().cbgKn4(),</span>
+<span class="fc" id="L749">                        preOpeningState.livalitState().tunoKn(),</span>
+<span class="fc" id="L750">                        preOpeningState.livalitState().hynKn(),</span>
+<span class="fc" id="L751">                        preOpeningState.livalitState().htuFlg()),</span>
+                new TsigInf(
+                        null,
+                        null,
+<span class="fc" id="L755">                        preOpeningState.correctionState().cbgSuj1(),</span>
+<span class="fc" id="L756">                        preOpeningState.correctionState().cbgKn2()),</span>
+<span class="fc" id="L757">                toAddressEditGmtsetdSystemDateInf(preOpeningState));</span>
+<span class="pc bpc" id="L758" title="1 of 2 branches missed.">        return output == null</span>
+<span class="nc" id="L759">                ? AddressState.EMPTY</span>
+<span class="fc" id="L760">                : new AddressState(</span>
+<span class="fc" id="L761">                        output.kktCbgSuj1(),</span>
+<span class="fc" id="L762">                        output.kktCbgKn2(),</span>
+<span class="fc" id="L763">                        output.kktCbgKn3(),</span>
+<span class="fc" id="L764">                        output.kktCbgKn4(),</span>
+<span class="fc" id="L765">                        output.kktTunoKn(),</span>
+<span class="fc" id="L766">                        output.kktHynKn(),</span>
+<span class="fc" id="L767">                        output.kktHynUmFlg());</span>
+    }
+
+    private OpeningProcessState executeTgRetailNoAlternativeOpeningProcess(
+            OpeningCommonRecoveryRequest request,
+            PreOpeningState preOpeningState,
+            CustomerState customerState,
+            JudgmentState judgmentState,
+            UsageCodeState usageCodeState,
+            AddressState addressState,
+            boolean wkSyoKyoTrnoUmFlg) {
+<span class="pc bpc" id="L778" title="1 of 2 branches missed.">        if (preOpeningState.rawOutput() == null) {</span>
+<span class="nc" id="L779">            return OpeningProcessState.defaultFrom(request, preOpeningState);</span>
+        }
+<span class="fc" id="L781">        TgRetailNoAlternativeOpeningProcessOutput output = tgRetailNoAlternativeOpeningProcess.execute(</span>
+<span class="fc" id="L782">                request.duknIsrgCd(),</span>
+<span class="fc" id="L783">                preOpeningState.gasMtstNo(),</span>
+                &quot;&quot;,
+<span class="fc" id="L785">                parseDateOrNull(request.kasgYmd()),</span>
+<span class="fc" id="L786">                request.kasJysb(),</span>
+                null,
+                null,
+<span class="fc" id="L789">                valueOrNull(</span>
+<span class="fc" id="L790">                        preOpeningState.rawOutput().kiyInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf::snyTkmtFlg),
+<span class="fc" id="L792">                valueOrNull(</span>
+<span class="fc" id="L793">                        preOpeningState.rawOutput().kiyInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf::suguHtkFlg),
+<span class="fc" id="L795">                judgmentState.digwrHntFlg(),</span>
+<span class="fc" id="L796">                judgmentState.sknrUmFlg(),</span>
+<span class="fc" id="L797">                judgmentState.syoriHnt2XFlg(),</span>
+<span class="fc" id="L798">                judgmentState.syoriHnt3XFlg(),</span>
+<span class="fc" id="L799">                judgmentState.syoriHntFkktFlg(),</span>
+<span class="fc" id="L800">                preOpeningState.rawOutput().ksenYmdTskgmstUmFlg(),</span>
+<span class="fc" id="L801">                wkSyoKyoTrnoUmFlg,</span>
+<span class="fc" id="L802">                valueOrNull(</span>
+<span class="fc" id="L803">                        preOpeningState.rawOutput().tskgmstInf(),</span>
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTskgmstInf::tksuSvkyNo),
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKiycstInf(
+                        null, null, null, null, null, null, null, null, null),
+<span class="fc" id="L807">                toNoAlternativeOpeningProcessGasmtrdInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L808">                toNoAlternativeOpeningProcessGmtsetdInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L809">                toNoAlternativeOpeningProcessSystemDateGmtsetdInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L810">                toNoAlternativeOpeningProcessTatemonInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L811">                toNoAlternativeOpeningProcessTskgmstInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L812">                toNoAlternativeOpeningProcessKiyInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L813">                toNoAlternativeOpeningProcessCstHsenjInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L814">                toNoAlternativeOpeningProcessCstKsenjInf(customerState.rawOutput()),</span>
+<span class="fc" id="L815">                toNoAlternativeOpeningProcessKkytskrInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L816">                toNoAlternativeOpeningProcessDedicatedMeterInfos(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L817">                toNoAlternativeOpeningProcessMtgInf(preOpeningState.rawOutput()),</span>
+<span class="fc" id="L818">                preOpeningState.gmtShjSu(),</span>
+<span class="fc" id="L819">                toNoAlternativeOpeningProcessJusyoKktInf(addressState),</span>
+<span class="fc" id="L820">                request.syoKyoTrno(),</span>
+                new java.util.ArrayList&lt;&gt;(),
+<span class="fc" id="L822">                usageCodeState.kktGmtsetdGasYtCd(),</span>
+<span class="fc" id="L823">                usageCodeState.kktSvckyaGasYtCd(),</span>
+<span class="fc" id="L824">                preOpeningState.ksenHkkKnuKigenYmd());</span>
+<span class="pc bpc" id="L825" title="1 of 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L826">            return OpeningProcessState.defaultFrom(request, preOpeningState);</span>
+        }
+<span class="fc" id="L828">        return new OpeningProcessState(</span>
+                output,
+<span class="fc" id="L830">                output.kktTyenYmd(),</span>
+<span class="fc" id="L831">                output.kktTkysYmd(),</span>
+<span class="fc" id="L832">                output.kktTksuSvkyNo(),</span>
+<span class="fc" id="L833">                output.kktSvkyNo(),</span>
+<span class="fc" id="L834">                output.kktSyoKyoTrno());</span>
+    }
+
+    private long callOther028(Other028Request request) {
+<span class="fc" id="L838">        CustomerNumberingRelationUpdateResponse response = customerNumberingRelationUpdateLivalitAdapter.update(</span>
+                new CustomerNumberingRelationUpdateRequest(
+<span class="fc" id="L840">                        request.userId(),</span>
+<span class="fc" id="L841">                        request.gmtSetNo(),</span>
+<span class="fc" id="L842">                        request.sinStartYmd(),</span>
+<span class="fc" id="L843">                        request.kyuEndYmd(),</span>
+<span class="fc" id="L844">                        request.dgwriUmuFlg(),</span>
+<span class="fc" id="L845">                        request.skjFlg(),</span>
+<span class="fc" id="L846">                        request.custmrNo()));</span>
+<span class="pc bpc" id="L847" title="2 of 4 branches missed.">        return response == null || response.custmrNo() == null ? 0L : response.custmrNo();</span>
+    }
+
+    private void registerTransferWorkHistory(
+            OpeningCommonRecoveryRequest request,
+            PreOpeningState preOpeningState,
+            UsageCodeState usageCodeState,
+            OpeningProcessState openingProcessState,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L856">        OpeningProcessDerivedState openingProcessDerivedState =</span>
+<span class="fc" id="L857">                OpeningProcessDerivedState.from(openingProcessState);</span>
+<span class="fc" id="L858">        transferWorkHistoryRegistrationOpeningAtOpening.execute(</span>
+<span class="fc" id="L859">                request.duknIsrgCd(),</span>
+<span class="fc" id="L860">                request.duknIsrsCd(),</span>
+<span class="fc" id="L861">                request.isrrGymCd(),</span>
+<span class="fc" id="L862">                request.isrrGmssCd(),</span>
+<span class="fc" id="L863">                request.isrrHkkrKbn(),</span>
+                &quot;1&quot;,
+<span class="fc" id="L865">                request.hukkUsrId(),</span>
+<span class="fc" id="L866">                request.hukkUnmKj(),</span>
+                tgRetailCategory,
+<span class="fc" id="L868">                parseDateOrNull(request.kasgYmd()),</span>
+<span class="fc" id="L869">                request.kasJysb(),</span>
+<span class="fc" id="L870">                request.gmtShjSu(),</span>
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L875">                request.rirekiMemo(),</span>
+                null,
+<span class="fc" id="L877">                toTransferWorkHistoryGasmtrdInf(preOpeningState),</span>
+<span class="fc" id="L878">                toTransferWorkHistoryGmtsetdKsenSaymdInf(preOpeningState),</span>
+<span class="fc" id="L879">                toTransferWorkHistoryTkssvkyInf(preOpeningState, openingProcessDerivedState),</span>
+<span class="fc" id="L880">                toTransferWorkHistoryKiyInf(preOpeningState),</span>
+<span class="fc" id="L881">                toTransferWorkHistoryCstGetHsenjInf(preOpeningState),</span>
+<span class="fc" id="L882">                toTransferWorkHistoryTatemonInf(preOpeningState),</span>
+<span class="fc" id="L883">                toTransferWorkHistoryKnsKkaKsenInf(preOpeningState),</span>
+<span class="fc" id="L884">                toTransferWorkHistoryKnsytiInf(openingProcessState),</span>
+<span class="fc" id="L885">                usageCodeState.kktGmtsetdGasYtCd(),</span>
+<span class="fc" id="L886">                openingProcessDerivedState.wkKktTksuSvkyNo(),</span>
+<span class="fc" id="L887">                toTransferWorkHistoryKiycstKktInf(openingProcessState),</span>
+<span class="fc" id="L888">                toTransferWorkHistoryTatemonKktInf(openingProcessState, preOpeningState),</span>
+<span class="fc" id="L889">                toTransferWorkHistoryConduitIsrrkrInf(</span>
+                        request,
+                        preOpeningState,
+                        openingProcessState,
+                        openingProcessDerivedState,
+                        systemDatetime),
+<span class="fc" id="L895">                toTransferWorkHistoryRetailIsrrkrInf());</span>
+<span class="fc" id="L896">    }</span>
+
+<span class="fc" id="L898">    static record PreOpeningState(</span>
+            PreOpeningInfoAcquisitionOutput rawOutput,
+            Long gasMtstNo,
+            String gmtKhsJtkb,
+            String systemDateCkrtGmscJtkb,
+            String ksenYmdCkrtGmscJtkb,
+            String originGmtKhsJtkb,
+            LocalDate tusoGmtkYmd,
+            LocalDate ksenHkkKnuKigenYmd,
+            LocalDate kasYmd,
+            String tksuKijsCd,
+            String rkkiKnrnJtkb,
+            LocalDate rkkiEndYmd,
+            Boolean swKnsUmFlg,
+            String tkykCisjCd,
+            Boolean ksenYmdTskgmstUmFlg,
+            String hesnJysb,
+            Long gmtShjSu,
+            Long sjskHticSu,
+            BigDecimal sjsuMincSu,
+            Boolean taksmtrHntrUmFlg,
+            Boolean taksmtrKtrUmFlg,
+            LivalitState livalitState,
+            CorrectionState correctionState) {
+
+        static PreOpeningState defaultFrom(OpeningCommonRecoveryRequest request, LocalDate kasgYmd) {
+<span class="fc" id="L924">            return new PreOpeningState(</span>
+                    null,
+<span class="fc" id="L926">                    request.gasMtstNo(),</span>
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    kasgYmd,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Boolean.FALSE,
+                    null,
+                    Boolean.FALSE,
+                    null,
+<span class="fc" id="L941">                    request.gmtShjSu(),</span>
+<span class="fc" id="L942">                    1L,</span>
+                    BigDecimal.ONE,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    LivalitState.EMPTY,
+                    CorrectionState.EMPTY);
+        }
+
+        String ctnmKn1Hsen() {
+<span class="pc bpc" id="L951" title="3 of 6 branches missed.">            return rawOutput == null || rawOutput.cstGetHsenjInf() == null || rawOutput.cstGetHsenjInf().kiycstdInf() == null</span>
+<span class="fc" id="L952">                    ? null</span>
+<span class="nc" id="L953">                    : rawOutput.cstGetHsenjInf().kiycstdInf().ctnmKn1();</span>
+        }
+    }
+
+<span class="fc" id="L957">    static record CustomerState(</span>
+            CustomerInfoAcquisitionOutput rawOutput,
+            String ctnmKn1Ksen,
+            String ctnm1HujnShbtKsen,
+            String ctnm1HshiShbtKsen) {
+<span class="fc" id="L962">        static final CustomerState EMPTY = new CustomerState(null, null, null, null);</span>
+    }
+
+<span class="fc" id="L965">    static record JudgmentState(</span>
+            OpeningReportVariousJudgmentProcessOutput rawOutput,
+            boolean kiyUmFlg,
+            Boolean syoriHnt2XFlg,
+            Boolean syoriHnt3XFlg,
+            Boolean syoriHntFkktFlg,
+            Boolean sknrUmFlg,
+            Boolean digwrHntFlg,
+            String chkzKsenCtnmKn) {
+        static JudgmentState defaultFrom(boolean wkSyoKyoTrnoUmFlg) {
+<span class="fc" id="L975">            return new JudgmentState(</span>
+                    null,
+                    wkSyoKyoTrnoUmFlg,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    null);
+        }
+    }
+
+<span class="fc" id="L987">    static record UsageCodeState(String kktGmtsetdGasYtCd, String kktSvckyaGasYtCd) {</span>
+<span class="fc" id="L988">        static final UsageCodeState EMPTY = new UsageCodeState(null, null);</span>
+    }
+
+<span class="fc" id="L991">    static record AddressState(</span>
+            String kktCbgSuj1,
+            String kktCbgKn2,
+            String kktCbgKn3,
+            String kktCbgKn4,
+            String kktTunoKn,
+            String kktHynKn,
+            Boolean kktHynUmFlg) {
+<span class="fc" id="L999">        static final AddressState EMPTY = new AddressState(null, null, null, null, null, null, null);</span>
+    }
+
+<span class="fc" id="L1002">    static record OpeningProcessState(</span>
+            TgRetailNoAlternativeOpeningProcessOutput rawOutput,
+            LocalDate kktTyenYmd,
+            LocalDate kktTkysYmd,
+            Long kktTksuSvkyNo,
+            Long kktSvkyNo,
+            Long kktSyoKyoTrno) {
+        static OpeningProcessState defaultFrom(
+                OpeningCommonRecoveryRequest request,
+                PreOpeningState preOpeningState) {
+<span class="fc" id="L1012">            return new OpeningProcessState(</span>
+                    null,
+                    null,
+<span class="fc" id="L1015">                    parseDateOrNull(request.kasgYmd()),</span>
+<span class="fc" id="L1016">                    0L,</span>
+<span class="fc" id="L1017">                    0L,</span>
+<span class="pc bpc" id="L1018" title="1 of 2 branches missed.">                    request.syoKyoTrno() == null ? preOpeningState.gasMtstNo() : request.syoKyoTrno());</span>
+        }
+    }
+
+<span class="fc" id="L1022">    static record OpeningProcessDerivedState(</span>
+            LocalDate wkKktTkysYmd,
+            Long wkKktTksuSvkyNo,
+            Long wkKktSvkyNo,
+            Long wkKktSyoKyoTrno) {
+        static OpeningProcessDerivedState from(OpeningProcessState openingProcessState) {
+<span class="fc" id="L1028">            return new OpeningProcessDerivedState(</span>
+<span class="fc" id="L1029">                    openingProcessState.kktTkysYmd(),</span>
+<span class="fc" id="L1030">                    openingProcessState.kktTksuSvkyNo(),</span>
+<span class="fc" id="L1031">                    openingProcessState.kktSvkyNo(),</span>
+<span class="fc" id="L1032">                    openingProcessState.kktSyoKyoTrno());</span>
+        }
+    }
+
+<span class="fc" id="L1036">    static record Other028Request(</span>
+            String userId,
+            Long gmtSetNo,
+            String sinStartYmd,
+            String kyuEndYmd,
+            String dgwriUmuFlg,
+            String skjFlg,
+            Long custmrNo) {
+    }
+
+<span class="fc" id="L1046">    static record LivalitState(</span>
+            String cbgSuj1,
+            String cbgKn2,
+            String cbgKn3,
+            String cbgKn4,
+            String tunoKn,
+            String hynKn,
+            Boolean htuFlg) {
+<span class="fc" id="L1054">        static final LivalitState EMPTY = new LivalitState(null, null, null, null, null, null, null);</span>
+    }
+
+<span class="fc" id="L1057">    static record CorrectionState(</span>
+            String cbgSuj1,
+            String cbgKn2,
+            String cbgKn3,
+            String cbgKn4,
+            String tunoKn,
+            String hynKn,
+            Boolean htuFlg) {
+<span class="fc" id="L1065">        static final CorrectionState EMPTY = new CorrectionState(null, null, null, null, null, null, null);</span>
+    }
+
+    private static &lt;T, R&gt; R valueOrNull(T value, java.util.function.Function&lt;T, R&gt; mapper) {
+<span class="fc bfc" id="L1069" title="All 2 branches covered.">        return value == null ? null : mapper.apply(value);</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TskgmstInf toOpeningReportTskgmstInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1074" title="All 4 branches missed.">        if (output == null || output.tskgmstInf() == null) {</span>
+<span class="nc" id="L1075">            return null;</span>
+        }
+<span class="nc" id="L1077">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TskgmstInf(</span>
+<span class="nc" id="L1078">                output.tskgmstInf().tksuSvkkJtkb());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf toOpeningReportTkssvkyInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1083" title="All 4 branches missed.">        if (output == null || output.tkssvkyInf() == null) {</span>
+<span class="nc" id="L1084">            return null;</span>
+        }
+<span class="nc" id="L1086">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf(output.tkssvkyInf().tksuKijsCd());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf toTransferWorkHistoryTkssvkyInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1091" title="All 4 branches missed.">        if (output == null || output.tkssvkyInf() == null) {</span>
+<span class="nc" id="L1092">            return null;</span>
+        }
+<span class="nc" id="L1094">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf(</span>
+<span class="nc" id="L1095">                output.tkssvkyInf().tksuSvkyNo(),</span>
+<span class="nc" id="L1096">                output.tkssvkyInf().tksuKijsCd());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvmstkrInf toOpeningReportSvmstkrInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1101" title="All 6 branches missed.">        if (output == null || output.kiyInf() == null || output.kiyInf().svmstkrInf() == null) {</span>
+<span class="nc" id="L1102">            return null;</span>
+        }
+<span class="nc" id="L1104">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvmstkrInf(</span>
+<span class="nc" id="L1105">                output.kiyInf().svmstkrInf().rkkiKnrnJtkb());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvckyaInf toOpeningReportSvckyaInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1110" title="4 of 6 branches missed.">        if (output == null || output.kiyInf() == null || output.kiyInf().svckyaInf() == null) {</span>
+<span class="fc" id="L1111">            return null;</span>
+        }
+<span class="nc" id="L1113">        var info = output.kiyInf().svckyaInf();</span>
+<span class="nc" id="L1114">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSvckyaInf(</span>
+<span class="nc" id="L1115">                info.svkyNo(),</span>
+<span class="nc" id="L1116">                info.skno(),</span>
+<span class="nc" id="L1117">                info.kyttSkno(),</span>
+<span class="nc" id="L1118">                info.kyttTsno(),</span>
+<span class="nc" id="L1119">                info.svkyJtkb(),</span>
+<span class="nc" id="L1120">                info.svkySttJysb(),</span>
+<span class="nc" id="L1121">                info.ksbTkyJysb(),</span>
+<span class="nc" id="L1122">                info.svkyEndJysb(),</span>
+<span class="nc" id="L1123">                info.rkkiSttYmd(),</span>
+<span class="nc" id="L1124">                info.rkkiEndYmd(),</span>
+<span class="nc" id="L1125">                info.ksbSttYmd(),</span>
+<span class="nc" id="L1126">                info.ksbEndYmd(),</span>
+<span class="nc" id="L1127">                info.ksbStytYmd(),</span>
+<span class="nc" id="L1128">                info.ksbEnytYmd(),</span>
+<span class="nc" id="L1129">                info.kykYtiYmd(),</span>
+<span class="nc" id="L1130">                info.svcRyksYmd(),</span>
+<span class="nc" id="L1131">                info.svkyTiktYmd(),</span>
+<span class="nc" id="L1132">                info.ksbTiktYmd(),</span>
+<span class="nc" id="L1133">                info.szirHtyoYmd(),</span>
+<span class="nc" id="L1134">                info.sqtiKiyNo(),</span>
+<span class="nc" id="L1135">                info.syoKyoTrno(),</span>
+<span class="nc" id="L1136">                info.kysKyoTrno(),</span>
+<span class="nc" id="L1137">                info.byssUmFlg(),</span>
+<span class="nc" id="L1138">                info.shziKbn(),</span>
+<span class="nc" id="L1139">                info.kiyShbt(),</span>
+<span class="nc" id="L1140">                info.gasYtCd(),</span>
+<span class="nc" id="L1141">                info.sziKziKbn(),</span>
+<span class="nc" id="L1142">                info.rknKhumFlg(),</span>
+<span class="nc" id="L1143">                info.kkysSisnJtkb(),</span>
+<span class="nc" id="L1144">                info.kiyKnrkCd(),</span>
+<span class="nc" id="L1145">                info.syaKbn(),</span>
+<span class="nc" id="L1146">                info.tsziKysbNo(),</span>
+<span class="nc" id="L1147">                info.regTsmp(),</span>
+<span class="nc" id="L1148">                info.regUsrId(),</span>
+<span class="nc" id="L1149">                info.updTsmp(),</span>
+<span class="nc" id="L1150">                info.updUsrId(),</span>
+<span class="nc" id="L1151">                info.updKtnKinoId(),</span>
+<span class="nc" id="L1152">                info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdInf toOpeningReportGmtsetdInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1157" title="All 4 branches missed.">        if (output == null || output.gmtsetdSystemDateInf() == null) {</span>
+<span class="nc" id="L1158">            return null;</span>
+        }
+<span class="nc" id="L1160">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdInf(</span>
+<span class="nc" id="L1161">                output.gmtsetdSystemDateInf().hesnYmd());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSihakyInf toOpeningReportSihakyInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1166" title="All 6 branches missed.">        if (output == null || output.kiyInf() == null || output.kiyInf().sihakyInf() == null) {</span>
+<span class="nc" id="L1167">            return null;</span>
+        }
+<span class="nc" id="L1169">        var info = output.kiyInf().sihakyInf();</span>
+<span class="nc" id="L1170">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningReportJudgmentSihakyInf(</span>
+<span class="nc" id="L1171">                info.sihKiyNo(),</span>
+<span class="nc" id="L1172">                info.skno(),</span>
+<span class="nc" id="L1173">                info.tkysYmd(),</span>
+<span class="nc" id="L1174">                info.tyenYmd(),</span>
+<span class="nc" id="L1175">                info.sihKiyJtkb(),</span>
+<span class="nc" id="L1176">                info.sihHuhuShbt(),</span>
+<span class="nc" id="L1177">                info.sikSvcShbt(),</span>
+<span class="nc" id="L1178">                info.sikKibNo(),</span>
+<span class="nc" id="L1179">                info.yggsTkyShbt(),</span>
+<span class="nc" id="L1180">                info.thsCdNo(),</span>
+<span class="nc" id="L1181">                info.sikCycsNo(),</span>
+<span class="nc" id="L1182">                info.sikKrno(),</span>
+<span class="nc" id="L1183">                info.shtiSqddKbn(),</span>
+<span class="nc" id="L1184">                info.jduKykShbt(),</span>
+<span class="nc" id="L1185">                info.jduKykYmd(),</span>
+<span class="nc" id="L1186">                info.shsyKyoTrno(),</span>
+<span class="nc" id="L1187">                info.byssUmFlg(),</span>
+<span class="nc" id="L1188">                info.skshHyjsKrno());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstInf toOpeningReportKiycstInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="nc bnc" id="L1193" title="All 6 branches missed.">        if (output == null || output.cstGetHsenjInf() == null || output.cstGetHsenjInf().kiycstdInf() == null) {</span>
+<span class="nc" id="L1194">            return null;</span>
+        }
+
+<span class="nc" id="L1197">        var info = output.cstGetHsenjInf().kiycstdInf();</span>
+
+<span class="nc" id="L1199">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstInf(</span>
+<span class="nc" id="L1200">                info.ctnmKj1(),</span>
+<span class="nc" id="L1201">                info.ctnmKn1(),</span>
+<span class="nc" id="L1202">                info.ctnm1HujnShbt(),</span>
+<span class="nc" id="L1203">                info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1204">                info.ctnmKj2(),</span>
+<span class="nc" id="L1205">                info.ctnmKn2(),</span>
+<span class="nc" id="L1206">                info.ctnm2HujnShbt(),</span>
+<span class="nc" id="L1207">                info.ctnm2HshiShbt(),</span>
+<span class="nc" id="L1208">                info.yubnNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGasmtrdInf
+            toNoAlternativeOpeningProcessGasmtrdInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1214" title="2 of 4 branches missed.">        if (output == null || output.gasmtrdInf() == null) {</span>
+<span class="nc" id="L1215">            return null;</span>
+        }
+<span class="fc" id="L1217">        var info = output.gasmtrdInf();</span>
+<span class="fc" id="L1218">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGasmtrdInf(</span>
+<span class="fc" id="L1219">                info.gmb(), info.gmbTsno(), info.ttkGmsbNo(), info.gmtThkgJysb(), info.gmkShbt(),</span>
+<span class="fc" id="L1220">                info.recUpdJnjNo(), info.gmtGusu(), info.gmtHanGusu(), info.sjsuHyjKtsu(),</span>
+<span class="fc" id="L1221">                info.sjsuMincSu(), info.sjskHticSu());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGmtsetdInf
+            toNoAlternativeOpeningProcessGmtsetdInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1227" title="2 of 4 branches missed.">        if (output == null || output.gmtsetdKsenSaymdInf() == null) {</span>
+<span class="nc" id="L1228">            return null;</span>
+        }
+<span class="fc" id="L1230">        var info = output.gmtsetdKsenSaymdInf();</span>
+<span class="fc" id="L1231">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGmtsetdInf(</span>
+<span class="fc" id="L1232">                info.gasMtstNo(), info.tkysYmd(), info.tyenYmd(), info.kngmStbJtkb(), info.gmtKhsJtkb(),</span>
+<span class="fc" id="L1233">                info.szcGkkCd(), info.szcMchCd(), info.szcCmazCd(), info.cbgSuj1(), info.cbgKn2(), info.cbgKn3(),</span>
+<span class="fc" id="L1234">                info.cbgKn4(), info.bldNo(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.ohmKj(), info.kasYmd(),</span>
+<span class="fc" id="L1235">                info.hesnYmd(), info.kasJysb(), info.hesnJysb(), info.tkshGmsbShbt(), info.gtyMtscKbn(),</span>
+<span class="fc" id="L1236">                info.tksuMtscCd(), info.kkyuGmtKbn(), info.ckrtGmscJtkb(), info.mtgMtstNo(), info.snstGkjYm(),</span>
+<span class="fc" id="L1237">                info.snstGkjShbt(), info.tusoGmtkYmd(), info.gmtTkeYmd(), info.knckKbn(), info.bldKbn(),</span>
+<span class="fc" id="L1238">                info.akySnstFlg(), info.gasYtCd(), info.lpgKbn(), info.ntryKbn(), info.gmtKykaShbt(), info.jkarSu(),</span>
+<span class="fc" id="L1239">                info.gmicDbriShbt(), info.gmicSbriShbt(), info.knsKhFlg(), info.kkysSgykKbn(), info.kktkYuhrShbt(),</span>
+<span class="fc" id="L1240">                info.niknSdksShbt(), info.niknTkkyYmd(), info.chukThkgFlg(), info.hesnSdnShbt(), info.mcnTkfnJysb(),</span>
+<span class="fc" id="L1241">                info.sdtgSchFlg(), info.sdtgTrkrShbt(), info.sdtgTtkYmd(), info.sdtgTkfnJysb(), info.smpCd(),</span>
+<span class="fc" id="L1242">                info.ksjGhtbCd(), info.kusYmd(), info.kysfYmd(), info.kngmSbmsYmd(), info.recUpdJnjNo(),</span>
+<span class="fc" id="L1243">                info.gmicTsjhMem());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGmtsetdSystemDateInf
+                    toNoAlternativeOpeningProcessSystemDateGmtsetdInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1250" title="2 of 4 branches missed.">        if (output == null || output.gmtsetdSystemDateInf() == null) {</span>
+<span class="nc" id="L1251">            return null;</span>
+        }
+<span class="fc" id="L1253">        var info = output.gmtsetdSystemDateInf();</span>
+<span class="fc" id="L1254">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessGmtsetdSystemDateInf(</span>
+<span class="fc" id="L1255">                info.gasMtstNo(), info.tkysYmd(), info.tyenYmd(), info.kngmStbJtkb(), info.gmtKhsJtkb(),</span>
+<span class="fc" id="L1256">                info.szcGkkCd(), info.szcMchCd(), info.szcCmazCd(), info.cbgSuj1(), info.cbgKn2(), info.cbgKn3(),</span>
+<span class="fc" id="L1257">                info.cbgKn4(), info.bldNo(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.ohmKj(), info.kasYmd(),</span>
+<span class="fc" id="L1258">                info.hesnYmd(), info.kasJysb(), info.hesnJysb(), info.tkshGmsbShbt(), info.gtyMtscKbn(),</span>
+<span class="fc" id="L1259">                info.tksuMtscCd(), info.kkyuGmtKbn(), info.ckrtGmscJtkb(), info.mtgMtstNo(), info.snstGkjYm(),</span>
+<span class="fc" id="L1260">                info.snstGkjShbt(), info.tusoGmtkYmd(), info.gmtTkeYmd(), info.knckKbn(), info.bldKbn(),</span>
+<span class="fc" id="L1261">                info.akySnstFlg(), info.gasYtCd(), info.lpgKbn(), info.ntryKbn(), info.gmtKykaShbt(), info.jkarSu(),</span>
+<span class="fc" id="L1262">                info.gmicDbriShbt(), info.gmicSbriShbt(), info.knsKhFlg(), info.kkysSgykKbn(), info.kktkYuhrShbt(),</span>
+<span class="fc" id="L1263">                info.niknSdksShbt(), info.niknTkkyYmd(), info.chukThkgFlg(), info.hesnSdnShbt(), info.mcnTkfnJysb(),</span>
+<span class="fc" id="L1264">                info.sdtgSchFlg(), info.sdtgTrkrShbt(), info.sdtgTtkYmd(), info.sdtgTkfnJysb(), info.smpCd(),</span>
+<span class="fc" id="L1265">                info.ksjGhtbCd(), info.kusYmd(), info.kysfYmd(), info.kngmSbmsYmd(), info.recUpdJnjNo(),</span>
+<span class="fc" id="L1266">                info.gmicTsjhMem());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonInf
+            toNoAlternativeOpeningProcessTatemonInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1272" title="2 of 4 branches missed.">        if (output == null || output.tatemonInf() == null) {</span>
+<span class="nc" id="L1273">            return null;</span>
+        }
+<span class="fc" id="L1275">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonInf(output.tatemonInf().jyutakuKbnCd());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoUpdateNoAlternativeRetailAtOpeningTskgmstInf
+                    toNoAlternativeOpeningProcessTskgmstInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1282" title="2 of 4 branches missed.">        if (output == null || output.tskgmstInf() == null) {</span>
+<span class="fc" id="L1283">            return null;</span>
+        }
+<span class="nc" id="L1285">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoUpdateNoAlternativeRetailAtOpeningTskgmstInf(</span>
+<span class="nc" id="L1286">                output.tskgmstInf().tksuSvkkJtkb());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKiyInf
+            toNoAlternativeOpeningProcessKiyInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1292" title="2 of 4 branches missed.">        if (output == null || output.kiyInf() == null) {</span>
+<span class="fc" id="L1293">            return null;</span>
+        }
+<span class="nc" id="L1295">        var info = output.kiyInf();</span>
+<span class="nc" id="L1296">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKiyInf(</span>
+<span class="nc" id="L1297">                toNoAlternativeOpeningProcessSvmstkrInf(info.svmstkrInf()),</span>
+<span class="nc" id="L1298">                toNoAlternativeOpeningProcessSvckyaInf(info.svckyaInf()),</span>
+<span class="nc" id="L1299">                toNoAlternativeOpeningProcessSvsihkrInf(info.svsihkrInf()),</span>
+<span class="nc" id="L1300">                toNoAlternativeOpeningProcessSihakyInf(info.sihakyInf()),</span>
+<span class="nc" id="L1301">                toNoAlternativeOpeningProcessItensakInf(info.itensakInf()));</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstHsenjInf
+                    toNoAlternativeOpeningProcessCstHsenjInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1308" title="2 of 4 branches missed.">        if (output == null || output.cstGetHsenjInf() == null) {</span>
+<span class="fc" id="L1309">            return null;</span>
+        }
+<span class="nc" id="L1311">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstHsenjInf(</span>
+<span class="nc" id="L1312">                toContractCustomerKiycstdInf(output.cstGetHsenjInf().kiycstdInf()),</span>
+<span class="nc" id="L1313">                toContractCustomerKiycstkInf(output.cstGetHsenjInf().kiycstkInf()));</span>
+    }
+
+    private static GmtsetdSystemDateInf toAddressEditGmtsetdSystemDateInf(PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1317" title="1 of 2 branches missed.">        if (preOpeningState == null</span>
+<span class="pc bpc" id="L1318" title="1 of 2 branches missed.">                || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1319" title="1 of 2 branches missed.">                || preOpeningState.rawOutput().gmtsetdSystemDateInf() == null) {</span>
+<span class="nc" id="L1320">            return null;</span>
+        }
+<span class="fc" id="L1322">        var info = preOpeningState.rawOutput().gmtsetdSystemDateInf();</span>
+<span class="fc" id="L1323">        return new GmtsetdSystemDateInf(</span>
+<span class="fc" id="L1324">                info.szcGkkCd(),</span>
+<span class="fc" id="L1325">                info.szcMchCd(),</span>
+<span class="fc" id="L1326">                info.cbgSuj1(),</span>
+<span class="fc" id="L1327">                info.cbgKn2());</span>
+    }
+
+    private static LivalitState toLivalitState(PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1331" title="1 of 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L1332">            return LivalitState.EMPTY;</span>
+        }
+<span class="pc bpc" id="L1334" title="1 of 2 branches missed.">        if (output.gmtsetdSystemDateInf() != null) {</span>
+<span class="fc" id="L1335">            var info = output.gmtsetdSystemDateInf();</span>
+<span class="fc" id="L1336">            return new LivalitState(</span>
+<span class="fc" id="L1337">                    info.cbgSuj1(),</span>
+<span class="fc" id="L1338">                    info.cbgKn2(),</span>
+<span class="fc" id="L1339">                    info.cbgKn3(),</span>
+<span class="fc" id="L1340">                    info.cbgKn4(),</span>
+<span class="fc" id="L1341">                    info.tunoKn(),</span>
+<span class="fc" id="L1342">                    info.hynKn(),</span>
+<span class="fc" id="L1343">                    info.htuFlg());</span>
+        }
+<span class="nc bnc" id="L1345" title="All 2 branches missed.">        if (output.gmtsetdKsenSaymdInf() != null) {</span>
+<span class="nc" id="L1346">            var info = output.gmtsetdKsenSaymdInf();</span>
+<span class="nc" id="L1347">            return new LivalitState(</span>
+<span class="nc" id="L1348">                    info.cbgSuj1(),</span>
+<span class="nc" id="L1349">                    info.cbgKn2(),</span>
+<span class="nc" id="L1350">                    info.cbgKn3(),</span>
+<span class="nc" id="L1351">                    info.cbgKn4(),</span>
+<span class="nc" id="L1352">                    info.tunoKn(),</span>
+<span class="nc" id="L1353">                    info.hynKn(),</span>
+<span class="nc" id="L1354">                    info.htuFlg());</span>
+        }
+<span class="nc" id="L1356">        return LivalitState.EMPTY;</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstKsenjInf
+                    toNoAlternativeOpeningProcessCstKsenjInf(
+            CustomerInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1363" title="1 of 2 branches missed.">        if (output == null) {</span>
+<span class="fc" id="L1364">            return null;</span>
+        }
+<span class="nc" id="L1366">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.CstKsenjInf(</span>
+<span class="nc" id="L1367">                toContractCustomerKiycstdInf(output.kiycstdInf()),</span>
+<span class="nc" id="L1368">                toContractCustomerKiycstkInf(output.kiycstkInf()));</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKkytskrInf
+            toNoAlternativeOpeningProcessKkytskrInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1374" title="2 of 4 branches missed.">        if (output == null || output.kkytskrInf() == null) {</span>
+<span class="fc" id="L1375">            return null;</span>
+        }
+<span class="nc" id="L1377">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKkytskrInf(</span>
+<span class="nc" id="L1378">                output.kkytskrInf().hesnYmd(), output.kkytskrInf().kkysSisnJtkb(), output.kkytskrInf().recUpdJnjNo());</span>
+    }
+
+    private static List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessDedicatedMeterInfo&gt;
+            toNoAlternativeOpeningProcessDedicatedMeterInfos(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1384" title="2 of 4 branches missed.">        if (output == null || output.snyInfList() == null) {</span>
+<span class="nc" id="L1385">            return List.of();</span>
+        }
+<span class="fc" id="L1387">        return output.snyInfList().stream()</span>
+<span class="pc" id="L1388">                .map(info -&gt; new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model</span>
+                        .TgRetailNoAlternativeOpeningProcessDedicatedMeterInfo(
+<span class="nc" id="L1390">                        info.gasMtstNo(),</span>
+<span class="nc" id="L1391">                        info.tksuSvkyNo()))</span>
+<span class="fc" id="L1392">                .toList();</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessMtgInf
+            toNoAlternativeOpeningProcessMtgInf(
+            PreOpeningInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L1398" title="2 of 4 branches missed.">        if (output == null || output.mtgInf() == null) {</span>
+<span class="fc" id="L1399">            return null;</span>
+        }
+<span class="nc" id="L1401">        var info = output.mtgInf();</span>
+<span class="nc" id="L1402">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessMtgInf(</span>
+<span class="nc" id="L1403">                toNoAlternativeOpeningProcessDknKurKiyInf(info.dknKurKiyInf()),</span>
+<span class="nc bnc" id="L1404" title="All 2 branches missed.">                info.cstMtInf() == null ? null : toContractCustomerKiycstdInf(info.cstMtInf().kiycstdInf()),</span>
+<span class="nc bnc" id="L1405" title="All 2 branches missed.">                info.cstMtInf() == null ? null : toContractCustomerKiycstkInf(info.cstMtInf().kiycstkInf()));</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvmstkrInf
+            toNoAlternativeOpeningProcessSvmstkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvmstkrInf info) {
+<span class="nc bnc" id="L1411" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1412">            return null;</span>
+        }
+<span class="nc" id="L1414">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvmstkrInf(</span>
+<span class="nc" id="L1415">                info.mtstNo(), info.svkyNo(), info.skno(), info.suguKbn(), info.sknrFlg(),</span>
+<span class="nc" id="L1416">                info.rkkiKnrnJtkb(), info.rkkiSttYmd(), info.rkkiEndYmd(), info.hishYtiYmd(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvckyaInf
+            toNoAlternativeOpeningProcessSvckyaInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvckyaInf info) {
+<span class="nc bnc" id="L1422" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1423">            return null;</span>
+        }
+<span class="nc" id="L1425">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvckyaInf(</span>
+<span class="nc" id="L1426">                info.svkyNo(), info.skno(), info.kyttSkno(), info.kyttTsno(), info.svkyJtkb(), info.svkySttJysb(),</span>
+<span class="nc" id="L1427">                info.ksbTkyJysb(), info.svkyEndJysb(), info.rkkiSttYmd(), info.rkkiEndYmd(), info.ksbSttYmd(),</span>
+<span class="nc" id="L1428">                info.ksbEndYmd(), info.ksbStytYmd(), info.ksbEnytYmd(), info.kykYtiYmd(), info.svcRyksYmd(),</span>
+<span class="nc" id="L1429">                info.svkyTiktYmd(), info.ksbTiktYmd(), info.szirHtyoYmd(), info.sqtiKiyNo(), info.syoKyoTrno(),</span>
+<span class="nc" id="L1430">                info.kysKyoTrno(), info.byssUmFlg(), info.shziKbn(), info.kiyShbt(), info.gasYtCd(),</span>
+<span class="nc" id="L1431">                info.sziKziKbn(), info.rknKhumFlg(), info.kkysSisnJtkb(), info.kiyKnrkCd(), info.syaKbn(),</span>
+<span class="nc" id="L1432">                info.tsziKysbNo(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvsihkrInf
+            toNoAlternativeOpeningProcessSvsihkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvsihkrInf info) {
+<span class="nc bnc" id="L1438" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1439">            return null;</span>
+        }
+<span class="nc" id="L1441">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSvsihkrInf(</span>
+<span class="nc" id="L1442">                info.sihKiyNo(), info.svkyNo(), info.skno(), info.tkysYmd(), info.tyenYmd(), info.sihKiyJtkb(),</span>
+<span class="nc" id="L1443">                info.snskSvkyNo(), info.ikskSttYm(), info.ikskEndYm(), info.ikskGrpNo(), info.tdssSbtShbt(),</span>
+<span class="nc" id="L1444">                info.gsnKhFlg(), info.gsptShbt(), info.sikTmngShbt(), info.shziKbn(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSihakyInf
+            toNoAlternativeOpeningProcessSihakyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSihakyInf info) {
+<span class="nc bnc" id="L1450" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1451">            return null;</span>
+        }
+<span class="nc" id="L1453">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessSihakyInf(</span>
+<span class="nc" id="L1454">                info.sihKiyNo(), info.skno(), info.tkysYmd(), info.tyenYmd(), info.sihKiyJtkb(), info.sihHuhuShbt(),</span>
+<span class="nc" id="L1455">                info.sikSvcShbt(), info.sikKibNo(), info.yggsTkyShbt(), info.thsCdNo(), info.sikCycsNo(),</span>
+<span class="nc" id="L1456">                info.sikKrno(), info.shtiSqddKbn(), info.jduKykShbt(), info.jduKykYmd(), info.shsyKyoTrno(),</span>
+<span class="nc" id="L1457">                info.byssUmFlg(), info.skshHyjsKrno(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessItensakInf
+            toNoAlternativeOpeningProcessItensakInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningItensakInf info) {
+<span class="nc bnc" id="L1463" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1464">            return null;</span>
+        }
+<span class="nc" id="L1466">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessItensakInf(</span>
+<span class="nc" id="L1467">                info.gasMtstNo(), info.syokyNo(), info.iskrTsno(), info.tssiJkyCd(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessDknKurKiyInf
+            toNoAlternativeOpeningProcessDknKurKiyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningDknKurKiyInf info) {
+<span class="nc bnc" id="L1473" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1474">            return null;</span>
+        }
+<span class="nc" id="L1476">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessDknKurKiyInf(</span>
+<span class="nc" id="L1477">                toNoAlternativeOpeningProcessTkssvkyInf(info.tkssvkyInf()),</span>
+<span class="nc" id="L1478">                toNoAlternativeOpeningProcessSvckyaInf(info.svckyaInf()),</span>
+<span class="nc" id="L1479">                toNoAlternativeOpeningProcessItensakInf(info.itensakInf()),</span>
+<span class="nc" id="L1480">                toNoAlternativeOpeningProcessSvsihkrInf(info.svsihkrInf()),</span>
+<span class="nc" id="L1481">                toNoAlternativeOpeningProcessSihakyInf(info.sihakyInf()));</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessTkssvkyInf
+            toNoAlternativeOpeningProcessTkssvkyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTkssvkyInf info) {
+<span class="nc bnc" id="L1487" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1488">            return null;</span>
+        }
+<span class="nc" id="L1490">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessTkssvkyInf(</span>
+<span class="nc" id="L1491">                info.tksuSvkyNo(), info.tksuKijsCd(), info.syoKyoTrno());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdInf
+                    toContractCustomerKiycstdInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstdInf info) {
+<span class="nc bnc" id="L1498" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1499">            return null;</span>
+        }
+<span class="nc" id="L1501">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdInf(</span>
+<span class="nc" id="L1502">                info.kyoTrkNo(), info.ctnmKj1(), info.ctnmKn1(), info.ctnm1HujnShbt(), info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1503">                info.ctnmKj2(), info.ctnmKn2(), info.ctnm2HujnShbt(), info.ctnm2HshiShbt(), info.ctnmKjhkFlg(),</span>
+<span class="nc" id="L1504">                info.shkiLvShbt(), info.yubnNo(), info.gkkCd(), info.mchCd(), info.cmazCd(), info.cbgSuj1(),</span>
+<span class="nc" id="L1505">                info.cbgKn2(), info.cbgKn3(), info.cbgKn4(), info.bldNo(), info.bldnKj(), info.bldnKn(),</span>
+<span class="nc" id="L1506">                info.bldnKjhkFlg(), info.jutKbn(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.recUpdJnjNo());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdInf
+                    toContractCustomerKiycstdInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstdInf info) {
+<span class="nc bnc" id="L1513" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1514">            return null;</span>
+        }
+<span class="nc" id="L1516">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstdInf(</span>
+<span class="nc" id="L1517">                info.kyoTrkNo(), info.ctnmKj1(), info.ctnmKn1(), info.ctnm1HujnShbt(), info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1518">                info.ctnmKj2(), info.ctnmKn2(), info.ctnm2HujnShbt(), info.ctnm2HshiShbt(), info.ctnmKjhkFlg(),</span>
+<span class="nc" id="L1519">                info.shkiLvShbt(), info.yubnNo(), info.gkkCd(), info.mchCd(), info.cmazCd(), info.cbgSuj1(),</span>
+<span class="nc" id="L1520">                info.cbgKn2(), info.cbgKn3(), info.cbgKn4(), info.bldNo(), info.bldnKj(), info.bldnKn(),</span>
+<span class="nc" id="L1521">                info.bldnKjhkFlg(), info.jutKbn(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.recUpdJnjNo());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstkInf
+                    toContractCustomerKiycstkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiycstkInf info) {
+<span class="nc bnc" id="L1528" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1529">            return null;</span>
+        }
+<span class="nc" id="L1531">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstkInf(</span>
+<span class="nc" id="L1532">                info.kyoTrkNo(), info.ctnmKj1(), info.ctnmKn1(), info.ctnm1HujnShbt(), info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1533">                info.ctnmKj2(), info.ctnmKn2(), info.ctnm2HujnShbt(), info.ctnm2HshiShbt(), info.ctnmKjhkFlg(),</span>
+<span class="nc" id="L1534">                info.kynmKj(), info.kynmKn(), info.kynmHujnShbt(), info.kynmHshiShbt(), info.kynmKjhkFlg(),</span>
+<span class="nc" id="L1535">                info.shkiLvShbt(), info.yubnNo(), info.gkkCd(), info.mchCd(), info.cmazCd(), info.cbgSuj1(),</span>
+<span class="nc" id="L1536">                info.cbgKn2(), info.cbgKn3(), info.cbgKn4(), info.bldNo(), info.bldnKj(), info.bldnKn(),</span>
+<span class="nc" id="L1537">                info.bldnKjhkFlg(), info.jutKbn(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.recUpdJnjNo());</span>
+    }
+
+    private static
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstkInf
+                    toContractCustomerKiycstkInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstkInf info) {
+<span class="nc bnc" id="L1544" title="All 2 branches missed.">        if (info == null) {</span>
+<span class="nc" id="L1545">            return null;</span>
+        }
+<span class="nc" id="L1547">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.contractcustomerupdatepatternjudgmentatopening.model.KiycstkInf(</span>
+<span class="nc" id="L1548">                info.kyoTrkNo(), info.ctnmKj1(), info.ctnmKn1(), info.ctnm1HujnShbt(), info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1549">                info.ctnmKj2(), info.ctnmKn2(), info.ctnm2HujnShbt(), info.ctnm2HshiShbt(), info.ctnmKjhkFlg(),</span>
+<span class="nc" id="L1550">                info.kynmKj(), info.kynmKn(), info.kynmHujnShbt(), info.kynmHshiShbt(), info.kynmKjhkFlg(),</span>
+<span class="nc" id="L1551">                info.shkiLvShbt(), info.yubnNo(), info.gkkCd(), info.mchCd(), info.cmazCd(), info.cbgSuj1(),</span>
+<span class="nc" id="L1552">                info.cbgKn2(), info.cbgKn3(), info.cbgKn4(), info.bldNo(), info.bldnKj(), info.bldnKn(),</span>
+<span class="nc" id="L1553">                info.bldnKjhkFlg(), info.jutKbn(), info.tunoKn(), info.hynKn(), info.htuFlg(), info.recUpdJnjNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.JusyoKktInf
+            toNoAlternativeOpeningProcessJusyoKktInf(AddressState addressState) {
+<span class="fc" id="L1558">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.JusyoKktInf(</span>
+<span class="fc" id="L1559">                addressState.kktCbgSuj1(), addressState.kktCbgKn2(), addressState.kktCbgKn3(), addressState.kktCbgKn4(),</span>
+<span class="fc" id="L1560">                addressState.kktTunoKn(), addressState.kktHynKn(), addressState.kktHynUmFlg());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf
+            toTransferWorkHistoryGasmtrdInf(
+            PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1566" title="3 of 6 branches missed.">        if (preOpeningState == null || preOpeningState.rawOutput() == null || preOpeningState.rawOutput().gasmtrdInf() == null) {</span>
+<span class="nc" id="L1567">            return null;</span>
+        }
+<span class="fc" id="L1569">        var info = preOpeningState.rawOutput().gasmtrdInf();</span>
+<span class="fc" id="L1570">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf(</span>
+<span class="fc" id="L1571">                info.gmb(),</span>
+<span class="fc" id="L1572">                info.gmbTsno(),</span>
+<span class="fc" id="L1573">                info.ttkGmsbNo(),</span>
+<span class="fc" id="L1574">                info.gmtThkgJysb(),</span>
+<span class="fc" id="L1575">                info.gmkShbt(),</span>
+<span class="fc" id="L1576">                info.recUpdJnjNo(),</span>
+<span class="fc" id="L1577">                info.gmtGusu(),</span>
+<span class="fc" id="L1578">                info.gmtHanGusu(),</span>
+<span class="fc" id="L1579">                info.sjsuHyjKtsu(),</span>
+<span class="fc" id="L1580">                info.sjsuMincSu(),</span>
+<span class="fc" id="L1581">                info.sjskHticSu());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningGmtsetdKsenSaymdInf
+            toTransferWorkHistoryGmtsetdKsenSaymdInf(
+            PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1587" title="3 of 6 branches missed.">        if (preOpeningState == null || preOpeningState.rawOutput() == null || preOpeningState.rawOutput().gmtsetdKsenSaymdInf() == null) {</span>
+<span class="nc" id="L1588">            return null;</span>
+        }
+<span class="fc" id="L1590">        var info = preOpeningState.rawOutput().gmtsetdKsenSaymdInf();</span>
+<span class="fc" id="L1591">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningGmtsetdKsenSaymdInf(</span>
+<span class="fc" id="L1592">                info.gasMtstNo(),</span>
+<span class="fc" id="L1593">                info.szcGkkCd(),</span>
+<span class="fc" id="L1594">                info.szcMchCd(),</span>
+<span class="fc" id="L1595">                info.szcCmazCd(),</span>
+<span class="fc" id="L1596">                info.cbgSuj1(),</span>
+<span class="fc" id="L1597">                info.cbgKn2(),</span>
+<span class="fc" id="L1598">                info.cbgKn3(),</span>
+<span class="fc" id="L1599">                info.cbgKn4(),</span>
+<span class="fc" id="L1600">                info.hesnYmd(),</span>
+<span class="fc" id="L1601">                info.hesnJysb(),</span>
+<span class="fc" id="L1602">                info.gasYtCd());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf
+            toTransferWorkHistoryTkssvkyInf(
+            PreOpeningState preOpeningState,
+            OpeningProcessDerivedState openingProcessDerivedState) {
+        String tksuKijsCd = preOpeningState == null
+<span class="pc bpc" id="L1610" title="1 of 2 branches missed.">                        || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1611" title="2 of 4 branches missed.">                        || preOpeningState.rawOutput().tkssvkyInf() == null</span>
+<span class="nc" id="L1612">                ? null</span>
+<span class="fc" id="L1613">                : preOpeningState.rawOutput().tkssvkyInf().tksuKijsCd();</span>
+        Long tksuSvkyNo = preOpeningState == null
+<span class="pc bpc" id="L1615" title="1 of 2 branches missed.">                        || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1616" title="2 of 4 branches missed.">                        || preOpeningState.rawOutput().tkssvkyInf() == null</span>
+<span class="nc" id="L1617">                ? null</span>
+<span class="fc" id="L1618">                : preOpeningState.rawOutput().tkssvkyInf().tksuSvkyNo();</span>
+<span class="fc" id="L1619">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf(tksuSvkyNo, tksuKijsCd);</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiyInf
+            toTransferWorkHistoryKiyInf(
+            PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1625" title="1 of 2 branches missed.">        if (preOpeningState == null</span>
+<span class="pc bpc" id="L1626" title="1 of 2 branches missed.">                || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1627" title="1 of 2 branches missed.">                || preOpeningState.rawOutput().kiyInf() == null) {</span>
+<span class="fc" id="L1628">            return null;</span>
+        }
+<span class="nc" id="L1630">        var info = preOpeningState.rawOutput().kiyInf();</span>
+<span class="nc" id="L1631">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiyInf(</span>
+<span class="nc bnc" id="L1632" title="All 2 branches missed.">                info.svckyaInf() == null</span>
+<span class="nc" id="L1633">                        ? null</span>
+<span class="nc" id="L1634">                        : new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf(</span>
+<span class="nc" id="L1635">                                info.svckyaInf().kiyShbt(),</span>
+<span class="nc" id="L1636">                                info.svckyaInf().sziKziKbn(),</span>
+<span class="nc" id="L1637">                                info.svckyaInf().syaKbn()),</span>
+<span class="nc bnc" id="L1638" title="All 2 branches missed.">                info.sihakyInf() == null</span>
+<span class="nc" id="L1639">                        ? null</span>
+<span class="nc" id="L1640">                        : new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SihakyInf(</span>
+<span class="nc" id="L1641">                                info.sihakyInf().sikSvcShbt()),</span>
+<span class="nc" id="L1642">                info.suguHtkFlg());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.CstGetHsenjInf
+            toTransferWorkHistoryCstGetHsenjInf(
+            PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1648" title="3 of 6 branches missed.">        if (preOpeningState == null || preOpeningState.rawOutput() == null || preOpeningState.rawOutput().cstGetHsenjInf() == null</span>
+<span class="nc bnc" id="L1649" title="All 2 branches missed.">                || preOpeningState.rawOutput().cstGetHsenjInf().kiycstdInf() == null) {</span>
+<span class="fc" id="L1650">            return null;</span>
+        }
+<span class="nc" id="L1652">        var info = preOpeningState.rawOutput().cstGetHsenjInf().kiycstdInf();</span>
+<span class="nc" id="L1653">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.CstGetHsenjInf(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstdInf(
+<span class="nc" id="L1655">                        info.kyoTrkNo(),</span>
+<span class="nc" id="L1656">                        info.ctnmKj1(),</span>
+<span class="nc" id="L1657">                        info.ctnmKn1(),</span>
+<span class="nc" id="L1658">                        info.ctnm1HujnShbt(),</span>
+<span class="nc" id="L1659">                        info.ctnm1HshiShbt(),</span>
+<span class="nc" id="L1660">                        info.ctnmKj2(),</span>
+<span class="nc" id="L1661">                        info.ctnmKn2(),</span>
+<span class="nc" id="L1662">                        info.ctnm2HujnShbt(),</span>
+<span class="nc" id="L1663">                        info.ctnm2HshiShbt(),</span>
+<span class="nc" id="L1664">                        info.ctnmKjhkFlg(),</span>
+<span class="nc" id="L1665">                        info.shkiLvShbt(),</span>
+<span class="nc" id="L1666">                        info.yubnNo(),</span>
+<span class="nc" id="L1667">                        info.gkkCd(),</span>
+<span class="nc" id="L1668">                        info.mchCd(),</span>
+<span class="nc" id="L1669">                        info.cmazCd(),</span>
+<span class="nc" id="L1670">                        info.cbgSuj1(),</span>
+<span class="nc" id="L1671">                        info.cbgKn2(),</span>
+<span class="nc" id="L1672">                        info.cbgKn3(),</span>
+<span class="nc" id="L1673">                        info.cbgKn4(),</span>
+<span class="nc" id="L1674">                        info.bldNo(),</span>
+<span class="nc" id="L1675">                        info.bldnKj(),</span>
+<span class="nc" id="L1676">                        info.bldnKn(),</span>
+<span class="nc" id="L1677">                        info.bldnKjhkFlg(),</span>
+<span class="nc" id="L1678">                        info.jutKbn(),</span>
+<span class="nc" id="L1679">                        info.tunoKn(),</span>
+<span class="nc" id="L1680">                        info.hynKn(),</span>
+<span class="nc" id="L1681">                        info.htuFlg(),</span>
+<span class="nc" id="L1682">                        info.recUpdJnjNo()));</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningTatemonInf
+            toTransferWorkHistoryTatemonInf(PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1687" title="1 of 2 branches missed.">        if (preOpeningState == null</span>
+<span class="pc bpc" id="L1688" title="1 of 2 branches missed.">                || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1689" title="1 of 2 branches missed.">                || preOpeningState.rawOutput().tatemonInf() == null) {</span>
+<span class="nc" id="L1690">            return null;</span>
+        }
+<span class="fc" id="L1692">        var info = preOpeningState.rawOutput().tatemonInf();</span>
+<span class="fc" id="L1693">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningTatemonInf(</span>
+<span class="fc" id="L1694">                info.bldnKn(),</span>
+<span class="fc" id="L1695">                info.bldnKj(),</span>
+<span class="fc" id="L1696">                toBooleanCode(info.bldKjHyojiCd()));</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsKkaKsenInf
+            toTransferWorkHistoryKnsKkaKsenInf(
+            PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1702" title="2 of 6 branches missed.">        if (preOpeningState == null || preOpeningState.rawOutput() == null || preOpeningState.rawOutput().knsKkaKsenInf() == null) {</span>
+<span class="fc" id="L1703">            return null;</span>
+        }
+<span class="fc" id="L1705">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsKkaKsenInf(</span>
+<span class="fc" id="L1706">                preOpeningState.rawOutput().knsKkaKsenInf().skinKnsYmd(),</span>
+<span class="fc" id="L1707">                preOpeningState.rawOutput().knsKkaKsenInf().skinGmtShjSu(),</span>
+<span class="fc" id="L1708">                preOpeningState.rawOutput().knsKkaKsenInf().ksenHkkKnuKigenYmd());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsytiInf
+            toTransferWorkHistoryKnsytiInf(
+            OpeningProcessState openingProcessState) {
+<span class="pc bpc" id="L1714" title="2 of 4 branches missed.">        if (openingProcessState == null || openingProcessState.rawOutput() == null) {</span>
+<span class="nc" id="L1715">            return null;</span>
+        }
+<span class="fc" id="L1717">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsytiInf(</span>
+<span class="fc" id="L1718">                openingProcessState.rawOutput().knsHuhuKbn(),</span>
+<span class="fc" id="L1719">                openingProcessState.rawOutput().stkbKbn(),</span>
+<span class="fc" id="L1720">                openingProcessState.rawOutput().shtiKskbNo());</span>
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf
+            toTransferWorkHistoryConduitIsrrkrInf(
+            OpeningCommonRecoveryRequest request,
+            PreOpeningState preOpeningState,
+            OpeningProcessState openingProcessState,
+            OpeningProcessDerivedState openingProcessDerivedState,
+            LocalDateTime systemDatetime) {
+<span class="pc bpc" id="L1730" title="1 of 2 branches missed.">        var output = preOpeningState == null ? null : preOpeningState.rawOutput();</span>
+<span class="pc bpc" id="L1731" title="1 of 2 branches missed.">        var gmtsetd = output == null ? null : output.gmtsetdKsenSaymdInf();</span>
+<span class="pc bpc" id="L1732" title="1 of 2 branches missed.">        var systemDateGmtsetd = output == null ? null : output.gmtsetdSystemDateInf();</span>
+<span class="pc bpc" id="L1733" title="1 of 2 branches missed.">        var tkssvky = output == null ? null : output.tkssvkyInf();</span>
+<span class="pc bpc" id="L1734" title="1 of 2 branches missed.">        var gasmtrd = output == null ? null : output.gasmtrdInf();</span>
+<span class="pc bpc" id="L1735" title="1 of 2 branches missed.">        var openingOutput = openingProcessState == null ? null : openingProcessState.rawOutput();</span>
+
+<span class="pc bpc" id="L1737" title="1 of 2 branches missed.">        Long kyuSvkyNo = zeroToNull(tkssvky == null ? null : tkssvky.tksuSvkyNo());</span>
+<span class="fc" id="L1738">        Long shnSvkyNo = zeroToNull(openingProcessDerivedState.wkKktTksuSvkyNo());</span>
+
+<span class="pc bpc" id="L1740" title="2 of 4 branches missed.">        String hesnJysb = systemDateGmtsetd != null &amp;&amp; systemDateGmtsetd.hesnJysb() != null</span>
+<span class="fc" id="L1741">                ? systemDateGmtsetd.hesnJysb()</span>
+<span class="nc bnc" id="L1742" title="All 4 branches missed.">                : gmtsetd != null &amp;&amp; gmtsetd.hesnJysb() != null</span>
+<span class="nc" id="L1743">                        ? gmtsetd.hesnJysb()</span>
+<span class="nc bnc" id="L1744" title="All 4 branches missed.">                        : preOpeningState != null &amp;&amp; preOpeningState.hesnJysb() != null</span>
+<span class="nc" id="L1745">                                ? preOpeningState.hesnJysb()</span>
+<span class="nc bnc" id="L1746" title="All 2 branches missed.">                                : SECURITY_RESTORATION_OPENING_REASON.equals(request.kasJysb())</span>
+<span class="nc" id="L1747">                                        ? SECURITY_RESTORATION_CLOSING_REASON</span>
+<span class="pc" id="L1748">                                        : null;</span>
+
+<span class="pc bpc" id="L1750" title="3 of 6 branches missed.">        LocalDate hesnYmd = tkssvky != null &amp;&amp; tkssvky.tyenYmd() != null &amp;&amp; !MAX_DATE.equals(tkssvky.tyenYmd())</span>
+<span class="nc" id="L1751">                ? tkssvky.tyenYmd()</span>
+<span class="pc bpc" id="L1752" title="1 of 2 branches missed.">                : gmtsetd != null ? gmtsetd.hesnYmd() : null;</span>
+
+<span class="pc bpc" id="L1754" title="1 of 2 branches missed.">        Long kyuSkyoTrno = zeroToNull(tkssvky == null ? null : tkssvky.syoKyoTrno());</span>
+<span class="fc" id="L1755">        Long shnSkyoTrno = zeroToNull(openingProcessDerivedState.wkKktSyoKyoTrno());</span>
+
+<span class="fc" id="L1757">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf(</span>
+<span class="pc bpc" id="L1758" title="1 of 2 branches missed.">                gmtsetd == null ? null : gmtsetd.gasMtstNo(),</span>
+<span class="fc" id="L1759">                toDateOrNull(systemDatetime),</span>
+                &quot;1&quot;,
+<span class="fc" id="L1761">                toTimeHmsOrNull(systemDatetime),</span>
+                null,
+                null,
+<span class="fc" id="L1764">                parseDateOrNull(request.kasgYmd()),</span>
+                kyuSvkyNo,
+                shnSvkyNo,
+                null,
+                hesnJysb,
+<span class="pc bpc" id="L1769" title="1 of 2 branches missed.">                tkssvky == null ? null : tkssvky.tksuSvkeJysb(),</span>
+                null,
+                hesnYmd,
+                kyuSkyoTrno,
+                shnSkyoTrno,
+<span class="pc bpc" id="L1774" title="1 of 2 branches missed.">                gasmtrd == null ? null : gasmtrd.gmb(),</span>
+<span class="pc bpc" id="L1775" title="1 of 2 branches missed.">                gasmtrd == null ? null : gasmtrd.gmb(),</span>
+                null,
+                null,
+                BigDecimal.ZERO,
+                null,
+<span class="fc" id="L1780">                request.gmtShjSu(),</span>
+                &quot;1&quot;,
+<span class="pc bpc" id="L1782" title="1 of 2 branches missed.">                gmtsetd == null ? null : gmtsetd.kngmStbJtkb(),</span>
+                null,
+                null,
+                null,
+<span class="pc bpc" id="L1786" title="1 of 2 branches missed.">                openingOutput == null ? null : openingOutput.stkbKbn(),</span>
+<span class="pc bpc" id="L1787" title="1 of 2 branches missed.">                openingOutput == null ? null : openingOutput.shtiKskbNo(),</span>
+<span class="pc bpc" id="L1788" title="1 of 2 branches missed.">                openingOutput == null ? null : openingOutput.stkbKbn(),</span>
+<span class="pc bpc" id="L1789" title="1 of 2 branches missed.">                openingOutput == null ? null : openingOutput.shtiKskbNo(),</span>
+<span class="pc bpc" id="L1790" title="1 of 2 branches missed.">                gmtsetd == null ? null : gmtsetd.ckrtGmscJtkb(),</span>
+<span class="pc bpc" id="L1791" title="1 of 2 branches missed.">                gmtsetd == null ? null : gmtsetd.kkyuGmtKbn(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf
+            toTransferWorkHistoryRetailIsrrkrInf() {
+<span class="fc" id="L1811">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrInf(</span>
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    private static jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstKktInf
+            toTransferWorkHistoryKiycstKktInf(
+            OpeningProcessState openingProcessState) {
+<span class="pc bpc" id="L1822" title="1 of 2 branches missed.">        if (openingProcessState == null</span>
+<span class="pc bpc" id="L1823" title="1 of 2 branches missed.">                || openingProcessState.rawOutput() == null</span>
+<span class="fc bfc" id="L1824" title="All 2 branches covered.">                || openingProcessState.rawOutput().kiycstKktInf() == null) {</span>
+<span class="fc" id="L1825">            return null;</span>
+        }
+<span class="fc" id="L1827">        var info = openingProcessState.rawOutput().kiycstKktInf();</span>
+<span class="fc" id="L1828">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstKktInf(</span>
+<span class="fc" id="L1829">                info.kyoTrkNo(),</span>
+<span class="fc" id="L1830">                info.ctnmKj1(),</span>
+<span class="fc" id="L1831">                info.ctnmKn1(),</span>
+<span class="fc" id="L1832">                info.ctnm1HujnShbt(),</span>
+<span class="fc" id="L1833">                info.ctnm1HshiShbt(),</span>
+<span class="fc" id="L1834">                info.ctnmKj2(),</span>
+<span class="fc" id="L1835">                info.ctnmKn2(),</span>
+<span class="fc" id="L1836">                info.ctnm2HujnShbt(),</span>
+<span class="fc" id="L1837">                info.ctnm2HshiShbt(),</span>
+<span class="fc" id="L1838">                info.ctnmKjhkFlg(),</span>
+<span class="fc" id="L1839">                info.gkkCd(),</span>
+<span class="fc" id="L1840">                info.mchCd(),</span>
+<span class="fc" id="L1841">                info.cmazCd(),</span>
+<span class="fc" id="L1842">                info.cbgSuj1(),</span>
+<span class="fc" id="L1843">                info.cbgKn2(),</span>
+<span class="fc" id="L1844">                info.cbgKn3(),</span>
+<span class="fc" id="L1845">                info.cbgKn4());</span>
+    }
+
+    private static
+                jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningTatemonKktInf
+                        toTransferWorkHistoryTatemonKktInf(
+            OpeningProcessState openingProcessState, PreOpeningState preOpeningState) {
+<span class="pc bpc" id="L1852" title="1 of 2 branches missed.">        if (openingProcessState != null</span>
+<span class="pc bpc" id="L1853" title="1 of 2 branches missed.">                &amp;&amp; openingProcessState.rawOutput() != null</span>
+<span class="fc bfc" id="L1854" title="All 2 branches covered.">                &amp;&amp; openingProcessState.rawOutput().kiycstKktInf() != null</span>
+<span class="fc bfc" id="L1855" title="All 2 branches covered.">                &amp;&amp; hasBuildingInfo(openingProcessState.rawOutput().kiycstKktInf())) {</span>
+<span class="fc" id="L1856">            var info = openingProcessState.rawOutput().kiycstKktInf();</span>
+<span class="fc" id="L1857">            return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningTatemonKktInf(</span>
+<span class="fc" id="L1858">                    info.bldnKn(),</span>
+<span class="fc" id="L1859">                    info.bldnKj(),</span>
+<span class="fc" id="L1860">                    info.bldnKjhkFlg());</span>
+        }
+<span class="pc bpc" id="L1862" title="1 of 2 branches missed.">        if (preOpeningState == null</span>
+<span class="pc bpc" id="L1863" title="1 of 2 branches missed.">                || preOpeningState.rawOutput() == null</span>
+<span class="pc bpc" id="L1864" title="1 of 2 branches missed.">                || preOpeningState.rawOutput().tatemonInf() == null) {</span>
+<span class="nc" id="L1865">            return null;</span>
+        }
+<span class="fc" id="L1867">        var info = preOpeningState.rawOutput().tatemonInf();</span>
+<span class="fc" id="L1868">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryRegistrationOpeningAtOpeningTatemonKktInf(</span>
+<span class="fc" id="L1869">                info.bldnKn(),</span>
+<span class="fc" id="L1870">                info.bldnKj(),</span>
+<span class="fc" id="L1871">                toBooleanCode(info.bldKjHyojiCd()));</span>
+    }
+
+    private static boolean hasBuildingInfo(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TgRetailNoAlternativeOpeningProcessKiycstKktInf
+                    info) {
+<span class="pc bpc" id="L1877" title="2 of 6 branches missed.">        return info.bldnKn() != null || info.bldnKj() != null || info.bldnKjhkFlg() != null;</span>
+    }
+
+    private static LocalDate parseDateOrNull(String rawDateTime) {
+<span class="pc bpc" id="L1881" title="2 of 4 branches missed.">        if (rawDateTime == null || rawDateTime.isBlank()) {</span>
+<span class="nc" id="L1882">            return null;</span>
+        }
+        try {
+<span class="fc" id="L1885">            return LocalDate.parse(rawDateTime);</span>
+<span class="nc" id="L1886">        } catch (DateTimeParseException ignored) {</span>
+<span class="nc" id="L1887">            return OffsetDateTime.parse(rawDateTime).toLocalDate();</span>
+        }
+    }
+
+    private static Boolean toBooleanCode(String value) {
+<span class="pc bpc" id="L1892" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L1893">            return null;</span>
+        }
+<span class="fc" id="L1895">        return &quot;1&quot;.equals(value);</span>
+    }
+
+    private static LocalDate toDateOrNull(LocalDateTime value) {
+<span class="pc bpc" id="L1899" title="1 of 2 branches missed.">        return value == null ? null : value.toLocalDate();</span>
+    }
+
+    private static Integer toTimeHmsOrNull(LocalDateTime value) {
+<span class="pc bpc" id="L1903" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L1904">            return null;</span>
+        }
+<span class="fc" id="L1906">        return value.getHour() * 10000 + value.getMinute() * 100 + value.getSecond();</span>
+    }
+
+    private static Long zeroToNull(Long value) {
+<span class="pc bpc" id="L1910" title="1 of 4 branches missed.">        return value == null || value == 0L ? null : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

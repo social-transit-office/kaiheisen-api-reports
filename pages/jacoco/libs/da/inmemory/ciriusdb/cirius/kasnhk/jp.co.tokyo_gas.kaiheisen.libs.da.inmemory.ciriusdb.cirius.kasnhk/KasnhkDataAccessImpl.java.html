@@ -1,0 +1,469 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KasnhkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-kasnhk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kasnhk</a> &gt; <span class="el_source">KasnhkDataAccessImpl.java</span></div><h1>KasnhkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kasnhk;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkUpdatableColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-118（KASNHK）のインメモリ実装。 */
+public class KasnhkDataAccessImpl extends DataAccessBase implements KasnhkDataAccess {
+
+    private static final int GMB_LENGTH = 15;
+
+    private static final int LVLT_ANKN_NO_LENGTH = 10;
+
+    private static final int HUKK_SYS_SHBT_LENGTH = 1;
+
+    private static final int KAS_HUKK_JTKB_LENGTH = 1;
+
+<span class="fc" id="L46">    private static final ReflectiveInMemoryRowMapper&lt;KasnhkColumn, KasnhkRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L47">            ReflectiveInMemoryRowMapper.create(KasnhkColumn.class, KasnhkRecord.class);</span>
+
+<span class="fc" id="L49">    private static final AutoNeutralValueResolver&lt;KasnhkColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L50">            AutoNeutralValueResolver.create(KasnhkColumn.class, KasnhkRecord.class);</span>
+
+<span class="fc" id="L52">    private final List&lt;EnumMap&lt;KasnhkColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;KasnhkWriteRecord, KasnhkColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KasnhkWriteRecord, KasnhkColumn&gt;
+            updateSupport;
+
+    /** デフォルト依存でインスタンスを生成する。 */
+    public KasnhkDataAccessImpl() {
+<span class="fc" id="L65">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L66">    }</span>
+
+    KasnhkDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L69">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L70">    }</span>
+
+    KasnhkDataAccessImpl(
+<span class="fc" id="L73">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L74">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L75">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L76">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L77">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(KasnhkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L79">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KasnhkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L82">    }</span>
+
+    /** テストデータを 1 行追加する。 */
+    public KasnhkDataAccessImpl addRow(KasnhkRecord record) {
+<span class="fc" id="L86">        EnumMap&lt;KasnhkColumn, Object&gt; values =</span>
+<span class="fc" id="L87">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L88">        NEUTRAL_VALUE_RESOLVER.complement(values, KasnhkWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L89">        rows.add(values);</span>
+<span class="fc" id="L90">        return this;</span>
+    }
+
+    /** 保持中の行を返す。 */
+    public List&lt;KasnhkRecord&gt; getRows() {
+<span class="nc" id="L95">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    /** 1 行登録する。 */
+    @Override
+    public int insert(KasnhkWriteRecord record, AuditContext context) {
+<span class="fc" id="L101">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L102">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L103">        rows.add(</span>
+<span class="fc" id="L104">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L107">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(KasnhkColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L111">        return 1;</span>
+    }
+
+        /** 4条件と任意排他制御順序番号で一致行を削除する。 */
+    @Override
+    public int deleteByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNo(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String lvltAnknNo,
+            Integer recUpdJnjNo) {
+<span class="fc" id="L122">        String safeGmb = safeGmb(gmb);</span>
+<span class="fc" id="L123">        LocalDate safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L124">        LocalDate safeKasHukkYmd = safeYmd(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L125">        String safeLvltAnknNo = safeLvltAnknNo(lvltAnknNo);</span>
+<span class="fc" id="L126">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc" id="L128">                row -&gt; matchesBy4Conditions(row, safeGmb, safeKasgYmd, safeKasHukkYmd, safeLvltAnknNo),</span>
+                KasnhkColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                KasnhkDataAccess.CallSpecs
+                        .DELETE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_LVLT_ANKN_NO
+<span class="fc" id="L133">                        .identifier(),</span>
+                () -&gt;
+<span class="nc" id="L135">                        new DataInconsistencyException(</span>
+                                &quot;KASNHK&quot;,
+                                KasnhkDataAccess.CallSpecs
+                                        .DELETE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_LVLT_ANKN_NO
+<span class="nc" id="L139">                                        .identifier(),</span>
+                                &quot;{}&quot;),
+                safeGmb,
+                safeKasgYmd,
+                safeKasHukkYmd,
+                safeLvltAnknNo);
+    }
+
+        /** 開栓報告状態区分を単一値で指定して 1 件取得する。 */
+    @Override
+    public Optional&lt;KasnhkRecord&gt; findByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndKasHukkJtkb(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String lvltAnknNo,
+            String kasHukkJtkb) {
+<span class="fc" id="L155">        String safeGmb = safeGmb(gmb);</span>
+<span class="fc" id="L156">        LocalDate safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L157">        LocalDate safeKasHukkYmd = safeYmd(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L158">        String safeLvltAnknNo = safeLvltAnknNo(lvltAnknNo);</span>
+<span class="fc" id="L159">        String safeKasHukkJtkb = safeKasHukkJtkb(kasHukkJtkb, &quot;kasHukkJtkb&quot;);</span>
+<span class="fc" id="L160">        return rows.stream()</span>
+<span class="fc" id="L161">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L163">                                matchesBy4Conditions(</span>
+                                        row,
+                                        safeGmb,
+                                        safeKasgYmd,
+                                        safeKasHukkYmd,
+                                        safeLvltAnknNo))
+<span class="fc" id="L169">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L171">                                Objects.equals(</span>
+<span class="fc" id="L172">                                        normalizeFixed(</span>
+<span class="fc" id="L173">                                                row.get(KasnhkColumn.KAS_HUKK_JTKB),</span>
+                                                KAS_HUKK_JTKB_LENGTH),
+                                        safeKasHukkJtkb))
+<span class="fc" id="L176">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L177">                .findFirst();</span>
+    }
+
+    /** 開栓報告状態区分を複数値で指定して 1 件取得する。 */
+    @Override
+    public Optional&lt;KasnhkRecord&gt; findByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndKasHukkJtkb(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String lvltAnknNo,
+            List&lt;String&gt; kasHukkJtkbList) {
+<span class="fc" id="L188">        String safeGmb = safeGmb(gmb);</span>
+<span class="fc" id="L189">        LocalDate safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L190">        LocalDate safeKasHukkYmd = safeYmd(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L191">        String safeLvltAnknNo = safeLvltAnknNo(lvltAnknNo);</span>
+<span class="fc" id="L192">        List&lt;String&gt; safeKasHukkJtkbList = safeKasHukkJtkbList(kasHukkJtkbList);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (safeKasHukkJtkbList.isEmpty()) {</span>
+<span class="fc" id="L194">            return Optional.empty();</span>
+        }
+<span class="fc" id="L196">        return rows.stream()</span>
+<span class="fc" id="L197">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L199">                                matchesBy4Conditions(</span>
+                                        row,
+                                        safeGmb,
+                                        safeKasgYmd,
+                                        safeKasHukkYmd,
+                                        safeLvltAnknNo))
+<span class="fc" id="L205">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L207">                                safeKasHukkJtkbList.contains(</span>
+<span class="fc" id="L208">                                        normalizeFixed(</span>
+<span class="fc" id="L209">                                                row.get(KasnhkColumn.KAS_HUKK_JTKB),</span>
+                                                KAS_HUKK_JTKB_LENGTH)))
+<span class="fc" id="L211">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L212">                .findFirst();</span>
+    }
+
+    /** 主キー検索の実処理を行う。 */
+    @Override
+    public Optional&lt;KasnhkRecord&gt; findByPrimaryKey(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String hukkSysShbt,
+            String lvltAnknNo) {
+<span class="fc" id="L223">        String safeGmb = safeGmb(gmb);</span>
+<span class="fc" id="L224">        LocalDate safeKasgYmd = safeYmd(kasgYmd, &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L225">        LocalDate safeKasHukkYmd = safeYmd(kasHukkYmd, &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L226">        String safeHukkSysShbt = safeHukkSysShbt(hukkSysShbt);</span>
+<span class="fc" id="L227">        String safeLvltAnknNo = safeLvltAnknNo(lvltAnknNo);</span>
+<span class="fc" id="L228">        return rows.stream()</span>
+<span class="fc" id="L229">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L231">                                matchesPk(</span>
+                                        row,
+                                        safeGmb,
+                                        safeKasgYmd,
+                                        safeKasHukkYmd,
+                                        safeHukkSysShbt,
+                                        safeLvltAnknNo))
+<span class="fc" id="L238">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L239">                .findFirst();</span>
+    }
+
+    /** 報告システム種別を含む条件の対象行を更新する。 */
+    @Override
+    public int updateByGmbAndKasgYmdAndKasHukkYmdAndHukkSysShbtAndLvltAnknNo(
+            KasnhkWriteRecord record,
+            Set&lt;KasnhkUpdatableColumn&gt; targetColumns,
+            KasnhkU001UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L249">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L250">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L251">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L252">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L254">        Set&lt;KasnhkColumn&gt; canonicalTargetColumns = canonicalTargetColumns(targetColumns);</span>
+<span class="fc" id="L255">        String safeGmb = safeGmb(updateKey.gmb());</span>
+<span class="fc" id="L256">        LocalDate safeKasgYmd = safeYmd(updateKey.kasgYmd(), &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L257">        LocalDate safeKasHukkYmd = safeYmd(updateKey.kasHukkYmd(), &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L258">        String safeHukkSysShbt = safeHukkSysShbt(updateKey.hukkSysShbt());</span>
+<span class="fc" id="L259">        String safeLvltAnknNo = safeLvltAnknNo(updateKey.lvltAnknNo());</span>
+<span class="fc" id="L260">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                row -&gt;
+<span class="fc" id="L263">                        matchesPk(</span>
+                                row,
+                                safeGmb,
+                                safeKasgYmd,
+                                safeKasHukkYmd,
+                                safeHukkSysShbt,
+                                safeLvltAnknNo),
+                row -&gt;
+<span class="fc" id="L271">                        updateSupport.prepare(</span>
+                                record,
+                                canonicalTargetColumns,
+                                values -&gt;
+<span class="fc" id="L275">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(KasnhkColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L280">                                                        ? toRecUpdJnjNo(row.get(KasnhkColumn.REC_UPD_JNJ_NO))</span>
+<span class="fc" id="L281">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L282">                updateSupport::apply,</span>
+                KasnhkColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L284">                updateKey.recUpdJnjNo(),</span>
+                KasnhkDataAccess.CallSpecs
+                        .UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_HUKK_SYS_SHBT_AND_LVLT_ANKN_NO_U001
+<span class="fc" id="L287">                        .identifier(),</span>
+                safeGmb,
+                safeKasgYmd,
+                safeKasHukkYmd,
+                safeHukkSysShbt,
+                safeLvltAnknNo);
+    }
+
+        /** 4条件と任意排他で対象行を更新する。 */
+    @Override
+        public int updateByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNoAndRecUpdJnjNo(
+            KasnhkWriteRecord record,
+            Set&lt;KasnhkUpdatableColumn&gt; targetColumns,
+            KasnhkU002UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L302">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L303">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L304">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L305">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L307">        Set&lt;KasnhkColumn&gt; canonicalTargetColumns = canonicalTargetColumns(targetColumns);</span>
+<span class="fc" id="L308">        String safeGmb = safeGmb(updateKey.gmb());</span>
+<span class="fc" id="L309">        LocalDate safeKasgYmd = safeYmd(updateKey.kasgYmd(), &quot;kasgYmd&quot;);</span>
+<span class="fc" id="L310">        LocalDate safeKasHukkYmd = safeYmd(updateKey.kasHukkYmd(), &quot;kasHukkYmd&quot;);</span>
+<span class="fc" id="L311">        String safeLvltAnknNo = safeLvltAnknNo(updateKey.lvltAnknNo());</span>
+<span class="fc" id="L312">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L314">                row -&gt; matchesBy4Conditions(row, safeGmb, safeKasgYmd, safeKasHukkYmd, safeLvltAnknNo),</span>
+                row -&gt;
+<span class="fc" id="L316">                        updateSupport.prepare(</span>
+                                record,
+                                canonicalTargetColumns,
+                                values -&gt;
+<span class="fc" id="L320">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(KasnhkColumn.class, values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="nc" id="L325">                                                        ? toRecUpdJnjNo(row.get(KasnhkColumn.REC_UPD_JNJ_NO))</span>
+<span class="fc" id="L326">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L327">                updateSupport::apply,</span>
+                KasnhkColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L329">                updateKey.recUpdJnjNo(),</span>
+                KasnhkDataAccess.CallSpecs
+                        .UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_LVLT_ANKN_NO_AND_REC_UPD_JNJ_NO_U002
+<span class="fc" id="L332">                        .identifier(),</span>
+                safeGmb,
+                safeKasgYmd,
+                safeKasHukkYmd,
+                safeLvltAnknNo);
+    }
+
+    /** 主キー一致判定を行う。 */
+    private static boolean matchesPk(
+            Map&lt;KasnhkColumn, Object&gt; row,
+            String safeGmb,
+            LocalDate safeKasgYmd,
+            LocalDate safeKasHukkYmd,
+            String safeHukkSysShbt,
+            String safeLvltAnknNo) {
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">        return Objects.equals(</span>
+<span class="fc" id="L348">                        normalizeFixed(row.get(KasnhkColumn.GMB), GMB_LENGTH),</span>
+                        safeGmb)
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(normalizeYmd(row.get(KasnhkColumn.KASG_YMD)), safeKasgYmd)</span>
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(normalizeYmd(row.get(KasnhkColumn.KAS_HUKK_YMD)), safeKasHukkYmd)</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L353">                        normalizeFixed(row.get(KasnhkColumn.HUKK_SYS_SHBT), HUKK_SYS_SHBT_LENGTH),</span>
+                        safeHukkSysShbt)
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L356">                        normalizeFixed(</span>
+<span class="fc" id="L357">                                row.get(KasnhkColumn.LVLT_ANKN_NO),</span>
+                                LVLT_ANKN_NO_LENGTH),
+                        safeLvltAnknNo);
+    }
+
+    /** HUKK_SYS_SHBT を含まない4条件一致判定を行う。 */
+    private static boolean matchesBy4Conditions(
+            Map&lt;KasnhkColumn, Object&gt; row,
+            String safeGmb,
+            LocalDate safeKasgYmd,
+            LocalDate safeKasHukkYmd,
+            String safeLvltAnknNo) {
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        return Objects.equals(</span>
+<span class="fc" id="L370">                        normalizeFixed(row.get(KasnhkColumn.GMB), GMB_LENGTH),</span>
+                        safeGmb)
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(normalizeYmd(row.get(KasnhkColumn.KASG_YMD)), safeKasgYmd)</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(normalizeYmd(row.get(KasnhkColumn.KAS_HUKK_YMD)), safeKasHukkYmd)</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L375">                        normalizeFixed(</span>
+<span class="fc" id="L376">                                row.get(KasnhkColumn.LVLT_ANKN_NO),</span>
+                                LVLT_ANKN_NO_LENGTH),
+                        safeLvltAnknNo);
+    }
+
+    /** 更新対象列を EnumSet に正規化する。 */
+    private static Set&lt;KasnhkColumn&gt; canonicalTargetColumns(
+            Set&lt;KasnhkUpdatableColumn&gt; targetColumns) {
+<span class="fc" id="L384">        EnumSet&lt;KasnhkColumn&gt; canonicalColumns = EnumSet.noneOf(KasnhkColumn.class);</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        for (KasnhkUpdatableColumn targetColumn : targetColumns) {</span>
+<span class="fc" id="L386">            canonicalColumns.add(KasnhkColumn.valueOf(targetColumn.name()));</span>
+<span class="fc" id="L387">        }</span>
+<span class="fc" id="L388">        return canonicalColumns;</span>
+    }
+
+    /** REC_UPD_JNJ_NO を Integer に変換する。 */
+    private static Integer toRecUpdJnjNo(Object value) {
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L394">            return 0;</span>
+        }
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L397">            return number.intValue();</span>
+        }
+<span class="nc" id="L399">        return Integer.valueOf(value.toString());</span>
+    }
+
+    /** GMB を WHERE 用に正規化する。 */
+    private static String safeGmb(String value) {
+<span class="fc" id="L404">        return WhereParamGuard.fixedLengthNotNull(value, &quot;gmb&quot;, GMB_LENGTH);</span>
+    }
+
+    /** LIV@LIT 案件番号を WHERE 用に正規化する。 */
+    private static String safeLvltAnknNo(String value) {
+<span class="fc" id="L409">        return WhereParamGuard.fixedLengthNotNull(value, &quot;lvltAnknNo&quot;, LVLT_ANKN_NO_LENGTH);</span>
+    }
+
+    /** 報告システム種別を WHERE 用に正規化する。 */
+    private static String safeHukkSysShbt(String value) {
+<span class="fc" id="L414">        return WhereParamGuard.fixedLengthNotNull(value, &quot;hukkSysShbt&quot;, HUKK_SYS_SHBT_LENGTH);</span>
+    }
+
+    /** 開栓報告状態区分を WHERE 用に正規化する。 */
+    private static String safeKasHukkJtkb(String value, String paramName) {
+<span class="fc" id="L419">        return WhereParamGuard.fixedLengthNotNull(value, paramName, KAS_HUKK_JTKB_LENGTH);</span>
+    }
+
+    /** 開栓報告状態区分リストを WHERE 用に正規化する。 */
+    private static List&lt;String&gt; safeKasHukkJtkbList(List&lt;String&gt; values) {
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        if (values == null) {</span>
+<span class="fc" id="L425">            throw new IllegalArgumentException(&quot;kasHukkJtkbList must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L427" title="All 2 branches covered.">        if (values.isEmpty()) {</span>
+<span class="fc" id="L428">            return List.of();</span>
+        }
+<span class="fc" id="L430">        return values.stream().map(KasnhkDataAccessImpl::normalizeInKasHukkJtkb).toList();</span>
+    }
+
+    /** IN 句要素の開栓報告状態区分を固定長条件値へ正規化する。 */
+    private static String normalizeInKasHukkJtkb(String value) {
+<span class="fc bfc" id="L435" title="All 4 branches covered.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L436">            throw new IllegalArgumentException(</span>
+                    &quot;kasHukkJtkbList must not contain null or blank-only&quot;);
+        }
+<span class="fc" id="L439">        return safeKasHukkJtkb(value, &quot;kasHukkJtkbList&quot;);</span>
+    }
+
+    /** 年月日を WHERE 用に正規化する。 */
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L444">        return WhereParamGuard.complement(value, paramName, LocalDate.MIN);</span>
+    }
+
+
+    /** 固定長文字列列を比較用に正規化する。 */
+    private static String normalizeFixed(Object value, int length) {
+<span class="fc" id="L450">        return WhereParamGuard.fixedLengthNotNull((String) value, &quot;value&quot;, length);</span>
+    }
+
+    /** 年月日列を比較用に正規化する。 */
+    private static LocalDate normalizeYmd(Object value) {
+<span class="fc" id="L455">        return WhereParamGuard.complement((LocalDate) value, &quot;value&quot;, LocalDate.MIN);</span>
+    }
+
+    /** 数値列を比較用に正規化する。 */
+    private static Integer normalizeInteger(Object value) {
+<span class="nc bnc" id="L460" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L461">            return 0;</span>
+        }
+<span class="nc bnc" id="L463" title="All 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="nc" id="L464">            return number.intValue();</span>
+        }
+<span class="nc" id="L466">        return Integer.valueOf(value.toString());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

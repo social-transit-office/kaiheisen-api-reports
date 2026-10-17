@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformApiIntegrationForOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformapiintegrationforopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformApiIntegrationForOpeningImpl.java</span></div><h1>BillingCollectionPlatformApiIntegrationForOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.kaisenkannrenji_idoujouhou_touroku.KaisenkannrenjiIdoujouhouTourokuCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.kaisenkannrenji_idoujouhou_touroku.KaisenkannrenjiIdoujouhouTourokuRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformApiIntegrationForOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SkkbRkySgjhInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SktsKykTrirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SktsSihTrirInf;
+
+/**
+ * 概要: SV-028（請求回収基盤API連携（開栓））の実装。
+ * 主な仕様:
+ * - 3 つの入力モデルを他-044の 52 項目へ編集し、請求回収基盤（開栓）-API を 1 回呼び出す。
+ * - 日付は YYYYMMDD、年月は YYYYMM の数値へ変換する。
+ * - 有無フラグと合算可否フラグは CIRIUS 定数を検証済みコードへ変換する。
+ * 既知の制約:
+ * - `他-044呼出しパラメータ.tsv` の No.27 以降は best-effort で `sktsKykTrirInf` を正として扱う。
+ */
+public final class BillingCollectionPlatformApiIntegrationForOpeningImpl
+        implements BillingCollectionPlatformApiIntegrationForOpening {
+
+<span class="fc" id="L29">    private static final DateTimeFormatter BASIC_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private final KaisenkannrenjiIdoujouhouTourokuCiriusAdapter ciriusAdapter;
+
+    private final CiriusConstantService ciriusConstantService;
+
+    /**
+     * 概要: SV-028 の依存を保持して初期化する。
+     * 主な仕様:
+     * - 外部API adapter と CIRIUS 定数取得サービスを必須依存として保持する。
+     * 既知の制約:
+     * - 依存の null は許容しない。
+     *
+     * @param ciriusAdapter 請求回収基盤（開栓）-API adapter
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public BillingCollectionPlatformApiIntegrationForOpeningImpl(
+            KaisenkannrenjiIdoujouhouTourokuCiriusAdapter ciriusAdapter,
+<span class="fc" id="L47">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L48">        this.ciriusAdapter = Objects.requireNonNull(ciriusAdapter, &quot;ciriusAdapter&quot;);</span>
+<span class="fc" id="L49">        this.ciriusConstantService = Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L50">    }</span>
+
+    /**
+     * 概要: SV-028 を実行し、請求回収基盤（開栓）-API を呼び出す。
+     * 主な仕様:
+     * - 他-044の flat request へ編集した後、外部 API を 1 回呼び出す。
+     * - RequestContext 項目は公開引数に含めず、この Service では利用しない。
+     *
+     * @param skkbRkySgjhInf 請求回収基盤連携用制御情報
+     * @param sktsSihTrirInf 請求対象支払管理登録依頼情報
+     * @param sktsKykTrirInf 請求対象契約管理登録依頼情報
+     */
+    @Override
+    public void execute(
+            SkkbRkySgjhInf skkbRkySgjhInf,
+            SktsSihTrirInf sktsSihTrirInf,
+            SktsKykTrirInf sktsKykTrirInf) {
+<span class="fc" id="L67">        ciriusAdapter.register(toRequest(skkbRkySgjhInf, sktsSihTrirInf, sktsKykTrirInf));</span>
+<span class="fc" id="L68">    }</span>
+
+    /**
+     * 概要: SV 入力を請求回収基盤（開栓）-API（他-044）のリクエストへ変換する。
+     *
+     * 主な仕様:
+     * - 各入力モデルのフィールドを外部API仕様に従い型・値域・変換ルールで編集する。
+     * - 日付型（LocalDate）はYYYYMMDD数値、年/月型（YearMonth）はYYYYMM数値へ変換。
+     * - 有無フラグ・合算可否フラグはCIRIUS定数へ変換し、存在検証を行う。
+     * - best-effortで契約系項目は`sktsKykTrirInf`配下を正として扱う。
+     *
+     * 既知の制約:
+     * - 入力値の妥当性検証は本メソッドでは行わない。
+     * - 外部API仕様変更時は必ず変換ロジックの見直しが必要。
+     *
+     * @param skkbRkySgjhInf 請求回収基盤連携用制御情報
+     * @param sktsSihTrirInf 請求対象支払管理登録依頼情報
+     * @param sktsKykTrirInf 請求対象契約管理登録依頼情報
+     * @return 外部 API リクエスト
+     */
+    private KaisenkannrenjiIdoujouhouTourokuRequest toRequest(
+            SkkbRkySgjhInf skkbRkySgjhInf,
+            SktsSihTrirInf sktsSihTrirInf,
+            SktsKykTrirInf sktsKykTrirInf) {
+<span class="fc" id="L92">        return new KaisenkannrenjiIdoujouhouTourokuRequest(</span>
+                new KaisenkannrenjiIdoujouhouTourokuRequest.KaisenkannrenjiIdoujouhou(
+<span class="fc" id="L94">                        skkbRkySgjhInf.skrkGrpKrno(),</span>
+<span class="fc" id="L95">                skkbRkySgjhInf.sikKrno(),</span>
+<span class="fc" id="L96">                skkbRkySgjhInf.sqtiKiyNo(),</span>
+<span class="fc" id="L97">                skkbRkySgjhInf.svkyNo(),</span>
+<span class="fc" id="L98">                skkbRkySgjhInf.svkySkno(),</span>
+<span class="fc" id="L99">                skkbRkySgjhInf.sihKiyNo(),</span>
+<span class="fc" id="L100">                skkbRkySgjhInf.sihKiySkno(),</span>
+<span class="fc" id="L101">                skkbRkySgjhInf.gasMtstNo(),</span>
+<span class="fc" id="L102">                toYmd(skkbRkySgjhInf.tkysYmd()),</span>
+<span class="fc" id="L103">                toYmd(skkbRkySgjhInf.khsYmd()),</span>
+<span class="fc" id="L104">                toPresenceFlag(skkbRkySgjhInf.syoTisiUmFlg()),</span>
+<span class="fc" id="L105">                sktsSihTrirInf.vtkzNo(),</span>
+<span class="fc" id="L106">                sktsSihTrirInf.vtstCd(),</span>
+<span class="fc" id="L107">                sktsSihTrirInf.irimCstrNo(),</span>
+<span class="fc" id="L108">                sktsSihTrirInf.kznKn(),</span>
+<span class="fc" id="L109">                sktsSihTrirInf.kznKj(),</span>
+<span class="fc" id="L110">                sktsSihTrirInf.shsyRrskShbt1(),</span>
+<span class="fc" id="L111">                sktsSihTrirInf.shsyRrskShbt2(),</span>
+<span class="fc" id="L112">                sktsSihTrirInf.shsyTelNo1(),</span>
+<span class="fc" id="L113">                sktsSihTrirInf.shsyTelNo2(),</span>
+<span class="fc" id="L114">                sktsSihTrirInf.shsyTelShbt1(),</span>
+<span class="fc" id="L115">                sktsSihTrirInf.shsyTelShbt2(),</span>
+<span class="fc" id="L116">                sktsSihTrirInf.isrrGymCd(),</span>
+<span class="fc" id="L117">                toYmd(sktsSihTrirInf.sikEndYmd()),</span>
+<span class="fc" id="L118">                toYmd(sktsSihTrirInf.sikSttYmd()),</span>
+<span class="fc" id="L119">                sktsSihTrirInf.nwjgCd(),</span>
+<span class="fc" id="L120">                sktsKykTrirInf.svkjyShbt(),</span>
+<span class="fc" id="L121">                toYmd(sktsKykTrirInf.svtkYmd()),</span>
+<span class="fc" id="L122">                sktsKykTrirInf.ikskGrpNo(),</span>
+<span class="fc" id="L123">                toYm(sktsKykTrirInf.ikskEndYm()),</span>
+<span class="fc" id="L124">                toYm(sktsKykTrirInf.ikskSttYm()),</span>
+<span class="fc" id="L125">                sktsKykTrirInf.syoRrskShbt1(),</span>
+<span class="fc" id="L126">                sktsKykTrirInf.syoRrskShbt2(),</span>
+<span class="fc" id="L127">                sktsKykTrirInf.syoTelNo1(),</span>
+<span class="fc" id="L128">                sktsKykTrirInf.syoTelNo2(),</span>
+<span class="fc" id="L129">                sktsKykTrirInf.syoTelShbt1(),</span>
+<span class="fc" id="L130">                sktsKykTrirInf.syoTelShbt2(),</span>
+<span class="fc" id="L131">                sktsKykTrirInf.uwhyCstuNo(),</span>
+<span class="fc" id="L132">                sktsKykTrirInf.tdssSbtShbt(),</span>
+<span class="fc" id="L133">                sktsKykTrirInf.snskSqtkNo(),</span>
+<span class="fc" id="L134">                sktsKykTrirInf.gsptShbt(),</span>
+<span class="fc" id="L135">                toSummabilityFlag(sktsKykTrirInf.gsnKhFlg()),</span>
+<span class="fc" id="L136">                sktsKykTrirInf.kiyShri(),</span>
+<span class="fc" id="L137">                toYmd(sktsKykTrirInf.kiyEndYmd()),</span>
+<span class="fc" id="L138">                toYmd(sktsKykTrirInf.kiySttYmd()),</span>
+<span class="fc" id="L139">                sktsKykTrirInf.rknTtkbNo(),</span>
+<span class="fc" id="L140">                sktsKykTrirInf.isrrGymCd(),</span>
+<span class="fc" id="L141">                sktsKykTrirInf.sikTmngShbt(),</span>
+<span class="fc" id="L142">                toYmd(sktsKykTrirInf.sikSttYmd()),</span>
+<span class="fc" id="L143">                sktsKykTrirInf.nwjgCd(),</span>
+<span class="fc" id="L144">                sktsKykTrirInf.sziKziKbn(),</span>
+<span class="fc" id="L145">                toYmd(sktsKykTrirInf.szirHtyoYmd())));</span>
+    }
+
+    /**
+     * 概要: 日付（LocalDate）をYYYYMMDD形式の数値へ変換する。
+     *
+     * 主な仕様:
+     * - nullの場合はnullを返す。
+     * - BASIC_ISO_DATE（yyyyMMdd）でフォーマットしint変換。
+     *
+     * 既知の制約:
+     * - 日付範囲外・不正値は上位で検証すること。
+     *
+     * @param value 日付
+     * @return YYYYMMDD 数値
+     */
+    private Integer toYmd(LocalDate value) {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L163">            return null;</span>
+        }
+<span class="fc" id="L165">        return Integer.valueOf(value.format(BASIC_DATE_FORMATTER));</span>
+    }
+
+    /**
+     * 概要: 年月（YearMonth）をYYYYMM形式の数値へ変換する。
+     *
+     * 主な仕様:
+     * - nullの場合はnullを返す。
+     * - YearMonth#toYmInt()で変換。
+     *
+     * 既知の制約:
+     * - 年月範囲外・不正値は上位で検証すること。
+     *
+     * @param value 年月
+     * @return YYYYMM 数値
+     */
+    private Integer toYm(YearMonth value) {
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L183">            return null;</span>
+        }
+<span class="fc" id="L185">        return value.toYmInt();</span>
+    }
+
+    /**
+     * 概要: Boolean値を有無フラグ（CIRIUS定数）へ変換する。
+     *
+     * 主な仕様:
+     * - nullの場合はnullを返す。
+     * - true→PresenceFlag.YES、false→PresenceFlag.NOTHINGへ変換。
+     * - CiriusConstantService経由で定数存在検証を行う。
+     *
+     * 既知の制約:
+     * - 定数未定義時はRequiredConstantResolverで例外発生。
+     *
+     * @param value Boolean 値
+     * @return J0253 の定数コード
+     */
+    private String toPresenceFlag(Boolean value) {
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L204">            return null;</span>
+        }
+<span class="fc" id="L206">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">                value</span>
+<span class="fc" id="L210">                        ? ConstantLookupKeys.Cirius.PresenceFlag.YES</span>
+<span class="nc" id="L211">                        : ConstantLookupKeys.Cirius.PresenceFlag.NOTHING);</span>
+    }
+
+    /**
+     * 概要: Boolean値を合算可否フラグ（CIRIUS定数）へ変換する。
+     *
+     * 主な仕様:
+     * - nullの場合はnullを返す。
+     * - true→SummabilityFlag.CAN_BE_COMBINED、false→SummabilityFlag.CANNOT_BE_COMBINEDへ変換。
+     * - CiriusConstantService経由で定数存在検証を行う。
+     *
+     * 既知の制約:
+     * - 定数未定義時はRequiredConstantResolverで例外発生。
+     *
+     * @param value Boolean 値
+     * @return J0130 の定数コード
+     */
+    private String toSummabilityFlag(Boolean value) {
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L230">            return null;</span>
+        }
+<span class="fc" id="L232">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                ConstantLookupKeys.Cirius.SummabilityFlag.TYPE,
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                value</span>
+<span class="fc" id="L236">                        ? ConstantLookupKeys.Cirius.SummabilityFlag.CAN_BE_COMBINED</span>
+<span class="nc" id="L237">                        : ConstantLookupKeys.Cirius.SummabilityFlag.CANNOT_BE_COMBINED);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingIncompleteMeteterErrorJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingincompletemetetererrorjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingIncompleteMeteterErrorJudgmentImpl.java</span></div><h1>ClosingIncompleteMeteterErrorJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingIncompleteMeteterErrorJudgment;
+
+/**
+ * 閉栓未済メーターエラー判定サービス実装。
+ */
+public class ClosingIncompleteMeteterErrorJudgmentImpl implements ClosingIncompleteMeteterErrorJudgment {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final String feePaymentMethodInstructionCategoryNoConcept;
+
+    private final String chargeCalculationRelatedStatusRelatedValid;
+
+    private final String chargeCalculationRelatedStatusBlank03;
+
+    private final String gasMeterOpenCloseValveStatusOpening;
+
+    private final List&lt;String&gt; targetchargeCalculationRelated;
+
+    private final RequestContext requestContext;
+
+    /**
+     * コンストラクタ
+     *
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param SystemDateTimeProvider システム日付・日時を提供するインターフェース
+     * @param GmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param SvmstkrDataAccess サービス契約・メーター設置場所関連データアクセス
+     */
+    public ClosingIncompleteMeteterErrorJudgmentImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            SvmstkrDataAccess svmstkrDataAccess,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L54">            RequestContext requestContext) {</span>
+
+<span class="fc" id="L56">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L57">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L58">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+
+<span class="fc" id="L60">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                 ciriusConstantService,
+                 &quot;ciriusConstantService&quot;);
+
+        //料金支払方法指示種別：概念なし
+<span class="fc" id="L65">        this.feePaymentMethodInstructionCategoryNoConcept = RequiredConstantResolver.requireCiriusConstant(</span>
+                 resolvedCiriusConstantService,
+                 ConstantLookupKeys.Cirius.FeePaymentMethodInstructionCategory.TYPE,
+                 ConstantLookupKeys.Cirius.FeePaymentMethodInstructionCategory.NO_CONCEPT);
+
+        //料金計算関連状態区分：関連有効
+<span class="fc" id="L71">        this.chargeCalculationRelatedStatusRelatedValid = RequiredConstantResolver.requireCiriusConstant(</span>
+                 resolvedCiriusConstantService,
+                 ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                 ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+
+        //料金計算関連状態区分：関連終了待ち
+<span class="fc" id="L77">        this.chargeCalculationRelatedStatusBlank03 = RequiredConstantResolver.requireCiriusConstant(</span>
+                 resolvedCiriusConstantService,
+                 ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                 ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+
+        //料金関連状態区分リスト化
+<span class="fc" id="L83">        this.targetchargeCalculationRelated = List.of(chargeCalculationRelatedStatusRelatedValid, chargeCalculationRelatedStatusBlank03);</span>
+
+        //ガスメーター開閉栓状態区分：開栓中
+<span class="fc" id="L86">        this.gasMeterOpenCloseValveStatusOpening = RequiredConstantResolver.requireCiriusConstant(</span>
+                 resolvedCiriusConstantService,
+                 ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                 ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+
+<span class="fc" id="L91">    }</span>
+
+    /**
+     * 概要: 引数の料金支払指示種別によって判定を行う
+     * 主な仕様:
+     * - 引数の料金支払方法指示種別が【50500 0：概念なし】ではない場合　GMTSETD取得処理を行う
+     * - 引数の料金支払方法指示種別が【50500 0：概念なし】の場合　戻り値なしで処理終了
+     * - GMTSETDの取得件数が0件の場合、DataInconsistencyExceptionを送出する
+     * - GMTSETD で取得したガスメーター開閉栓状態区分が【02100 1：開栓中】の場合 BusinessRuleException を送出する。
+     * - GMTSETD で取得したガスメーター開閉栓状態区分が【02100 1：開栓中】ではない場合 戻り値なしで処理終了
+     * @param rshhSjsb 料金支払方法指示種別
+     * @param svkyNo サービス契約番号
+     * @param gmtSetNo ガスメーター設置場所番号
+     */
+    @Override
+    public void execute(String rshhSjsb, Long svkyNo, Long gmtSetNo ) {
+
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (!feePaymentMethodInstructionCategoryNoConcept.equals(rshhSjsb)) {</span>
+<span class="fc" id="L109">            List&lt;SvmstkrRecord&gt; svmstkrRecords =</span>
+<span class="fc" id="L110">                    svmstkrDataAccess.findAllBySvkyNoAndMtstNoAndRkkiKnrnJtkb(svkyNo, gmtSetNo, targetchargeCalculationRelated);</span>
+
+<span class="fc" id="L112">            LocalDate knskKjnYmd = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L113">                    .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set in RequestContext&quot;))</span>
+<span class="fc" id="L114">                    .toLocalDate();</span>
+
+<span class="fc" id="L116">            svmstkrRecords.forEach(svmstkrRecord -&gt; {</span>
+<span class="fc" id="L117">                Optional&lt;GmtsetdRecord&gt; gmtsetdRecords =</span>
+<span class="fc" id="L118">                        gmtsetdDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(svmstkrRecord.mtstNo(), knskKjnYmd);</span>
+
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (gmtsetdRecords.isEmpty()) {</span>
+<span class="fc" id="L121">                    throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L122">                            gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L123">                            GmtsetdDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+                            new FlatJsonBuilder()
+<span class="fc" id="L125">                                    .put(&quot;gasMtstNo&quot;, svmstkrRecord.mtstNo())</span>
+<span class="fc" id="L126">                                    .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+                }
+<span class="fc" id="L128">                gmtsetdRecords.ifPresent(gmtsetdRecord -&gt; {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                    if (gasMeterOpenCloseValveStatusOpening.equals(gmtsetdRecord.gmtKhsJtkb())) {</span>
+<span class="fc" id="L130">                        throw businessRuleException(ErrorCodeConstants.ERROR_CODE_020000044);</span>
+                    }
+<span class="fc" id="L132">                });</span>
+<span class="fc" id="L133">            });</span>
+        }
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * 概要:  BusinessRuleException を生成する。
+     * 主な仕様:
+     * - executeメソッド から errorCode を取得する。
+     * - 生成した例外は呼び出し元で直ちに送出することを想定する。
+     * @param errorCode executeメソッドから受け取るエラーコード
+     * @return BusinessRuleException インスタンス
+     */
+    private static BusinessRuleException businessRuleException(String errorCode) {
+<span class="fc" id="L146">        return new BusinessRuleException(errorCode);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

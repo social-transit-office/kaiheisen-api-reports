@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CalculationStartDateIdentificationErrorJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-calculationstartdateidentificationerrorjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">CalculationStartDateIdentificationErrorJudgmentImpl.java</span></div><h1>CalculationStartDateIdentificationErrorJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HaisenRuleHokokuShiyouryoHuicchiException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.CalculationStartDateIdentificationErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.CalculationStartDateIdentificationErrorJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.calculationstartdate.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KonKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnyInfList;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SnySkinKnsInfList;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtInfList;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SuguGmtSkinKnsInfList;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.ZnkiKnkkInf;
+
+/**
+ * 概要: SV-142（起算日特定エラー判定）の実装クラス。
+ * 主な仕様:
+ * - 既存の SV-312 を 1 回呼び出し、その戻り値と入力値を使って閉栓時のエラー条件を順に評価する。
+ * - 指示数回帰区分が未設定の場合も後続判定を実施し、最後に未設定用の戻り値を返す。
+ * 既知の制約:
+ * - SV-312 の公開 API で受け取れる引数だけを利用するため、補助資料上の全入力値を直接転送はしない。
+ * - public メソッド引数の null ガードや文字列正規化は追加しない。
+ */
+public final class CalculationStartDateIdentificationErrorJudgmentImpl
+        implements CalculationStartDateIdentificationErrorJudgment {
+
+    private static final int USAGE_DAYS_LIMIT = 51;
+
+    private final GasUsageForBillingDerivation gasUsageForBillingDerivation;
+
+    private final String relocationClosureForMeterReadingResult;
+
+    private final String disasterClosureReason;
+
+    private final String originalGasMeterStatus;
+
+    private final String meterPossessionStatus;
+
+    /**
+     * 概要: 判定に必要な依存と定数を解決して初期化する。
+     * 主な仕様:
+    * - SV-312 を保持する。
+     * - CIRIUS 定数から災害時閉栓、元ガスメーター、メーター保有状態、移転閉栓のコードを必須解決する。
+     * 既知の制約:
+    * - SV-312 と定数取得サービスの null は許容しない。
+     *
+     * @param gasUsageForBillingDerivation TG導管ガス使用量（料金計算用）取得サービス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public CalculationStartDateIdentificationErrorJudgmentImpl(
+            GasUsageForBillingDerivation gasUsageForBillingDerivation,
+            RequestContext requestContext,
+<span class="fc" id="L68">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L69">        this.gasUsageForBillingDerivation =</span>
+<span class="fc" id="L70">                Objects.requireNonNull(gasUsageForBillingDerivation, &quot;gasUsageForBillingDerivation&quot;);</span>
+<span class="fc" id="L71">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L72">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L73">        this.relocationClosureForMeterReadingResult =</span>
+<span class="fc" id="L74">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .RELOCATION_CLOSURE);
+<span class="fc" id="L79">        this.disasterClosureReason =</span>
+<span class="fc" id="L80">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L84">        this.originalGasMeterStatus =</span>
+<span class="fc" id="L85">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L89">        this.meterPossessionStatus =</span>
+<span class="fc" id="L90">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus
+                                .METER_POSSESSION_STATUS);
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public CalculationStartDateIdentificationErrorJudgmentOutput execute(
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            Long gmtShjSu,
+            String sjskKbn,
+            String gmtKhsJtkb,
+            Integer jkarSu,
+            BigDecimal sjsuMincSu,
+            Long sjskHticSu,
+            String hesnJysb,
+            BigDecimal gasSyry,
+            LocalDate kokiRkksYmd,
+            String ckrtGmscJtkb,
+            ArrayList&lt;SnyInfList&gt; snyInfList,
+            ArrayList&lt;SuguGmtInfList&gt; suguGmtInfList,
+            ArrayList&lt;SnySkinKnsInfList&gt; snySkinKnsInfList,
+            ArrayList&lt;SuguGmtSkinKnsInfList&gt; suguGmtSkinKnsInfList) {
+<span class="fc" id="L118">        GasUsageForBillingDerivationState sv312State =</span>
+<span class="fc" id="L119">                executeGasUsageForBillingDerivation(</span>
+                        gasMtstNo,
+                        hssgYmd,
+                        gmtShjSu,
+                        sjskKbn,
+                        gmtKhsJtkb,
+                        jkarSu,
+                        sjsuMincSu,
+                        sjskHticSu);
+<span class="fc" id="L128">        GasUsageForBillingDerivationOutput sv312Output = sv312State.output();</span>
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (sv312State.targetMeterReadingResultError()) {</span>
+<span class="fc" id="L131">            return createInitialOutput();</span>
+        }
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (sv312Output == null) {</span>
+<span class="fc" id="L135">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200040);</span>
+        }
+
+<span class="fc bfc" id="L138" title="All 4 branches covered.">        if (!disasterClosureReason.equals(hesnJysb) &amp;&amp; isRegressionMarkSet(sjskKbn)) {</span>
+<span class="fc" id="L139">            validateReportedGasUsage(gasSyry, sv312Output);</span>
+        }
+<span class="fc" id="L141">        validateUsageDays(sv312Output);</span>
+
+<span class="fc" id="L143">        validateDedicatedMeterRecentReadingDates(ckrtGmscJtkb, snyInfList, snySkinKnsInfList);</span>
+<span class="fc" id="L144">        validateComprehensiveMeterRecentReadingDates(suguGmtInfList, suguGmtSkinKnsInfList);</span>
+
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        return isRegressionMarkSet(sjskKbn)</span>
+<span class="fc" id="L147">                ? toSetRegressionOutput(gasSyry, sjskKbn, sv312Output)</span>
+<span class="fc" id="L148">                : toUnsetRegressionOutput(sv312Output);</span>
+    }
+
+    private GasUsageForBillingDerivationState executeGasUsageForBillingDerivation(
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            Long gmtShjSu,
+            String sjskKbn,
+            String gmtKhsJtkb,
+            Integer jkarSu,
+            BigDecimal sjsuMincSu,
+            Long sjskHticSu) {
+        try {
+<span class="fc" id="L161">            return GasUsageForBillingDerivationState.success(</span>
+<span class="fc" id="L162">                    gasUsageForBillingDerivation.execute(</span>
+                            gasMtstNo,
+                            hssgYmd,
+                            gmtShjSu,
+                            relocationClosureForMeterReadingResult,
+                            sjskKbn,
+                            gmtKhsJtkb,
+                            jkarSu,
+                            sjsuMincSu,
+                            sjskHticSu,
+                            BigDecimal.ZERO,
+<span class="fc" id="L173">                            new KnsKkaTseiMaeJh(null, 0, Boolean.FALSE)));</span>
+<span class="fc" id="L174">        } catch (KaiheisenException exception) {</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            if (ErrorCodeConstants.ERROR_CODE_020000074.equals(exception.getErrorCode())) {</span>
+<span class="fc" id="L176">                throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200040);</span>
+            }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            if (ErrorCodeConstants.ERROR_CODE_020000077.equals(exception.getErrorCode())) {</span>
+<span class="fc" id="L179">                return GasUsageForBillingDerivationState.withTargetMeterReadingResultError();</span>
+            }
+<span class="nc" id="L181">            throw exception;</span>
+        }
+    }
+
+    private CalculationStartDateIdentificationErrorJudgmentOutput createInitialOutput() {
+<span class="fc" id="L186">        return new CalculationStartDateIdentificationErrorJudgmentOutput(null, null, null, null, null, null);</span>
+    }
+
+    /**
+     * 概要: 指示数回帰区分が評価対象かを判定する。
+     * 主な仕様: null でも空文字でもない場合のみ true を返す。
+     * 既知の制約: 前後空白 trim は行わず、空文字との完全一致だけを未設定扱いとする。
+     *
+     * @param sjskKbn 指示数回帰区分
+     * @return 評価対象の場合 true
+     */
+    private boolean isRegressionMarkSet(String sjskKbn) {
+<span class="fc bfc" id="L198" title="All 4 branches covered.">        return sjskKbn != null &amp;&amp; !sjskKbn.isEmpty();</span>
+    }
+
+    /**
+     * 概要: 報告使用量の不一致を判定する。
+     * 主な仕様:
+     * - SV-312 の実供給圧力数換算前ガス使用量と入力のガス使用量を compareTo で比較する。
+     * - 不一致時は算出使用量を保持した専用例外を送出する。
+     * 既知の制約:
+     * - いずれかが null の場合も不一致として扱う。
+     *
+     * @param gasSyry ガス使用量
+     * @param sv312Output SV-312 の戻り値
+     */
+    private void validateReportedGasUsage(
+            BigDecimal gasSyry,
+            GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L215">        BigDecimal calculatedUsage = resolveCalculatedGasUsage(sv312Output);</span>
+<span class="pc bpc" id="L216" title="2 of 6 branches missed.">        if (gasSyry == null || calculatedUsage == null || gasSyry.compareTo(calculatedUsage) != 0) {</span>
+<span class="fc" id="L217">            throw new HaisenRuleHokokuShiyouryoHuicchiException(</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                    calculatedUsage == null ? null : calculatedUsage.toPlainString());</span>
+        }
+<span class="fc" id="L220">    }</span>
+
+    /**
+     * 概要: 使用日数上限を判定する。
+     * 主な仕様: 使用日数が 51 日以上の場合に業務エラー 020200043 を送出する。
+     * 既知の制約: ガス料金計算用情報または使用日数が欠損している場合は業務エラー 020200040 を送出する。
+     *
+     * @param sv312Output SV-312 の戻り値
+     */
+    private void validateUsageDays(GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (resolveUsageDays(sv312Output) &gt;= USAGE_DAYS_LIMIT) {</span>
+<span class="fc" id="L231">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200043);</span>
+        }
+<span class="fc" id="L233">    }</span>
+
+    /**
+     * 概要: 専用メーターの最近検針年月日を判定する。
+     * 主な仕様:
+     * - 直列元ガスメーターの場合だけ専用メーター情報を走査する。
+     * - 保有状態の専用メーターに対応する最近検針年月日が null の場合は業務エラー 020200040 を送出する。
+     * 既知の制約:
+     * - 最近検針情報リストが不足している場合は対応要素なしとして null 扱いする。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param snyInfList 専用メーター情報リスト
+     * @param snySkinKnsInfList 専用メーター最近検針情報リスト
+     */
+    private void validateDedicatedMeterRecentReadingDates(
+            String ckrtGmscJtkb,
+            ArrayList&lt;SnyInfList&gt; snyInfList,
+            ArrayList&lt;SnySkinKnsInfList&gt; snySkinKnsInfList) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (!originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L252">            return;</span>
+        }
+
+<span class="fc" id="L255">        ArrayList&lt;SnyInfList&gt; resolvedMeterInfoList = defaultList(snyInfList);</span>
+<span class="fc" id="L256">        ArrayList&lt;SnySkinKnsInfList&gt; resolvedRecentReadingList = defaultList(snySkinKnsInfList);</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        for (int index = 0; index &lt; resolvedMeterInfoList.size(); index++) {</span>
+<span class="fc" id="L258">            SnyInfList meterInfo = resolvedMeterInfoList.get(index);</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (meterPossessionStatus.equals(meterInfo.kngmStbJtkb())</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                    &amp;&amp; resolveDedicatedRecentReadingDate(resolvedRecentReadingList, index) == null) {</span>
+<span class="fc" id="L261">                throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200040);</span>
+            }
+        }
+<span class="nc" id="L264">    }</span>
+
+    /**
+     * 概要: 総合扱いガスメーターの最近検針年月日を判定する。
+     * 主な仕様:
+     * - 総合扱いガスメーター情報を走査し、保有状態の要素に対する最近検針年月日 null を業務エラーとする。
+     * - リストが 0 件の場合は何もせず正常終了に進む。
+     * 既知の制約:
+     * - 最近検針情報リストが不足している場合は対応要素なしとして null 扱いする。
+     *
+     * @param suguGmtInfList 総合扱いガスメーター情報リスト
+     * @param suguGmtSkinKnsInfList 総合他ガスメーター最近検針情報リスト
+     */
+    private void validateComprehensiveMeterRecentReadingDates(
+            ArrayList&lt;SuguGmtInfList&gt; suguGmtInfList,
+            ArrayList&lt;SuguGmtSkinKnsInfList&gt; suguGmtSkinKnsInfList) {
+<span class="fc" id="L280">        ArrayList&lt;SuguGmtInfList&gt; resolvedMeterInfoList = defaultList(suguGmtInfList);</span>
+<span class="fc" id="L281">        ArrayList&lt;SuguGmtSkinKnsInfList&gt; resolvedRecentReadingList = defaultList(suguGmtSkinKnsInfList);</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (int index = 0; index &lt; resolvedMeterInfoList.size(); index++) {</span>
+<span class="fc" id="L283">            SuguGmtInfList meterInfo = resolvedMeterInfoList.get(index);</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">            if (meterPossessionStatus.equals(meterInfo.kngmStbJtkb())</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">                    &amp;&amp; resolveComprehensiveRecentReadingDate(resolvedRecentReadingList, index) == null) {</span>
+<span class="fc" id="L286">                throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200040);</span>
+            }
+        }
+<span class="fc" id="L289">    }</span>
+
+    /**
+     * 概要: 判定結果 DTO を生成する。
+     * 主な仕様: SV-312 の戻り値から validation レイヤ専用 DTO を組み立てる。
+     * 既知の制約: SV-312 の子 DTO が null の場合は対応する子 DTO を null とする。
+     *
+     * @param sv312Output SV-312 の戻り値
+     * @return SV-142 の出力 DTO
+     */
+    private CalculationStartDateIdentificationErrorJudgmentOutput toOutput(
+            BigDecimal outputUsage,
+            String outputRegressionMark,
+            GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L303">        var sourcePreviousReading = sv312Output.znkiKnkkInf();</span>
+<span class="fc" id="L304">        var sourceRecentReading = sv312Output.skinKnkkInf();</span>
+<span class="fc" id="L305">        var sourceGasUsageInfo = sv312Output.gasRknKsnInf();</span>
+<span class="fc" id="L306">        var sourceCurrentReading = sv312Output.konKnkkInf();</span>
+
+<span class="fc" id="L308">        return new CalculationStartDateIdentificationErrorJudgmentOutput(</span>
+                outputUsage,
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">                sourcePreviousReading == null</span>
+<span class="nc" id="L311">                        ? null</span>
+<span class="fc" id="L312">                        : new ZnkiKnkkInf(sourcePreviousReading.knsYmd(), sourcePreviousReading.gmtShjSu()),</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">                sourceRecentReading == null</span>
+<span class="nc" id="L314">                        ? null</span>
+<span class="fc" id="L315">                : new SkinKnkkInf(</span>
+<span class="fc" id="L316">                    sourceRecentReading.knsYmd(),</span>
+<span class="fc" id="L317">                    sourceRecentReading.gmtShjSu(),</span>
+<span class="fc" id="L318">                    sourceRecentReading.sjskKbn()),</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">                sourceGasUsageInfo == null</span>
+<span class="nc" id="L320">                        ? null</span>
+<span class="fc" id="L321">                        : new GasRknKsnInf(</span>
+<span class="fc" id="L322">                        sourceGasUsageInfo.kokiRkksYmd(),</span>
+<span class="fc" id="L323">                                sourceGasUsageInfo.jkarSuKnzmGasSyry(),</span>
+<span class="fc" id="L324">                                sourceGasUsageInfo.shyDdsu(),</span>
+<span class="fc" id="L325">                                sourceGasUsageInfo.kkyCushDdsu()),</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                sourceCurrentReading == null</span>
+<span class="nc" id="L327">                        ? null</span>
+<span class="fc" id="L328">                        : new KonKnkkInf(</span>
+<span class="fc" id="L329">                                sourceCurrentReading.jkarSuKnzmGasSyry(),</span>
+<span class="fc" id="L330">                                sourceCurrentReading.shyDdsu()),</span>
+                outputRegressionMark);
+    }
+
+    /**
+     * 概要: 指示数回帰区分設定済み時の出力 DTO を生成する。
+     * 主な仕様:
+     * - 戻り値の算出使用量と指示数回帰区分には引数の値を設定する。
+     * - それ以外の項目は SV-312 の戻り値を写像する。
+     *
+     * @param gasSyry 引数のガス使用量
+     * @param sjskKbn 引数の指示数回帰区分
+     * @param sv312Output SV-312 の戻り値
+     * @return 指示数回帰区分設定済み時の出力 DTO
+     */
+    private CalculationStartDateIdentificationErrorJudgmentOutput toSetRegressionOutput(
+            BigDecimal gasSyry,
+            String sjskKbn,
+            GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L349">        return toOutput(gasSyry, sjskKbn, sv312Output);</span>
+    }
+
+    /**
+     * 概要: 指示数回帰区分未設定時の早期 return 用 DTO を生成する。
+     * 主な仕様:
+     * - 戻り値の算出使用量と指示数回帰区分には SV-312 で取得した値を設定する。
+     * - それ以外の項目は SV-312 の戻り値を写像する。
+     * 既知の制約: SV-312 の指示数回帰区分が null の場合は null をそのまま返す。
+     *
+     * @param sv312Output SV-312 の戻り値
+     * @return 指示数回帰区分未設定時の出力 DTO
+     */
+    private CalculationStartDateIdentificationErrorJudgmentOutput toUnsetRegressionOutput(
+            GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L364">        return toOutput(resolveCalculatedGasUsage(sv312Output), sv312Output.sjskKbn(), sv312Output);</span>
+    }
+
+    /**
+     * 概要: SV-312 の実供給圧力数換算前ガス使用量を取得する。
+     * 主な仕様: ガス料金計算用情報がない場合は null を返す。
+     * 既知の制約: なし。
+     *
+     * @param sv312Output SV-312 の戻り値
+     * @return 実供給圧力数換算前ガス使用量
+     */
+    private BigDecimal resolveCalculatedGasUsage(GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L376">        var gasUsageInfo = sv312Output.gasRknKsnInf();</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">        return gasUsageInfo == null ? null : gasUsageInfo.jkarSuKnzmGasSyry();</span>
+    }
+
+<span class="fc" id="L380">    private record GasUsageForBillingDerivationState(</span>
+            GasUsageForBillingDerivationOutput output,
+            boolean targetMeterReadingResultError) {
+
+        private static GasUsageForBillingDerivationState success(
+                GasUsageForBillingDerivationOutput output) {
+<span class="fc" id="L386">            return new GasUsageForBillingDerivationState(output, false);</span>
+        }
+
+        private static GasUsageForBillingDerivationState withTargetMeterReadingResultError() {
+<span class="fc" id="L390">            return new GasUsageForBillingDerivationState(</span>
+                    new GasUsageForBillingDerivationOutput(null, null, null, null, null, null),
+                    true);
+        }
+    }
+
+    /**
+     * 概要: SV-312 戻り値から使用日数を取得する。
+     * 主な仕様: 使用日数判定に必要な情報が欠損している場合は業務エラー 020200040 を送出する。
+     * 既知の制約: 欠損値の補完は行わない。
+     *
+     * @param sv312Output SV-312 の戻り値
+     * @return 使用日数
+     */
+    private Integer resolveUsageDays(
+            GasUsageForBillingDerivationOutput sv312Output) {
+<span class="fc" id="L406">        var gasUsageInfo = sv312Output.gasRknKsnInf();</span>
+<span class="pc bpc" id="L407" title="1 of 4 branches missed.">        if (gasUsageInfo == null || gasUsageInfo.shyDdsu() == null) {</span>
+<span class="fc" id="L408">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200040);</span>
+        }
+<span class="fc" id="L410">        return gasUsageInfo.shyDdsu();</span>
+    }
+
+    /**
+     * 概要: 専用メーターの最近検針年月日を取り出す。
+     * 主な仕様: 対応要素が存在しない場合は null を返す。
+     * 既知の制約: なし。
+     *
+     * @param recentReadingList 専用メーター最近検針情報リスト
+     * @param index 対象インデックス
+     * @return 最近検針年月日
+     */
+    private LocalDate resolveDedicatedRecentReadingDate(
+            ArrayList&lt;SnySkinKnsInfList&gt; recentReadingList,
+            int index) {
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">        return index &lt; recentReadingList.size() ? recentReadingList.get(index).snySkinKnsYmd() : null;</span>
+    }
+
+    /**
+     * 概要: 総合扱い他メーターの最近検針年月日を取り出す。
+     * 主な仕様: 対応要素が存在しない場合は null を返す。
+     * 既知の制約: なし。
+     *
+     * @param recentReadingList 総合他ガスメーター最近検針情報リスト
+     * @param index 対象インデックス
+     * @return 最近検針年月日
+     */
+    private LocalDate resolveComprehensiveRecentReadingDate(
+            ArrayList&lt;SuguGmtSkinKnsInfList&gt; recentReadingList,
+            int index) {
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">        return index &lt; recentReadingList.size()</span>
+<span class="fc" id="L441">                ? recentReadingList.get(index).suguTmtrSkinKnsYmd()</span>
+<span class="nc" id="L442">                : null;</span>
+    }
+
+    /**
+     * 概要: null 許容の ArrayList を空リストへ正規化する。
+     * 主な仕様: null の場合だけ新しい空の ArrayList を返す。
+     * 既知の制約: 要素の defensive copy は行わない。
+     *
+     * @param list 対象リスト
+     * @param &lt;T&gt; 要素型
+     * @return 空リストまたは元のリスト
+     */
+    private &lt;T&gt; ArrayList&lt;T&gt; defaultList(ArrayList&lt;T&gt; list) {
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">        return list == null ? new ArrayList&lt;&gt;() : list;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
