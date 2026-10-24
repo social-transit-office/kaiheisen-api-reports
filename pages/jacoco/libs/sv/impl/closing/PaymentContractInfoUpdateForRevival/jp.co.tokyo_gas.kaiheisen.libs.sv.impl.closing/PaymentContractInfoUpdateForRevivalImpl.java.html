@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaymentContractInfoUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-paymentcontractinfoupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">PaymentContractInfoUpdateForRevivalImpl.java</span></div><h1>PaymentContractInfoUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.CrdhriDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.DsqkjhDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractInfoUpdateForRevival;
+
+/**
+ * SV-095（支払契約関連情報更新（契約復活））のサービス実装.
+ * 主な仕様:
+ * - 支払契約を契約復活状態へ更新した後、支払方法種別に応じて
+ *   関連情報を 1 系統のみ更新する.
+ * - 共通更新および分岐先更新の更新件数が 0 件の場合は
+ *   データ不整合例外を送出する.
+ * - 監査情報には固定更新ユーザー ID と
+ *   RequestContext 由来の報告元機能 ID を設定する.
+ */
+public class PaymentContractInfoUpdateForRevivalImpl
+    implements PaymentContractInfoUpdateForRevival {
+
+    /** 固定の更新ユーザー ID. */
+    static final String SERVICE_USER_ID = &quot;KHSS095&quot;;
+
+    /** 契約復活時に設定する最大日付. */
+<span class="fc" id="L52">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    /** 支払契約更新を行う DA. */
+    private final SihakyDataAccess sihakyDataAccess;
+
+    /** 払込関連情報更新を行う DA. */
+    private final HrikmiDataAccess hrikmiDataAccess;
+
+    /** 口座振替関連情報更新を行う DA. */
+    private final KuzfrkDataAccess kuzfrkDataAccess;
+
+    /** カード払い関連情報更新を行う DA. */
+    private final CrdhriDataAccess crdhriDataAccess;
+
+    /** 電子請求関連情報更新を行う DA. */
+    private final DsqkjhDataAccess dsqkjhDataAccess;
+
+    /** 監査値とコンテキスト値を参照するリクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 報告システム種別のデコードに使用する定数サービス. */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /** 契約復活時に設定する支払契約状態の定数値. */
+    private final String applyingPaymentContractStatus;
+
+    /** 払込みを表す検証済み支払方法種別コード. */
+    private final String transferSlipPaymentMethodType;
+
+    /** 口座振替を表す検証済み支払方法種別コード. */
+    private final String accountTransferPaymentMethodType;
+
+    /** カード払いを表す検証済み支払方法種別コード. */
+    private final String cardPaymentMethodType;
+
+    /** 電子請求を表す検証済み支払方法種別コード. */
+    private final String electronicBillingPaymentMethodType;
+
+    /**
+     * SV-095 実装を初期化する.
+     *
+     * @param paymentContractDataAccess 支払契約更新用 DA
+     * @param transferSlipDataAccess 払込関連情報更新用 DA
+     * @param accountTransferDataAccess 口座振替関連情報更新用 DA
+     * @param cardPaymentDataAccess カード払い関連情報更新用 DA
+     * @param electronicBillingDataAccess 電子請求関連情報更新用 DA
+     * @param requestContextHolder リクエストコンテキスト
+     * @param reportingConstantService Kaiheisen 定数サービス
+     * @param paymentContractConstantService Cirius 定数サービス
+     */
+    public PaymentContractInfoUpdateForRevivalImpl(
+            final SihakyDataAccess paymentContractDataAccess,
+            final HrikmiDataAccess transferSlipDataAccess,
+            final KuzfrkDataAccess accountTransferDataAccess,
+            final CrdhriDataAccess cardPaymentDataAccess,
+            final DsqkjhDataAccess electronicBillingDataAccess,
+            final RequestContext requestContextHolder,
+            final KaiheisenConstantService reportingConstantService,
+<span class="fc" id="L110">            final CiriusConstantService paymentContractConstantService) {</span>
+<span class="fc" id="L111">        this.sihakyDataAccess = Objects.requireNonNull(</span>
+            paymentContractDataAccess,
+            &quot;paymentContractDataAccess&quot;);
+<span class="fc" id="L114">        this.hrikmiDataAccess = Objects.requireNonNull(</span>
+            transferSlipDataAccess,
+            &quot;transferSlipDataAccess&quot;);
+<span class="fc" id="L117">        this.kuzfrkDataAccess = Objects.requireNonNull(</span>
+            accountTransferDataAccess,
+            &quot;accountTransferDataAccess&quot;);
+<span class="fc" id="L120">        this.crdhriDataAccess = Objects.requireNonNull(</span>
+            cardPaymentDataAccess,
+            &quot;cardPaymentDataAccess&quot;);
+<span class="fc" id="L123">        this.dsqkjhDataAccess = Objects.requireNonNull(</span>
+            electronicBillingDataAccess,
+            &quot;electronicBillingDataAccess&quot;);
+<span class="fc" id="L126">        this.requestContext = Objects.requireNonNull(</span>
+                requestContextHolder,
+                &quot;requestContextHolder&quot;);
+<span class="fc" id="L129">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                reportingConstantService,
+                &quot;reportingConstantService&quot;);
+<span class="fc" id="L132">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L133">                Objects.requireNonNull(</span>
+                        paymentContractConstantService,
+                        &quot;paymentContractConstantService&quot;);
+<span class="fc" id="L136">        this.applyingPaymentContractStatus = RequiredConstantResolver</span>
+<span class="fc" id="L137">            .requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L141">        this.transferSlipPaymentMethodType = RequiredConstantResolver</span>
+<span class="fc" id="L142">            .requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.PAYMENT);
+<span class="fc" id="L146">        this.accountTransferPaymentMethodType = RequiredConstantResolver</span>
+<span class="fc" id="L147">            .requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.ACCOUNT_TRANSFER);
+<span class="fc" id="L151">        this.cardPaymentMethodType = RequiredConstantResolver</span>
+<span class="fc" id="L152">            .requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.CARD_PAYMENT);
+<span class="fc" id="L156">        this.electronicBillingPaymentMethodType = RequiredConstantResolver</span>
+<span class="fc" id="L157">            .requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.ELECTRONIC_BILLING);
+<span class="fc" id="L161">    }</span>
+
+    /**
+     * 支払契約と支払方法別の関連情報を契約復活状態へ更新する.
+     *
+     * @param sihHuhuShbt 支払方法種別
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     */
+    @Override
+    public void execute(
+            final String sihHuhuShbt,
+            final Long sihKiyNo,
+            final Integer skno) {
+<span class="fc" id="L175">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L176">        AuditContext auditContext = AuditContext.of(</span>
+                SERVICE_USER_ID,
+                decodedOriginFunctionId);
+
+<span class="fc" id="L180">        updatePaymentContract(</span>
+                sihKiyNo,
+                skno,
+                auditContext,
+                decodedOriginFunctionId);
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (transferSlipPaymentMethodType.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L187">            updateTransferSlipInfo(</span>
+                    sihKiyNo,
+                    skno,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L192">            return;</span>
+        }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (accountTransferPaymentMethodType.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L195">            updateAccountTransferInfo(</span>
+                    sihKiyNo,
+                    skno,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L200">            return;</span>
+        }
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (cardPaymentMethodType.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L203">            updateCardInfo(</span>
+                    sihKiyNo,
+                    skno,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L208">            return;</span>
+        }
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (electronicBillingPaymentMethodType.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L211">            updateElectronicBillingInfo(</span>
+                    sihKiyNo,
+                    skno,
+                    auditContext,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * 支払契約を契約復活状態へ更新する.
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     * @param auditContext 更新監査情報
+     * @param decodedOriginFunctionId デコード済み報告元機能 ID
+     */
+    private void updatePaymentContract(
+            final Long sihKiyNo,
+            final Integer skno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L232">        int updatedCount = sihakyDataAccess.updateBySihKiyNoAndSknoAndRecUpdJnjNo(</span>
+            new SihakyWriteRecord(
+                sihKiyNo,
+                skno,
+                null,
+                MAX_DATE,
+                applyingPaymentContractStatus,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
+<span class="fc" id="L252">            Set.of(</span>
+                SihakyColumn.TYEN_YMD,
+                SihakyColumn.SIH_KIY_JTKB),
+            new SihakySknoJnjUpdateKey(
+                sihKiyNo,
+                skno,
+                null),
+            auditContext);
+<span class="fc" id="L260">        ensureUpdatedCount(updatedCount,</span>
+<span class="fc" id="L261">                sihakyDataAccess.tableName(),</span>
+                SihakyDataAccess.CallSpecs
+                    .UPDATE_BY_SIH_KIY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L264">                    .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L266">                    .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L267">                    .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L268">                    .put(&quot;recUpdJnjNo&quot;, null)</span>
+<span class="fc" id="L269">                    .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L270">                    .put(&quot;sihKiyJtkb&quot;, applyingPaymentContractStatus)</span>
+<span class="fc" id="L271">                    .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L272">                    .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+<span class="fc" id="L273">    }</span>
+
+    /**
+     * 払込み向けの関連情報を更新する.
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     * @param auditContext 更新監査情報
+     * @param decodedOriginFunctionId デコード済み報告元機能 ID
+     */
+    private void updateTransferSlipInfo(
+            final Long sihKiyNo,
+            final Integer skno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L288">        int updatedCount = hrikmiDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+            new HrikmiWriteRecord(
+                sihKiyNo,
+                skno,
+                null,
+                MAX_DATE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
+<span class="fc" id="L302">                Set.of(HrikmiColumn.TYEN_YMD),</span>
+                new HrikmiSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc" id="L305">        ensureUpdatedCount(updatedCount,</span>
+<span class="fc" id="L306">            hrikmiDataAccess.tableName(),</span>
+            HrikmiDataAccess.CallSpecs
+                .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO
+<span class="fc" id="L309">                .identifier(),</span>
+            new FlatJsonBuilder()
+<span class="fc" id="L311">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L312">                .put(&quot;sihKiySkno&quot;, skno)</span>
+<span class="fc" id="L313">                .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L314">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L315">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+<span class="fc" id="L316">    }</span>
+
+    /**
+     * 口座振替向けの関連情報を更新する.
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     * @param auditContext 更新監査情報
+     * @param decodedOriginFunctionId デコード済み報告元機能 ID
+     */
+    private void updateAccountTransferInfo(
+            final Long sihKiyNo,
+            final Integer skno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L331">        int updatedCount = kuzfrkDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+            new KuzfrkWriteRecord(
+                sihKiyNo,
+                skno,
+                null,
+                MAX_DATE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
+<span class="fc" id="L349">                Set.of(KuzfrkColumn.TYEN_YMD),</span>
+                new KuzfrkSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc" id="L352">        ensureUpdatedCount(updatedCount,</span>
+<span class="fc" id="L353">            kuzfrkDataAccess.tableName(),</span>
+            KuzfrkDataAccess.CallSpecs
+                .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO
+<span class="fc" id="L356">                .identifier(),</span>
+            new FlatJsonBuilder()
+<span class="fc" id="L358">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L359">                .put(&quot;sihKiySkno&quot;, skno)</span>
+<span class="fc" id="L360">                .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L361">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L362">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+<span class="fc" id="L363">    }</span>
+
+    /**
+     * カード払い向けの関連情報を更新する.
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     * @param auditContext 更新監査情報
+     * @param decodedOriginFunctionId デコード済み報告元機能 ID
+     */
+    private void updateCardInfo(
+            final Long sihKiyNo,
+            final Integer skno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L378">        int updatedCount = crdhriDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+            new CrdhriWriteRecord(
+                sihKiyNo,
+                skno,
+                null,
+                MAX_DATE,
+                null,
+                null,
+                null),
+<span class="fc" id="L387">                Set.of(CrdhriColumn.TYEN_YMD),</span>
+            new jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri
+                .write.CrdhriSihKiyUpdateKey(sihKiyNo, skno, null),
+                auditContext);
+<span class="fc" id="L391">        ensureUpdatedCount(updatedCount,</span>
+<span class="fc" id="L392">            crdhriDataAccess.tableName(),</span>
+            CrdhriDataAccess.CallSpecs
+                .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO
+<span class="fc" id="L395">                .identifier(),</span>
+            new FlatJsonBuilder()
+<span class="fc" id="L397">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L398">                .put(&quot;sihKiySkno&quot;, skno)</span>
+<span class="fc" id="L399">                .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L400">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L401">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+<span class="fc" id="L402">    }</span>
+
+    /**
+     * 電子請求向けの関連情報を更新する.
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param skno 世代管理番号
+     * @param auditContext 更新監査情報
+     * @param decodedOriginFunctionId デコード済み報告元機能 ID
+     */
+    private void updateElectronicBillingInfo(
+            final Long sihKiyNo,
+            final Integer skno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L417">        int updatedCount = dsqkjhDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+            new DsqkjhWriteRecord(
+                sihKiyNo,
+                skno,
+                null,
+                MAX_DATE,
+                null,
+                null,
+                null,
+                null),
+<span class="fc" id="L427">                Set.of(DsqkjhColumn.TYEN_YMD),</span>
+                new DsqkjhSihKiyUpdateKey(sihKiyNo, skno, null),
+                auditContext);
+<span class="fc" id="L430">        ensureUpdatedCount(updatedCount,</span>
+<span class="fc" id="L431">            dsqkjhDataAccess.tableName(),</span>
+            DsqkjhDataAccess.CallSpecs
+                .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO
+<span class="fc" id="L434">                .identifier(),</span>
+            new FlatJsonBuilder()
+<span class="fc" id="L436">                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L437">                .put(&quot;sihKiySkno&quot;, skno)</span>
+<span class="fc" id="L438">                .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L439">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L440">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+<span class="fc" id="L441">    }</span>
+
+    /**
+     * 更新件数が 0 件の場合にデータ不整合例外を送出する.
+     *
+     * @param updatedCount 更新件数
+     * @param tableName 対象テーブル名
+     * @param daIdentifier DA 識別子
+     * @param parameterJsonBuilder パラメータ JSON 構築子
+     */
+    private void ensureUpdatedCount(
+            final int updatedCount,
+            final String tableName,
+            final String daIdentifier,
+            final FlatJsonBuilder parameterJsonBuilder) {
+<span class="fc bfc" id="L456" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L457">            throw DataInconsistencySupport.create(</span>
+                    tableName,
+                    daIdentifier,
+                    parameterJsonBuilder);
+        }
+<span class="fc" id="L462">    }</span>
+
+    /**
+     * RequestContext の報告システム種別を報告元機能 ID へデコードする.
+     *
+     * @return デコード済み報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L470">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L472">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L473">                .orElseThrow(</span>
+<span class="fc" id="L474">                    () -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.hukkSysShbt is required&quot;)));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

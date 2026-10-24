@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FullWidthText.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-validation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.validation.constraint</a> &gt; <span class="el_source">FullWidthText.java</span></div><h1>FullWidthText.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.validation.constraint;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+
+/**
+ * 全角文字を検証するカスタムアノテーション。
+ *
+ * &lt;p&gt;本制約では、入力値を {@link String#trim()} で前後空白除去したうえで、
+ * Windows-31J で各文字が 2 バイトで表現可能な文字のみを「全角」とみなす。
+ * null / blank は本制約では違反とせず、必須判定は別制約で担保する。&lt;/p&gt;
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.RECORD_COMPONENT, ElementType.FIELD, ElementType.PARAMETER})
+public @interface FullWidthText {
+
+    /**
+     * エラーコード。
+     */
+    String errorCode() default ErrorCodeConstants.ERROR_CODE_010000030;
+
+    /**
+     * FullWidthText 検証ロジック。
+     */
+    final class Rule implements ConstraintRule&lt;FullWidthText&gt; {
+
+        private static final String WINDOWS_31J_NAME = &quot;windows-31j&quot;;
+
+<span class="fc" id="L39">        private static final Charset WINDOWS_31J = resolveWindows31j();</span>
+
+        private Rule() {
+        }
+
+<span class="fc" id="L44">        private static final Rule INSTANCE = new Rule();</span>
+
+        /**
+         * シングルトンインスタンスを返す。
+         *
+         * @return Rule インスタンス
+         */
+        public static Rule instance() {
+<span class="fc" id="L52">            return INSTANCE;</span>
+        }
+
+        @Override
+        public Optional&lt;ValidationError&gt; validate(Object value, FullWidthText annotation, String fieldName) {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (!(value instanceof String text)) {</span>
+<span class="nc" id="L58">                return Optional.empty();</span>
+            }
+<span class="fc" id="L60">            String normalized = text.trim();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (normalized.isEmpty()) {</span>
+<span class="fc" id="L62">                return Optional.empty();</span>
+            }
+<span class="fc" id="L64">            CharsetEncoder encoder = WINDOWS_31J.newEncoder();</span>
+<span class="fc" id="L65">            CharBuffer charBuffer = CharBuffer.allocate(2);</span>
+<span class="fc" id="L66">            ByteBuffer byteBuffer = ByteBuffer.allocate((int) Math.ceil(encoder.maxBytesPerChar() * 2));</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">            if (normalized.codePoints().allMatch(</span>
+<span class="fc" id="L68">                    codePoint -&gt; isWindows31jFullWidthCodePoint(codePoint, encoder, charBuffer, byteBuffer))) {</span>
+<span class="fc" id="L69">                return Optional.empty();</span>
+            }
+<span class="fc" id="L71">            return Optional.of(ValidationError.ofField(annotation.errorCode(), fieldName));</span>
+        }
+
+        private static Charset resolveWindows31j() {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (Charset.isSupported(WINDOWS_31J_NAME)) {</span>
+<span class="fc" id="L76">                return Charset.forName(WINDOWS_31J_NAME);</span>
+            }
+<span class="nc" id="L78">            throw new IllegalStateException(WINDOWS_31J_NAME + &quot; charset is required for FullWidthText validation&quot;);</span>
+        }
+
+        private static boolean isWindows31jFullWidthCodePoint(
+                int codePoint,
+                CharsetEncoder encoder,
+                CharBuffer charBuffer,
+                ByteBuffer byteBuffer) {
+<span class="fc" id="L86">            charBuffer.clear();</span>
+<span class="fc" id="L87">            appendCodePoint(codePoint, charBuffer);</span>
+<span class="fc" id="L88">            charBuffer.flip();</span>
+
+<span class="fc" id="L90">            encoder.reset();</span>
+<span class="fc" id="L91">            byteBuffer.clear();</span>
+
+<span class="fc" id="L93">            CoderResult coderResult = encoder.encode(charBuffer, byteBuffer, true);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            if (coderResult.isError()) {</span>
+<span class="fc" id="L95">                return false;</span>
+            }
+<span class="fc" id="L97">            coderResult = encoder.flush(byteBuffer);</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (coderResult.isError()) {</span>
+<span class="nc" id="L99">                return false;</span>
+            }
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">            return coderResult.isUnderflow() &amp;&amp; byteBuffer.position() == 2;</span>
+        }
+
+        private static void appendCodePoint(int codePoint, CharBuffer charBuffer) {
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (Character.isBmpCodePoint(codePoint)) {</span>
+<span class="fc" id="L106">                charBuffer.put((char) codePoint);</span>
+<span class="fc" id="L107">                return;</span>
+            }
+<span class="nc" id="L109">            charBuffer.put(Character.highSurrogate(codePoint));</span>
+<span class="nc" id="L110">            charBuffer.put(Character.lowSurrogate(codePoint));</span>
+<span class="nc" id="L111">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VariableUsageJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-variableusagejudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">VariableUsageJudgmentImpl.java</span></div><h1>VariableUsageJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageMultiplierCategoryAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageMultiplierCategoryAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageJudgmentOutput;
+
+/**
+ * 概要: 変動使用量判定サービス実装。
+ * 主な仕様:
+ * - SV-198 から取得した倍率分類を用いて、前回使用量および前年同月使用量との比較で変動使用量エラー有無を判定する。
+ * 既知の制約:
+ * - エラー理由コード自体は返却せず、Boolean フラグのみを出力する。
+ */
+public final class VariableUsageJudgmentImpl implements VariableUsageJudgment {
+
+<span class="fc" id="L20">    private static final VariableUsageJudgmentOutput TRUE_OUTPUT =</span>
+            new VariableUsageJudgmentOutput(Boolean.TRUE);
+
+<span class="fc" id="L23">    private static final VariableUsageJudgmentOutput FALSE_OUTPUT =</span>
+            new VariableUsageJudgmentOutput(Boolean.FALSE);
+
+    private final UsageMultiplierCategoryAcquisition usageMultiplierCategoryAcquisition;
+
+    /**
+     * 概要: 変動使用量判定サービス実装を生成する。
+     *
+     * @param usageMultiplierCategoryAcquisition 使用量倍率分類取得サービス
+     */
+<span class="fc" id="L33">    public VariableUsageJudgmentImpl(UsageMultiplierCategoryAcquisition usageMultiplierCategoryAcquisition) {</span>
+<span class="fc" id="L34">        this.usageMultiplierCategoryAcquisition =</span>
+<span class="fc" id="L35">                Objects.requireNonNull(</span>
+                        usageMultiplierCategoryAcquisition,
+                        &quot;usageMultiplierCategoryAcquisition&quot;);
+<span class="fc" id="L38">    }</span>
+
+    /**
+     * 概要: 変動使用量エラー有無を判定する。
+     * 主な仕様:
+     * - 前回使用日数が 0 の場合は判定処理を行わず false を返す。
+     * - 下限倍率条件と上限倍率条件のいずれかでエラー条件が成立した場合に true を返す。
+     *
+     * @param konSyry 今回使用量
+     * @param znkiSyry 前回使用量
+     * @param zndmSyry 前年同月使用量
+     * @param znkiShyDdsu 前回使用日数
+     * @param zndmShyDdsu 前年同月使用日数
+     * @param knsYmd 検針年月日
+     * @return 判定結果
+     */
+    @Override
+    public VariableUsageJudgmentOutput execute(
+            BigDecimal konSyry,
+            BigDecimal znkiSyry,
+            BigDecimal zndmSyry,
+            Integer znkiShyDdsu,
+            Integer zndmShyDdsu,
+            LocalDate knsYmd) {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (!isNonZero(znkiShyDdsu)) {</span>
+<span class="fc" id="L63">            return FALSE_OUTPUT;</span>
+        }
+
+<span class="fc" id="L66">        UsageMultiplierCategoryAcquisitionOutput multiplierOutput =</span>
+<span class="fc" id="L67">            usageMultiplierCategoryAcquisition.execute(knsYmd, konSyry);</span>
+
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (isLessThanOrEqual(multiply(konSyry, multiplierOutput.tiZnkiKgnBirt()), znkiSyry)) {</span>
+<span class="fc" id="L70">            return judgePreviousYearPath(</span>
+                konSyry,
+                zndmSyry,
+                zndmShyDdsu,
+<span class="fc" id="L74">                multiplierOutput.tiZndmKgnBirt(),</span>
+<span class="fc" id="L75">                multiplierOutput.tiZndmJgnBirt());</span>
+        }
+
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!isMinusOne(multiplierOutput.tiZnkiJgnBirt())</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                &amp;&amp; isLessThanOrEqual(</span>
+<span class="fc" id="L80">                        multiply(znkiSyry, multiplierOutput.tiZnkiJgnBirt()),</span>
+                        konSyry)) {
+<span class="fc" id="L82">            return judgePreviousYearPath(</span>
+                konSyry,
+                zndmSyry,
+                zndmShyDdsu,
+<span class="fc" id="L86">                multiplierOutput.tiZndmKgnBirt(),</span>
+<span class="fc" id="L87">                multiplierOutput.tiZndmJgnBirt());</span>
+        }
+
+<span class="fc" id="L90">        return FALSE_OUTPUT;</span>
+    }
+
+    /**
+     * 概要: 前年同月側のエラー判定を共通化。
+     *
+     * @param konSyry 今回使用量
+     * @param zndmSyry 前年同月使用量
+     * @param zndmShyDdsu 前年同月使用日数
+     * @param tiZndmKgnBirt 対前年同月下限倍率
+     * @param tiZndmJgnBirt 対前年同月上限倍率
+     * @return 判定結果
+     */
+    private VariableUsageJudgmentOutput judgePreviousYearPath(
+            BigDecimal konSyry,
+            BigDecimal zndmSyry,
+            Integer zndmShyDdsu,
+            Integer tiZndmKgnBirt,
+            Integer tiZndmJgnBirt) {
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (isZero(zndmShyDdsu)) {</span>
+<span class="fc" id="L110">            return TRUE_OUTPUT;</span>
+        }
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (isLessThanOrEqual(multiply(konSyry, tiZndmKgnBirt), zndmSyry)) {</span>
+<span class="fc" id="L113">            return TRUE_OUTPUT;</span>
+        }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (isLessThanOrEqual(multiply(zndmSyry, tiZndmJgnBirt), konSyry)) {</span>
+<span class="fc" id="L116">            return TRUE_OUTPUT;</span>
+        }
+<span class="fc" id="L118">        return FALSE_OUTPUT;</span>
+    }
+
+    /**
+     * 概要: 使用日数が 0 であることを判定する。
+     *
+     * @param value 使用日数
+     * @return 0 の場合 true
+     */
+    private boolean isZero(Integer value) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        return value.intValue() == 0;</span>
+    }
+
+    /**
+     * 概要: 使用日数が 0 以外であることを判定する。
+     *
+     * @param value 使用日数
+     * @return 0 以外の場合 true
+     */
+    private boolean isNonZero(Integer value) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        return value.intValue() != 0;</span>
+    }
+
+    /**
+     * 概要: 倍率が -1 であることを判定する。
+     *
+     * @param multiplier 倍率
+     * @return -1 の場合 true
+     */
+    private boolean isMinusOne(Integer multiplier) {
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        return multiplier.intValue() == -1;</span>
+    }
+
+    /**
+     * 概要: 使用量と倍率を乗算する。
+     *
+     * @param value 使用量
+     * @param multiplier 倍率
+     * @return 乗算結果
+     */
+    private BigDecimal multiply(BigDecimal value, Integer multiplier) {
+<span class="fc" id="L159">        return value.multiply(BigDecimal.valueOf(multiplier.longValue()));</span>
+    }
+
+    /**
+     * 概要: 左辺が右辺以下かを判定する。
+     *
+     * @param left 左辺
+     * @param right 右辺
+     * @return 左辺が右辺以下の場合 true
+     */
+    private boolean isLessThanOrEqual(BigDecimal left, BigDecimal right) {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        return left.compareTo(right) &lt;= 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

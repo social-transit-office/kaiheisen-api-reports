@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DataAccessPhaseRecorder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">DataAccessPhaseRecorder.java</span></div><h1>DataAccessPhaseRecorder.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.DataAccessPhaseObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+
+/** DataAccess 内部の処理フェーズを構造化ログへ記録する。 */
+public final class DataAccessPhaseRecorder {
+
+    /** パラメータ変換フェーズ。 */
+    public static final String PARAMETER_CONVERSION = &quot;parameter-conversion&quot;;
+
+    /** クエリ組み立てフェーズ。 */
+    public static final String QUERY_CONSTRUCTION = &quot;query-construction&quot;;
+
+    /** SQL 実行・結果取得フェーズ。 */
+    public static final String SQL_EXECUTION_RESULT_FETCH = &quot;sql-execution-result-fetch&quot;;
+
+    /** Record 変換フェーズ。 */
+    public static final String RECORD_CONVERSION = &quot;record-conversion&quot;;
+
+    private static final String COMPLETED_EVENT = &quot;dataaccess.phase.completed&quot;;
+
+    private static final String COMPLETED_SUMMARY = &quot;DataAccess phase completed&quot;;
+
+    private static final String FAILED_EVENT = &quot;dataaccess.phase.failed&quot;;
+
+    private static final String FAILED_SUMMARY = &quot;DataAccess phase failed&quot;;
+
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    private static final String PHASE_ATTRIBUTE = &quot;phase&quot;;
+
+    private static final String ELAPSED_SINCE_DATA_ACCESS_START_MS_ATTRIBUTE =
+            &quot;elapsedSinceDataAccessStartMs&quot;;
+
+<span class="fc" id="L44">    private static final Set&lt;String&gt; TARGET_FUNCTION_IDS =</span>
+<span class="fc" id="L45">            Set.of(&quot;DA-033-R006&quot;, &quot;DA-108-R003&quot;);</span>
+
+<span class="fc" id="L47">    private static final ThreadLocal&lt;Deque&lt;State&gt;&gt; CURRENT = new ThreadLocal&lt;&gt;();</span>
+
+    private DataAccessPhaseRecorder() {
+    }
+
+    /**
+     * 現在の DataAccess 呼び出しに紐付けて処理フェーズを計測する。
+     *
+     * &lt;p&gt;計測が無効、または計測コンテキストがない場合は処理のみを実行する。ログ生成・出力の
+     * 失敗は業務処理へ伝播させない。処理自身が投げた {@link RuntimeException} または
+     * {@link Error} は、同じインスタンスを呼び出し元へ返す。&lt;/p&gt;
+     *
+     * @param phase フェーズ名
+     * @param action 計測対象処理
+     * @param &lt;T&gt; 戻り値型
+     * @return 処理結果
+     */
+    public static &lt;T&gt; T measure(final String phase, final Supplier&lt;T&gt; action) {
+<span class="fc" id="L65">        State state = currentState();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (state == null) {</span>
+<span class="fc" id="L67">            return action.get();</span>
+        }
+
+<span class="fc" id="L70">        long phaseStartedNanos = System.nanoTime();</span>
+        try {
+<span class="fc" id="L72">            T result = action.get();</span>
+<span class="fc" id="L73">            logSafely(</span>
+                    state,
+                    COMPLETED_EVENT,
+                    COMPLETED_SUMMARY,
+                    phase,
+                    phaseStartedNanos,
+                    null);
+<span class="fc" id="L80">            return result;</span>
+<span class="fc" id="L81">        } catch (RuntimeException | Error cause) {</span>
+<span class="fc" id="L82">            logSafely(</span>
+                    state,
+                    FAILED_EVENT,
+                    FAILED_SUMMARY,
+                    phase,
+                    phaseStartedNanos,
+                    cause);
+<span class="fc" id="L89">            throw cause;</span>
+        }
+    }
+
+    static boolean isEnabledFor(final String functionId) {
+        try {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">            return TARGET_FUNCTION_IDS.contains(functionId)</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    &amp;&amp; DataAccessPhaseObservabilitySettings.isEnabled();</span>
+<span class="nc" id="L97">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L98">            return false;</span>
+        }
+    }
+
+    static Scope open(
+            final boolean enabled,
+            final String functionId,
+            final String correlationId,
+            final Long invocationSequence,
+            final boolean measurementUnavailable,
+            final long dataAccessStartedNanos,
+            final CommonDataAccessLogger logger) {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!enabled) {</span>
+<span class="fc" id="L111">            return Scope.NOOP;</span>
+        }
+        try {
+<span class="fc" id="L114">            State state = new State(</span>
+                    functionId,
+                    correlationId,
+                    invocationSequence,
+                    measurementUnavailable,
+                    dataAccessStartedNanos,
+                    logger);
+<span class="fc" id="L121">            Deque&lt;State&gt; states = CURRENT.get();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (states == null) {</span>
+<span class="fc" id="L123">                states = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L124">                CURRENT.set(states);</span>
+            }
+<span class="fc" id="L126">            states.push(state);</span>
+<span class="fc" id="L127">            return () -&gt; close(state);</span>
+<span class="nc" id="L128">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L129">            return Scope.NOOP;</span>
+        }
+    }
+
+    private static State currentState() {
+        try {
+<span class="fc" id="L135">            Deque&lt;State&gt; states = CURRENT.get();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            return states == null ? null : states.peek();</span>
+<span class="nc" id="L137">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L138">            return null;</span>
+        }
+    }
+
+    private static void close(final State state) {
+        try {
+<span class="fc" id="L144">            Deque&lt;State&gt; states = CURRENT.get();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if (states == null) {</span>
+<span class="nc" id="L146">                return;</span>
+            }
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (states.peek() == state) {</span>
+<span class="fc" id="L149">                states.pop();</span>
+            } else {
+<span class="nc" id="L151">                states.removeFirstOccurrence(state);</span>
+            }
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            if (states.isEmpty()) {</span>
+<span class="fc" id="L154">                CURRENT.remove();</span>
+            }
+<span class="nc" id="L156">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L157">            CURRENT.remove();</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">    }</span>
+
+    private static void logSafely(
+            final State state,
+            final String event,
+            final String summary,
+            final String phase,
+            final long phaseStartedNanos,
+            final Throwable cause) {
+        try {
+<span class="fc" id="L169">            long nowNanos = System.nanoTime();</span>
+<span class="fc" id="L170">            Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L171">            attributes.put(LogField.CORRELATION_ID.key(), state.correlationId());</span>
+<span class="fc" id="L172">            attributes.put(FUNCTION_ID_ATTRIBUTE, state.functionId());</span>
+<span class="fc" id="L173">            attributes.put(LogField.DA_INVOCATION_SEQUENCE.key(), state.invocationSequence());</span>
+<span class="fc" id="L174">            attributes.put(PHASE_ATTRIBUTE, phase);</span>
+<span class="fc" id="L175">            attributes.put(LogField.LATENCY_MS.key(), elapsedMillis(phaseStartedNanos, nowNanos));</span>
+<span class="fc" id="L176">            attributes.put(</span>
+                    ELAPSED_SINCE_DATA_ACCESS_START_MS_ATTRIBUTE,
+<span class="fc" id="L178">                    elapsedMillis(state.dataAccessStartedNanos(), nowNanos));</span>
+<span class="fc" id="L179">            attributes.put(</span>
+<span class="fc" id="L180">                    LogField.MEASUREMENT_UNAVAILABLE.key(),</span>
+<span class="fc" id="L181">                    state.measurementUnavailable());</span>
+<span class="fc" id="L182">            LogEvent logEvent = new LogEvent(</span>
+                    event,
+                    summary,
+                    LogLayer.DA,
+                    null,
+                    null,
+                    attributes);
+<span class="fc bfc" id="L189" title="All 2 branches covered.">            if (cause == null) {</span>
+<span class="fc" id="L190">                state.logger().info(logEvent);</span>
+            } else {
+<span class="fc" id="L192">                state.logger().error(logEvent, cause);</span>
+            }
+<span class="fc" id="L194">        } catch (RuntimeException exception) {</span>
+            // 計測失敗は業務処理へ伝播させない。
+<span class="fc" id="L196">        }</span>
+<span class="fc" id="L197">    }</span>
+
+    private static long elapsedMillis(final long startedNanos, final long nowNanos) {
+<span class="fc" id="L200">        return Math.max(0L, nowNanos - startedNanos) / 1_000_000L;</span>
+    }
+
+    interface Scope extends AutoCloseable {
+
+<span class="fc" id="L205">        Scope NOOP = () -&gt; {</span>
+<span class="fc" id="L206">        };</span>
+
+        @Override
+        void close();
+    }
+
+<span class="fc" id="L212">    private record State(</span>
+            String functionId,
+            String correlationId,
+            Long invocationSequence,
+            boolean measurementUnavailable,
+            long dataAccessStartedNanos,
+            CommonDataAccessLogger logger) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCommonForceTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg</a> &gt; <span class="el_source">ClosingCommonForceTgRetailResource.java</span></div><h1>ClosingCommonForceTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.InterFieldValidation;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstd.KiycstdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-061 閉栓共通処理 強制入力 TG小売 API のリソース実装。
+ */
+@Path(ClosingCommonForceTgRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@MainService(identifier = &quot;MA-061&quot;, name = &quot;閉栓共通処理 強制入力 TG小売 API&quot;)
+@Tag(name = &quot;閉栓共通処理 強制入力 TG小売&quot;, description = &quot;MA-061 閉栓共通処理 強制入力 TG小売 API&quot;)
+public class ClosingCommonForceTgRetailResource
+        extends BaseResource&lt;ClosingCommonForceTgRetailRequest&gt; {
+
+    private static final char HALF_WIDTH_SPACE = ' ';
+
+    private static final char FULL_WIDTH_SPACE = '　';
+
+    private static final String REQUIRED_ERROR_CODE = ErrorCodeConstants.ERROR_CODE_010000011;
+
+    /** サービスユーザー ID。 */
+    private static final String SERVICE_USER_ID = &quot;KHSM061&quot;;
+
+    /** 特記事項メモの既定値。 */
+    private static final String DEFAULT_SPECIAL_NOTES = &quot;&quot;;
+
+    /** 指示数回帰区分の空白値。 */
+<span class="fc" id="L77">    private static final String DEFAULT_SJSK_KBN = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 料金支払方法指示種別の空白値。 */
+<span class="fc" id="L80">    private static final String DEFAULT_RSHH_SJSB = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 払込書発送方法種別の空白値。 */
+<span class="fc" id="L83">    private static final String DEFAULT_HKSH_HSHH_SHBT = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 閉栓手段種別の空白値。 */
+<span class="fc" id="L86">    private static final String DEFAULT_HESN_SDN_SHBT = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 受付インデックス番号の空白値。 */
+<span class="fc" id="L89">    private static final String DEFAULT_UTIDX_NO = repeat(HALF_WIDTH_SPACE, 20);</span>
+
+    /** 作業担当社員番号の空白値。 */
+<span class="fc" id="L92">    private static final String DEFAULT_SAGY_TNT_EMP_ID = repeat(HALF_WIDTH_SPACE, 7);</span>
+
+    /** 作業担当社員名漢字の空白値。GRAPHIC 列のため全角スペースで埋める。 */
+<span class="fc" id="L95">    private static final String DEFAULT_SAGY_TNT_EMP_NM_KJ = repeat(FULL_WIDTH_SPACE, 20);</span>
+
+    /** フォロー担当地域統括コードの空白値。 */
+<span class="fc" id="L98">    private static final String DEFAULT_FOLLOW_CKTK_CD = repeat(HALF_WIDTH_SPACE, 3);</span>
+
+    /** フォロー担当拠点コードの空白値。 */
+<span class="fc" id="L101">    private static final String DEFAULT_FOLLOW_KTN_CD = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** お客さま名カナ1の空白値。 */
+<span class="fc" id="L104">    private static final String DEFAULT_CUSTOMER_NAME_KANA = repeat(HALF_WIDTH_SPACE, 30);</span>
+
+    /** お客さま名漢字1の空白値。 */
+<span class="fc" id="L107">    private static final String DEFAULT_CUSTOMER_NAME_KANJI = repeat(FULL_WIDTH_SPACE, 15);</span>
+
+    /** お客さま名漢字表示可否フラグの空白値。 */
+<span class="fc" id="L110">    private static final String DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** お客さま名1法人種別の空白値。 */
+<span class="fc" id="L113">    private static final String DEFAULT_CUSTOMER_CORPORATE_TYPE = repeat(HALF_WIDTH_SPACE, 2);</span>
+
+    /** お客さま名1法人種別表示位置種別の空白値。 */
+<span class="fc" id="L116">    private static final String DEFAULT_CUSTOMER_CORPORATE_POSITION_TYPE = repeat(HALF_WIDTH_SPACE, 1);</span>
+
+    /** 訂正後ガスメーター社番の空白値。 */
+<span class="fc" id="L119">    private static final String DEFAULT_CORRECTED_GAS_METER_COMPANY_NUMBER = repeat(HALF_WIDTH_SPACE, 15);</span>
+
+    /** 支払契約番号・サービス契約番号の既定値。 */
+<span class="fc" id="L122">    private static final Long DEFAULT_CONTRACT_NUMBER = 0L;</span>
+
+    /** 閉栓エラーフォロー DataAccess。 */
+    private final HseflDataAccess hseflDataAccess;
+
+    /** 契約お客さま DataAccess。 */
+    private final KiycstdDataAccess kiycstdDataAccess;
+
+    /** 区分別エリアマスタ DataAccess。 */
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    /** フォロー状況コード。 */
+    private final String followStatusCode;
+
+    /** 閉栓事由種別: 供給停止。 */
+    private final String supplyOutageClosureReasonType;
+
+    /** 開閉栓定数サービス。 */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエストバリデータ
+     * @param clock システム日時プロバイダ
+     * @param hseflDataAccess HSEFL DataAccess
+     * @param kiycstdDataAccess KIYCSTD DataAccess
+     * @param kbagmstDataAccess KBAGMST DataAccess
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public ClosingCommonForceTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            HseflDataAccess hseflDataAccess,
+            KiycstdDataAccess kiycstdDataAccess,
+            KbagmstDataAccess kbagmstDataAccess,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L164">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L165">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L166">        this.kiycstdDataAccess = Objects.requireNonNull(kiycstdDataAccess, &quot;kiycstdDataAccess&quot;);</span>
+<span class="fc" id="L167">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L168">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L169">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L170">        this.followStatusCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L174">        this.supplyOutageClosureReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L178">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L179">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * MA-061 を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;閉栓共通処理-強制入力-小売-TG小売&quot;,
+            description = &quot;閉栓エラーフォロー件名へ強制処理データを登録する。&quot;,
+            operationId = &quot;postClosingCommonForceTgRetail&quot;)
+    @RequestBody(required = true, content = @Content(
+            mediaType = MediaType.APPLICATION_JSON,
+            schema = @Schema(implementation = ClosingCommonForceTgRetailRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;強制処理データの登録結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ClosingCommonForceTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ClosingCommonForceTgRetailResponse endpoint(ClosingCommonForceTgRetailRequest request) {
+<span class="fc" id="L216">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    @Override
+    protected InterFieldValidation&lt;ClosingCommonForceTgRetailRequest&gt; interFieldValidation() {
+<span class="fc" id="L221">        return request -&gt; {</span>
+<span class="fc" id="L222">            List&lt;ValidationError&gt; errors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L223">            String hesnJysb = normalizeOptional(request.hesnJysb());</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (supplyOutageClosureReasonType.equals(hesnJysb)) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (normalizeOptional(request.hesnSdnShbt()) == null) {</span>
+<span class="fc" id="L226">                    errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, &quot;hesnSdnShbt&quot;));</span>
+                }
+<span class="fc" id="L228">                return errors;</span>
+            }
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">            if (hesnJysb != null &amp;&amp; normalizeOptional(request.utidxNo()) == null) {</span>
+<span class="nc" id="L231">                errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, &quot;utidxNo&quot;));</span>
+            }
+<span class="fc" id="L233">            return errors;</span>
+        };
+    }
+
+    ClosingCommonForceTgRetailResponse handle(ClosingCommonForceTgRetailRequest request) {
+<span class="fc" id="L238">        LocalDate hsenHkkYmd = Rfc3339LocalDateParser.parse(request.hsenHkkYmd().trim());</span>
+<span class="fc" id="L239">        LocalDate hssgYmd = Rfc3339LocalDateParser.parse(request.hssgYmd().trim());</span>
+<span class="fc" id="L240">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L241">        Long gasMtstNo = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc" id="L242">        Long syoKyoTrno = Long.valueOf(request.syoKyoTrno().trim());</span>
+<span class="fc" id="L243">        Integer nextRegTsno = resolveNextRegTsno(gasMtstNo, hssgYmd, hsenHkkYmd);</span>
+<span class="fc" id="L244">        KiycstdRecord customer = findKiycstd(syoKyoTrno);</span>
+<span class="fc" id="L245">        KbagmstRecord area = findKbagmst(gasMtstNo, hssgYmd);</span>
+
+<span class="fc" id="L247">        HseflWriteRecord writeRecord = new HseflWriteRecord(</span>
+                gasMtstNo,
+                hssgYmd,
+                hsenHkkYmd,
+                nextRegTsno,
+<span class="fc" id="L252">                requireReportingSystemType(),</span>
+<span class="fc" id="L253">                request.sgyAnknNo(),</span>
+                followStatusCode,
+                null,
+                syoKyoTrno,
+<span class="fc" id="L257">                request.gmb(),</span>
+<span class="fc" id="L258">                request.hesnJysb(),</span>
+<span class="fc" id="L259">                request.hsenErrRyCd(),</span>
+<span class="fc" id="L260">                resolveFollowAreaChiefCode(area),</span>
+<span class="fc" id="L261">                resolveFollowAreaBranchCode(area),</span>
+<span class="fc" id="L262">                request.sgytNwkCd(),</span>
+<span class="fc" id="L263">                resolveOptionalValue(request.sagyTntEmpId(), DEFAULT_SAGY_TNT_EMP_ID),</span>
+<span class="fc" id="L264">                resolveOptionalValue(request.sagyTntEmpNmKj(), DEFAULT_SAGY_TNT_EMP_NM_KJ),</span>
+<span class="fc" id="L265">                Long.valueOf(request.gmtShjSu().trim()),</span>
+<span class="fc" id="L266">                resolveGasUsage(request.gasSyry()),</span>
+<span class="fc" id="L267">                resolveOptionalValue(request.sjskKbn(), DEFAULT_SJSK_KBN),</span>
+<span class="fc" id="L268">                resolveOptionalValue(request.rshhSjsb(), DEFAULT_RSHH_SJSB),</span>
+<span class="fc" id="L269">                resolveOptionalValue(request.hkshHshhShbt(), DEFAULT_HKSH_HSHH_SHBT),</span>
+<span class="fc" id="L270">                resolveOptionalValue(request.hesnSdnShbt(), DEFAULT_HESN_SDN_SHBT),</span>
+<span class="fc" id="L271">                resolveOptionalValue(request.utidxNo(), DEFAULT_UTIDX_NO),</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                customer != null ? customer.ctnmKn1() : DEFAULT_CUSTOMER_NAME_KANA,</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">                customer != null ? customer.ctnmKj1() : DEFAULT_CUSTOMER_NAME_KANJI,</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                customer != null</span>
+<span class="fc" id="L275">                    ? toFlagOrDefault(customer.ctnmKjhkFlg())</span>
+<span class="fc" id="L276">                    : DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG,</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                customer != null ? customer.ctnm1HujnShbt() : DEFAULT_CUSTOMER_CORPORATE_TYPE,</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                customer != null ? customer.ctnm1HshiShbt() : DEFAULT_CUSTOMER_CORPORATE_POSITION_TYPE,</span>
+                null,
+                DEFAULT_CORRECTED_GAS_METER_COMPANY_NUMBER,
+                DEFAULT_CONTRACT_NUMBER,
+                DEFAULT_CONTRACT_NUMBER,
+                DEFAULT_SPECIAL_NOTES);
+
+<span class="fc" id="L285">        hseflDataAccess.insert(</span>
+                writeRecord,
+<span class="fc" id="L287">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+
+<span class="fc" id="L289">        String correlationId = requestContext</span>
+<span class="fc" id="L290">                .getCorrelationId()</span>
+<span class="pc" id="L291">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L292">        return new ClosingCommonForceTgRetailResponse(correlationId);</span>
+    }
+
+    private Integer resolveNextRegTsno(Long gasMtstNo, LocalDate hssgYmd, LocalDate hsenHkkYmd) {
+<span class="fc" id="L296">        return hseflDataAccess.findAllByGasMtstNoAndHssgYmdAndHesnHukkYmd(gasMtstNo, hssgYmd, hsenHkkYmd)</span>
+<span class="fc" id="L297">                .stream()</span>
+<span class="fc" id="L298">                .map(HseflRecord::regTsno)</span>
+<span class="fc" id="L299">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L300">                .max(Comparator.naturalOrder())</span>
+<span class="fc" id="L301">                .map(value -&gt; value + 1)</span>
+<span class="fc" id="L302">                .orElse(1);</span>
+    }
+
+    private KiycstdRecord findKiycstd(Long syoKyoTrno) {
+<span class="fc" id="L306">        var record = kiycstdDataAccess.findByKyoTrkNo(syoKyoTrno);</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        return record.isPresent() ? record.get() : null;</span>
+    }
+
+    private KbagmstRecord findKbagmst(Long gasMtstNo, LocalDate hssgYmd) {
+<span class="fc" id="L311">        YearMonth knskKjnYm = YearMonth.of(hssgYmd.getYear(), hssgYmd.getMonthValue());</span>
+<span class="fc" id="L312">        return kbagmstDataAccess.findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, knskKjnYm)</span>
+<span class="fc" id="L313">                .orElse(null);</span>
+    }
+
+    private String toFlag(Boolean value) {
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">        if (Boolean.TRUE.equals(value)) {</span>
+<span class="fc" id="L318">            return &quot;1&quot;;</span>
+        }
+<span class="nc bnc" id="L320" title="All 2 branches missed.">        if (Boolean.FALSE.equals(value)) {</span>
+<span class="nc" id="L321">            return &quot;0&quot;;</span>
+        }
+<span class="nc" id="L323">        return null;</span>
+    }
+
+    private String toFlagOrDefault(Boolean value) {
+<span class="fc" id="L327">        return Objects.requireNonNullElse(toFlag(value), DEFAULT_CUSTOMER_NAME_DISPLAY_FLAG);</span>
+    }
+
+    private String resolveFollowAreaChiefCode(KbagmstRecord area) {
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (area == null) {</span>
+<span class="fc" id="L332">            return DEFAULT_FOLLOW_CKTK_CD;</span>
+        }
+<span class="fc" id="L334">        return Objects.requireNonNullElse(area.kbabCktkCd(), DEFAULT_FOLLOW_CKTK_CD);</span>
+    }
+
+    private String resolveFollowAreaBranchCode(KbagmstRecord area) {
+<span class="fc bfc" id="L338" title="All 2 branches covered.">        if (area == null) {</span>
+<span class="fc" id="L339">            return DEFAULT_FOLLOW_KTN_CD;</span>
+        }
+<span class="fc" id="L341">        return Objects.requireNonNullElse(area.kbabKtnCd(), DEFAULT_FOLLOW_KTN_CD);</span>
+    }
+
+    private static String repeat(char character, int count) {
+<span class="fc" id="L345">        return String.valueOf(character).repeat(count);</span>
+    }
+
+    private String resolveOptionalValue(String value, String defaultValue) {
+<span class="fc" id="L349">        return Objects.requireNonNullElse(normalizeOptional(value), defaultValue);</span>
+    }
+
+    private BigDecimal resolveGasUsage(String gasUsage) {
+<span class="fc" id="L353">        String normalized = normalizeOptional(gasUsage);</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        return normalized == null ? BigDecimal.ZERO : new BigDecimal(normalized);</span>
+    }
+
+    private String requireReportingSystemType() {
+<span class="fc" id="L358">        return requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L359">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L363">        String hukkSysShbt = requireReportingSystemType();</span>
+<span class="fc" id="L364">        String reportingSystemType = ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE;</span>
+        try {
+<span class="fc" id="L366">            return kaiheisenConstantService.findNameByTypeAndValue(reportingSystemType, hukkSysShbt);</span>
+<span class="fc" id="L367">        } catch (ConstantDefinitionNotFoundException ex) {</span>
+<span class="fc" id="L368">            throw new KaiheisenException(&quot;報告システム種別の定数定義が見つかりません&quot;, ex);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

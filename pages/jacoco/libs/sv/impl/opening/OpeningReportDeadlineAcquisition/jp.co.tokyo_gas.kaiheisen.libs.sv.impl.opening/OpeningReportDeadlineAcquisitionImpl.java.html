@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningReportDeadlineAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingreportdeadlineacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningReportDeadlineAcquisitionImpl.java</span></div><h1>OpeningReportDeadlineAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportDeadlineAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReportDeadlineAcquisitionOutput;
+
+/**
+ * 概要: 開栓報告可能期限日取得サービス（SV-025）の実装。 主な仕様: - 検針年月日の基準日を解決し、DA-089-R005取得結果とみなし検針年月日から返却値を決定する。 -
+ * 設計書【】定数は CiriusConstantService と ConstantLookupKeys を用いて解決する。 - RequestContext の systemDatetime
+ * を参照し、未指定時は SystemDateTimeProvider で日付を補完する。 既知の制約: - 入力妥当性検証と HTTP 変換は本クラスでは行わず、上位層責務とする。 -
+ * 下位層で発生した例外は握りつぶさずに上位へ伝播する。
+ */
+public class OpeningReportDeadlineAcquisitionImpl implements OpeningReportDeadlineAcquisition {
+
+    private final DktksryDataAccess dktksryDataAccess;
+
+    private final SystemDateTimeProvider systemDateTimeProvider;
+
+    private final RequestContext requestContext;
+
+    private final String reasonRegularSwStart;
+
+    private final String reasonTemporarySwStart;
+
+    private final String reasonMeterReadingWithoutTransferAcceptance;
+
+    /**
+     * 概要: 既定のシステム日時プロバイダを利用して依存を注入するコンストラクタ。 主な仕様: - 導管通知確定使用量DA、CIRIUS定数サービス、RequestContext
+     * を受け取り、内部状態を初期化する。 - システム日時プロバイダには `DefaultSystemDateTimeProvider` を採用し、委譲先コンストラクタへ引き渡す。
+     * 既知の制約: - 引数の妥当性検証（nullチェック等）は本コンストラクタでは実施しない。 - 初期化時に必要な定数が取得できない場合、委譲先コンストラクタで例外が発生する。
+     *
+     * @param dktksryDataAccess 導管通知確定使用量 データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public OpeningReportDeadlineAcquisitionImpl(
+            DktksryDataAccess dktksryDataAccess,
+            CiriusConstantService ciriusConstantService,
+            RequestContext requestContext) {
+<span class="nc" id="L50">        this(</span>
+                dktksryDataAccess,
+                ciriusConstantService,
+                new DefaultSystemDateTimeProvider(),
+                requestContext);
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * 概要: 外部指定のシステム日時プロバイダを含む依存を注入し、SV-025実行に必要な状態を初期化するコンストラクタ。 主な仕様: -
+     * 導管通知確定使用量DA、システム日時プロバイダ、RequestContext をフィールドへ保持する。 -
+     * CIRIUS定数サービスから検針結果作成事由種別（定例SW開始、臨時SW開始、異動受付みなし検針）を解決して保持する。 既知の制約: -
+     * 引数の妥当性検証（nullチェック等）は本コンストラクタでは実施しない。 - 必須定数が未登録の場合は初期化時に例外が発生し、インスタンス生成に失敗する。
+     *
+     * @param dktksryDataAccess 導管通知確定使用量 データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param systemDateTimeProvider システム日時プロバイダ
+     * @param requestContext リクエストコンテキスト
+     */
+    public OpeningReportDeadlineAcquisitionImpl(
+            DktksryDataAccess dktksryDataAccess,
+            CiriusConstantService ciriusConstantService,
+            SystemDateTimeProvider systemDateTimeProvider,
+<span class="fc" id="L72">            RequestContext requestContext) {</span>
+<span class="fc" id="L73">        this.dktksryDataAccess = dktksryDataAccess;</span>
+<span class="fc" id="L74">        this.systemDateTimeProvider = systemDateTimeProvider;</span>
+<span class="fc" id="L75">        this.requestContext = requestContext;</span>
+<span class="fc" id="L76">        this.reasonRegularSwStart =</span>
+<span class="fc" id="L77">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .REGULAR_SW_START);
+<span class="fc" id="L82">        this.reasonTemporarySwStart =</span>
+<span class="fc" id="L83">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .TEMPORARY_SW_START);
+<span class="fc" id="L88">        this.reasonMeterReadingWithoutTransferAcceptance =</span>
+<span class="fc" id="L89">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .METER_READING_WITHOUT_TRANSFER_ACCEPTANCE);
+<span class="fc" id="L94">    }</span>
+
+    @Override
+    public OpeningReportDeadlineAcquisitionOutput execute(
+            Long gasMtstNo, LocalDate knsYmd, String knkkSsjyShbt) {
+<span class="fc" id="L99">        LocalDate baseDate = resolveBaseDate(knsYmd);</span>
+<span class="fc" id="L100">        LocalDate currentDate = resolveCurrentDateForDaRangeTo();</span>
+<span class="fc" id="L101">        LocalDate daDate = findDaDate(gasMtstNo, baseDate, currentDate);</span>
+<span class="fc" id="L102">        LocalDate deemedDate = resolveDeemedKnsYmd(baseDate, knkkSsjyShbt);</span>
+<span class="fc" id="L103">        LocalDate deadline = resolveDeadline(baseDate, daDate, deemedDate);</span>
+<span class="fc" id="L104">        return new OpeningReportDeadlineAcquisitionOutput(deadline);</span>
+    }
+
+    /**
+     * 概要: DA検索上限日（knsYmdTo）に用いる実日付を解決する。 主な仕様: - `RequestContext` の `systemDatetime`
+     * が指定されている場合は年月日部分を返却する。 - `systemDatetime` が未指定の場合は `SystemDateTimeProvider` から現在日付を取得して返却する。
+     *
+     * @return DA検索上限日に用いる実日付
+     */
+    private LocalDate resolveCurrentDateForDaRangeTo() {
+<span class="fc" id="L114">        return requestContext</span>
+<span class="fc" id="L115">                .getSystemDatetime()</span>
+<span class="fc" id="L116">                .map(systemDatetime -&gt; systemDatetime.toLocalDate())</span>
+<span class="fc" id="L117">                .orElseGet(systemDateTimeProvider::currentDate);</span>
+    }
+
+    /**
+     * 概要: 開栓報告可能期限日算出の基準日を解決する。 主な仕様: - `knsYmd` が指定されている場合はその値を優先して返却する。 - `knsYmd` が null かつ
+     * `RequestContext` の `systemDatetime` が指定されている場合は日時の年月日部分を返却する。 - 両方 null の場合は
+     * `SystemDateTimeProvider` から現在日付を取得して返却する。 既知の制約: - `SystemDateTimeProvider`
+     * の戻り値の妥当性検証は本メソッドでは行わない。
+     *
+     * @param knsYmd 検針年月日
+     * @return 解決した基準日
+     */
+    private LocalDate resolveBaseDate(LocalDate knsYmd) {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (knsYmd != null) {</span>
+<span class="fc" id="L131">            return knsYmd;</span>
+        }
+<span class="fc" id="L133">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L134">                .map(LocalDateTime::toLocalDate)</span>
+<span class="fc" id="L135">                .orElseGet(systemDateTimeProvider::currentDate);</span>
+    }
+
+    /**
+     * 概要: DA-089-R005の呼び出し結果から検針年月日を取得する。 主な仕様: -
+     * `DktksryDataAccess#findByGasMtstNoAndKnsYmdRangeAndKnkkSksiJysb` を呼び出す。 - 検針結果作成事由種別は【07000
+     * 201: 異動受付みなし検針】を固定で設定する。 - 取得結果が存在する場合は `knsYmd` を返却し、存在しない場合は null を返却する。 既知の制約: -
+     * 引数の妥当性検証は本メソッドでは行わず、呼び出し先に委譲する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmdFrom 検針年月日（開始）
+     * @param knsYmdTo 検針年月日（終了）
+     * @return DA結果の検針年月日（未取得時は null）
+     */
+    private LocalDate findDaDate(Long gasMtstNo, LocalDate knsYmdFrom, LocalDate knsYmdTo) {
+<span class="fc" id="L150">        Optional&lt;DktksryRecord&gt; result =</span>
+<span class="fc" id="L151">                dktksryDataAccess.findByGasMtstNoAndKnsYmdRangeAndKnkkSksiJysb(</span>
+                        gasMtstNo,
+                        knsYmdFrom,
+                        knsYmdTo,
+                        reasonMeterReadingWithoutTransferAcceptance);
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (result.isPresent()) {</span>
+<span class="fc" id="L157">            return result.get().knsYmd();</span>
+        }
+<span class="fc" id="L159">        return null;</span>
+    }
+
+    /**
+     * 概要: 検針結果作成事由種別に応じてみなし検針年月日を算出する。 主な仕様: - 事由種別が定例（SW開始）または臨時（SW開始）の場合は `baseDate` の翌日を返却する。 -
+     * 上記以外の事由種別の場合は null を返却する。 既知の制約: - `baseDate` は呼び出し元で `resolveBaseDate` により非null化されている前提とする。
+     *
+     * @param baseDate 基準日
+     * @param knkkSsjyShbt 検針結果作成事由種別
+     * @return みなし検針年月日（対象外事由は null）
+     */
+    private LocalDate resolveDeemedKnsYmd(LocalDate baseDate, String knkkSsjyShbt) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (reasonRegularSwStart.equals(knkkSsjyShbt)</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                || reasonTemporarySwStart.equals(knkkSsjyShbt)) {</span>
+<span class="fc" id="L173">            return baseDate.plusDays(1);</span>
+        }
+<span class="fc" id="L175">        return null;</span>
+    }
+
+    /**
+     * 概要: 開栓報告可能期限日の最終返却値を決定する。 主な仕様: - DA取得日付が基準日より未来日の場合はDA取得日付を返却する。 -
+     * DA取得日付が採用されず、みなし検針年月日が基準日より未来日の場合はみなし検針年月日を返却する。 - 上記以外の場合は基準日を返却する。 既知の制約: - 本メソッドは
+     * `baseDate` が非nullであることを前提とする。
+     *
+     * @param baseDate 基準日
+     * @param daDate DA取得の検針年月日
+     * @param deemedDate みなし検針年月日
+     * @return 開栓報告可能期限日
+     */
+    private static LocalDate resolveDeadline(
+            LocalDate baseDate, LocalDate daDate, LocalDate deemedDate) {
+<span class="fc bfc" id="L190" title="All 4 branches covered.">        if (daDate != null &amp;&amp; daDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L191">            return daDate;</span>
+        }
+<span class="pc bpc" id="L193" title="1 of 4 branches missed.">        if (deemedDate != null &amp;&amp; deemedDate.isAfter(baseDate)) {</span>
+<span class="fc" id="L194">            return deemedDate;</span>
+        }
+<span class="fc" id="L196">        return baseDate;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

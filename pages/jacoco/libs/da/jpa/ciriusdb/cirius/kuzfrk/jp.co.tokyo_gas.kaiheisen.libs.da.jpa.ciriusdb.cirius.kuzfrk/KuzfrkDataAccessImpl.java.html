@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KuzfrkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-kuzfrk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.kuzfrk</a> &gt; <span class="el_source">KuzfrkDataAccessImpl.java</span></div><h1>KuzfrkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.kuzfrk;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/**
+ * KUZFRK データアクセスの JPA 実装。
+ */
+public class KuzfrkDataAccessImpl extends DataAccessBase implements KuzfrkDataAccess {
+
+<span class="fc" id="L37">    static final ReflectiveRecordEntityMapper&lt;KuzfrkRecord, KuzfrkEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L38">            ReflectiveRecordEntityMapper.create(KuzfrkRecord.class, KuzfrkEntity.class);</span>
+
+    private static final String TABLE_NAME = &quot;KUZFRK&quot;;
+
+    private static final String WHERE_BY_PK = &quot;SIH_KIY_NO = ? AND SIH_KIY_SKNO = ?&quot;;
+
+<span class="fc" id="L44">    private static final ReflectiveRecordEntityMapper&lt;KuzfrkWriteRecord, KuzfrkEntity&gt; WRITE_MAPPER =</span>
+<span class="fc" id="L45">            ReflectiveRecordEntityMapper.create(KuzfrkWriteRecord.class, KuzfrkEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;KuzfrkEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;KuzfrkWriteRecord, KuzfrkEntity, KuzfrkColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;KuzfrkWriteRecord, KuzfrkEntity, KuzfrkColumn&gt; updateSupport;
+
+    /**
+     * 標準依存で初期化する。
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public KuzfrkDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory) {
+<span class="fc" id="L70">        this(</span>
+                jpaEntityManager,
+                jpaCriteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * テスト差し替え用の時刻依存を含めて初期化する。
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     * @param systemClock システム時刻プロバイダ
+     */
+    KuzfrkDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory,
+            final SystemDateTimeProvider systemClock) {
+<span class="nc" id="L88">        this(</span>
+                jpaEntityManager,
+                jpaCriteriaBuilderFactory,
+                systemClock,
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L93">    }</span>
+
+    /**
+     * テスト差し替え用の依存を含めて初期化する。
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     * @param systemClock システム時刻プロバイダ
+     * @param ciriusAuditColumnAutoSetter 監査項目自動設定
+     */
+    KuzfrkDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory,
+            final SystemDateTimeProvider systemClock,
+<span class="fc" id="L107">            final CiriusAuditColumnAutoSetter ciriusAuditColumnAutoSetter) {</span>
+<span class="fc" id="L108">        this.entityManager = Objects.requireNonNull(jpaEntityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L109">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L110">                Objects.requireNonNull(jpaCriteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L111">        this.clock = Objects.requireNonNull(systemClock, &quot;clock&quot;);</span>
+<span class="fc" id="L112">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(KuzfrkEntity.class);</span>
+<span class="fc" id="L113">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L114">                Objects.requireNonNull(ciriusAuditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L115">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KuzfrkWriteDefinition.INSTANCE,
+                        KuzfrkEntity.class,
+<span class="fc" id="L121">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L122">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KuzfrkWriteDefinition.INSTANCE,
+                        KuzfrkEntity.class,
+<span class="fc" id="L128">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L129">    }</span>
+
+    @Override
+    public int insert(final KuzfrkWriteRecord record, final AuditContext context) {
+<span class="fc" id="L133">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L134">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L135">        return insertSupport.insert(</span>
+                record,
+<span class="fc" id="L137">                entity -&gt; auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L138">                        auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public int deleteBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo) {
+<span class="fc" id="L146">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L147">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L148">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L149">                .delete(</span>
+<span class="fc" id="L150">                        PreparedWhere.of(</span>
+                                WHERE_BY_PK,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L153">                                    int nextIndex = JpaBind.set(query, startIndex, safeSihKiyNo);</span>
+<span class="fc" id="L154">                                    return JpaBind.set(query, nextIndex, safeSihKiySkno);</span>
+                                },
+                                safeSihKiyNo,
+                                safeSihKiySkno),
+                        recUpdJnjNo,
+<span class="fc" id="L159">                        KuzfrkDataAccess.CallSpecs.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier());</span>
+    }
+
+    @Override
+    public Optional&lt;KuzfrkRecord&gt; findBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno) {
+<span class="fc" id="L166">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L167">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L168">        var builder = criteriaBuilderFactory.create(entityManager, KuzfrkEntity.class);</span>
+<span class="fc" id="L169">        builder.where(&quot;sihKiyNo&quot;).eq(safeSihKiyNo).where(&quot;sihKiySkno&quot;).eq(safeSihKiySkno);</span>
+<span class="fc" id="L170">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L171">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySkno(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final KuzfrkSihKiyUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L180">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L181">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L184">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L185">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L186">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L188">                KuzfrkDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier());</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySknoAndRecUpdJnjNo(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final KuzfrkSihKiyJnjUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L197">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L198">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L201">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L202">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L203">                updateKey.recUpdJnjNo(),</span>
+                context,
+                KuzfrkDataAccess.CallSpecs
+                        .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L207">                        .identifier());</span>
+    }
+
+    private int updateByKey(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo,
+            final AuditContext context,
+            final String dataAccessIdentifier) {
+<span class="fc" id="L218">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L219">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L220">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L221">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L222">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L223">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L227">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L228">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L231">                                Objects.requireNonNullElse(recUpdJnjNo, 0)),</span>
+<span class="fc" id="L232">                PreparedWhere.of(</span>
+                        WHERE_BY_PK,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L235">                            int nextIndex = JpaBind.set(query, startIndex, safeSihKiyNo);</span>
+<span class="fc" id="L236">                            return JpaBind.set(query, nextIndex, safeSihKiySkno);</span>
+                        },
+                        safeSihKiyNo,
+                        safeSihKiySkno),
+                recUpdJnjNo,
+                dataAccessIdentifier);
+    }
+
+    private static BigDecimal safeLong(final Long value, final String paramName) {
+<span class="fc" id="L245">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L246">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInteger(final Integer value, final String paramName) {
+<span class="fc" id="L250">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L251">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

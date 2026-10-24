@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CancelClosingResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.cancel_closing</a> &gt; <span class="el_source">CancelClosingResource.java</span></div><h1>CancelClosingResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.cancel_closing;
+
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.resource.Bff;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.cancel_closing.CancelClosingEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.cancel_closing.CancelClosingRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.cancel_closing.CancelClosingResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.DownstreamErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+import org.jboss.logging.MDC;
+
+/**
+ * BFF-005 LIVALIT閉栓取消 API。
+ */
+@Bff(identifier = &quot;BFF-005&quot;, name = &quot;LIVALIT閉栓取消&quot;)
+@Tag(name = &quot;closing&quot;, description = &quot;BFF-005 LIVALIT閉栓取消&quot;)
+@Path(CancelClosingEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+public class CancelClosingResource extends BaseResource&lt;CancelClosingRequest&gt; {
+
+    private static final String MDC_CORRELATION_ID_KEY = &quot;correlationId&quot;;
+
+    private final CancelClosingService cancelClosingService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム日時プロバイダ
+     * @param cancelClosingService 閉栓取消サービス
+     */
+    @Inject
+    public CancelClosingResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            CancelClosingService cancelClosingService) {
+<span class="fc" id="L62">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L63">        this.cancelClosingService = cancelClosingService;</span>
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * 閉栓取消を実施する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    @POST
+    @Operation(
+            summary = &quot;LIVALIT閉栓取消&quot;,
+            description = &quot;SV-097 と MA-107 の結果に応じて閉栓取消の downstream MA を呼び分ける。&quot;,
+            operationId = &quot;cancelClosing&quot;)
+    @RequestBody(
+            required = true,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CancelClosingRequest.class)))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;正常レスポンス&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CancelClosingResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = {
+                @Content(
+                        mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(anyOf = {CommonErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = {
+                @Content(
+                        mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(anyOf = {KaiheisenErrorResponse.class, DownstreamErrorResponse.class})),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    @APIResponse(
+            responseCode = &quot;default&quot;,
+            description = &quot;MA API エラー&quot;,
+            content = {
+                @Content(
+                        mediaType = MediaType.APPLICATION_JSON,
+                        schema = @Schema(implementation = DownstreamErrorResponse.class)),
+                @Content(mediaType = &quot;*/*&quot;)
+            })
+    public Response cancelClosing(CancelClosingRequest request) {
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L117">            throw new ValidationException(</span>
+<span class="nc" id="L118">                    List.of(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;requestBody&quot;)),</span>
+                    true);
+        }
+<span class="fc" id="L121">        return execute(</span>
+                request,
+<span class="fc" id="L123">                () -&gt; Response.ok(cancelClosingService.handle(request)).build());</span>
+    }
+
+    /**
+     * RequestContext バインド後に相関IDをUUID v4へ正規化する。
+     *
+     * @param request リクエスト
+     */
+    @Override
+    protected void afterBindRequestContext(CancelClosingRequest request) {
+<span class="fc" id="L133">        bindUuidCorrelationIdForResponse();</span>
+<span class="fc" id="L134">    }</span>
+
+    private void bindUuidCorrelationIdForResponse() {
+<span class="fc" id="L137">        String correlationId = CorrelationIdResolver.resolveUuidV4(</span>
+<span class="fc" id="L138">                requestContext.getCorrelationId().orElse(null));</span>
+<span class="fc" id="L139">        requestContext.setCorrelationId(correlationId);</span>
+<span class="fc" id="L140">        MDC.put(MDC_CORRELATION_ID_KEY, correlationId);</span>
+<span class="fc" id="L141">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

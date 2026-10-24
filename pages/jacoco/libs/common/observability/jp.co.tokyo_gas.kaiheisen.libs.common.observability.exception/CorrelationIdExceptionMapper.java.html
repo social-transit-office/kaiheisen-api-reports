@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CorrelationIdExceptionMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-common-observability</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.observability.exception</a> &gt; <span class="el_source">CorrelationIdExceptionMapper.java</span></div><h1>CorrelationIdExceptionMapper.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.observability.exception;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.ext.ExceptionMapper;
+import jakarta.ws.rs.ext.Provider;
+import java.util.UUID;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.DefaultExceptionLogMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.ExceptionLogContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.ExceptionLogMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogDecision;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLevel;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.filter.CorrelationIdFilter;
+import org.jboss.logging.MDC;
+
+/**
+ * 例外発生時に相関IDヘッダ補完とコンテキスト cleanup を行う共通ハンドラ。
+ */
+@Provider
+@ApplicationScoped
+public class CorrelationIdExceptionMapper implements ExceptionMapper&lt;Throwable&gt; {
+
+    private static final String MDC_KEY = &quot;correlationId&quot;;
+
+    private final RequestContext requestContext;
+
+    private final StructuredLogger logger;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     */
+    @Inject
+    public CorrelationIdExceptionMapper(RequestContext requestContext) {
+<span class="nc" id="L42">        this(requestContext, new JbossStructuredLogger(CorrelationIdExceptionMapper.class));</span>
+<span class="nc" id="L43">    }</span>
+
+<span class="fc" id="L45">    CorrelationIdExceptionMapper(RequestContext requestContext, StructuredLogger logger) {</span>
+<span class="fc" id="L46">        this.requestContext = requestContext;</span>
+<span class="fc" id="L47">        this.logger = logger;</span>
+<span class="fc" id="L48">    }</span>
+
+    @Override
+    public Response toResponse(Throwable exception) {
+<span class="fc" id="L52">        String correlationId = requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L53">            String generated = UUID.randomUUID().toString();</span>
+<span class="fc" id="L54">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L55">            return generated;</span>
+        });
+<span class="fc" id="L57">        MDC.put(MDC_KEY, correlationId);</span>
+<span class="fc" id="L58">        logIfNeeded(exception);</span>
+
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        Response base = exception instanceof WebApplicationException webEx</span>
+<span class="nc" id="L61">                ? webEx.getResponse()</span>
+<span class="fc" id="L62">                : Response.serverError().build();</span>
+
+<span class="fc" id="L64">        Response response = Response.fromResponse(base)</span>
+<span class="fc" id="L65">                .header(CorrelationIdFilter.HEADER_NAME, correlationId)</span>
+<span class="fc" id="L66">                .build();</span>
+
+<span class="fc" id="L68">        MDC.remove(MDC_KEY);</span>
+<span class="fc" id="L69">        requestContext.clear();</span>
+<span class="fc" id="L70">        return response;</span>
+    }
+
+    private void logIfNeeded(Throwable exception) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (requestContext.isExceptionLogged()) {</span>
+<span class="fc" id="L75">            return;</span>
+        }
+<span class="fc" id="L77">        ExceptionLogMapper exceptionLogMapper = new DefaultExceptionLogMapper(resolveLogLayer());</span>
+<span class="fc" id="L78">        LogDecision decision = exceptionLogMapper.map(exception, new ExceptionLogContext(</span>
+<span class="fc" id="L79">                requestContext.getCorrelationId().orElse(null),</span>
+<span class="fc" id="L80">                requestContext.getHttpMethod().orElse(null),</span>
+<span class="fc" id="L81">                requestContext.getRequestPath().orElse(null),</span>
+                null,
+<span class="fc" id="L83">                requestContext.getServiceId().orElse(null),</span>
+<span class="fc" id="L84">                requestContext.getServiceName().orElse(null)));</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if (decision == null || decision.event() == null) {</span>
+<span class="nc" id="L86">            return;</span>
+        }
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (decision.level() == LogLevel.ERROR) {</span>
+<span class="fc" id="L89">            logger.error(decision.event(), exception);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        } else if (decision.level() == LogLevel.WARN) {</span>
+<span class="nc" id="L91">            logger.warn(decision.event());</span>
+        } else {
+<span class="nc" id="L93">            logger.info(decision.event());</span>
+        }
+<span class="fc" id="L95">        requestContext.markExceptionLogged();</span>
+<span class="fc" id="L96">    }</span>
+
+    // Common fallback infers the app layer from the request path. BFF paths start with /livalit/,
+    // and the remaining current public APIs are MA.
+    private LogLayer resolveLogLayer() {
+<span class="fc" id="L101">        String requestPath = requestContext.getRequestPath().orElse(null);</span>
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">        if (requestPath != null &amp;&amp; requestPath.startsWith(&quot;/livalit/&quot;)) {</span>
+<span class="fc" id="L103">            return LogLayer.BFF;</span>
+        }
+<span class="nc" id="L105">        return LogLayer.MA;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

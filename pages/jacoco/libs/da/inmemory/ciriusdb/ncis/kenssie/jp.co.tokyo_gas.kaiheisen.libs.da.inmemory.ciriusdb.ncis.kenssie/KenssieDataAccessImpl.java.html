@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KenssieDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-ncis-kenssie</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.ncis.kenssie</a> &gt; <span class="el_source">KenssieDataAccessImpl.java</span></div><h1>KenssieDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.ncis.kenssie;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.kenssie.KenssieRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+
+/**
+ * KENSSIE の SQL を模したインメモリ実装。
+ *
+ * &lt;p&gt;主な仕様:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;DA-009-D001: gmtSetNo と idoMasyKhiCd 一致行を削除し、削除件数を返す。&lt;/li&gt;
+ *   &lt;li&gt;DA-009-R001: 主キー（gmtSetNo, knsnSienBrCd）一致で 1 件取得する。&lt;/li&gt;
+ *   &lt;li&gt;DA-009-R002: gmtSetNo 一致 + knsnSienBrCd IN で一覧取得し、knsnSienBrCd 昇順で返す。&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;制限: テスト用途の簡易実装であり、DB の制約や例外ラップは再現しない。&lt;/p&gt;
+ */
+<span class="fc" id="L27">public class KenssieDataAccessImpl extends DataAccessBase implements KenssieDataAccess {</span>
+
+<span class="fc" id="L29">    private static final Comparator&lt;InternalRow&gt; ORDER_BY_SPEC = Comparator.comparing(InternalRow::knsnSienBrCd);</span>
+
+<span class="fc" id="L31">    private final List&lt;InternalRow&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param row 追加する行
+     * @return このインスタンス
+     */
+    public KenssieDataAccessImpl addRow(InternalRow row) {
+<span class="fc" id="L40">        rows.add(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L41">        return this;</span>
+    }
+
+    @Override
+    public int deleteByGmtSetNoAndIdoMasyKhiCd(Long gmtSetNo, String idoMasyKhiCd, Integer recUpdJnjNo) {
+<span class="fc" id="L46">        Objects.requireNonNull(gmtSetNo, &quot;gmtSetNo&quot;);</span>
+<span class="fc" id="L47">        Objects.requireNonNull(idoMasyKhiCd, &quot;idoMasyKhiCd&quot;);</span>
+
+<span class="fc" id="L49">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc bfc" id="L51" title="All 4 branches covered.">                row -&gt; row.gmtSetNo() == gmtSetNo.longValue() &amp;&amp; Objects.equals(row.idoMasyKhiCd(), idoMasyKhiCd),</span>
+                InternalRow::recUpdJnjNo,
+                recUpdJnjNo,
+<span class="fc" id="L54">                KenssieDataAccess.CallSpecs.DELETE_BY_GMT_SET_NO_AND_IDO_MASY_KHI_CD.identifier(),</span>
+                () -&gt;
+<span class="nc" id="L56">                        new DataInconsistencyException(</span>
+                                &quot;KENSSIE&quot;,
+<span class="nc" id="L58">                                KenssieDataAccess.CallSpecs.DELETE_BY_GMT_SET_NO_AND_IDO_MASY_KHI_CD.identifier(),</span>
+                                &quot;{}&quot;),
+                gmtSetNo,
+                idoMasyKhiCd);
+    }
+
+    @Override
+    public Optional&lt;KenssieRecord&gt; findByGmtSetNoAndKnsnSienBrCd(Long gmtSetNo, String knsnSienBrCd) {
+<span class="fc" id="L66">        Objects.requireNonNull(gmtSetNo, &quot;gmtSetNo&quot;);</span>
+<span class="fc" id="L67">        Objects.requireNonNull(knsnSienBrCd, &quot;knsnSienBrCd&quot;);</span>
+
+<span class="fc" id="L69">        return rows.stream()</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                .filter(row -&gt; row.gmtSetNo() == gmtSetNo.longValue())</span>
+<span class="fc" id="L71">                .filter(row -&gt; Objects.equals(row.knsnSienBrCd(), knsnSienBrCd))</span>
+<span class="fc" id="L72">                .map(KenssieDataAccessImpl::toRecord)</span>
+<span class="fc" id="L73">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;KenssieRecord&gt; findAllByGmtSetNoAndKnsnSienBrCd(Long gmtSetNo, List&lt;String&gt; knsnSienBrCdList) {
+<span class="fc" id="L78">        Objects.requireNonNull(gmtSetNo, &quot;gmtSetNo&quot;);</span>
+<span class="fc" id="L79">        Objects.requireNonNull(knsnSienBrCdList, &quot;knsnSienBrCdList&quot;);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (knsnSienBrCdList.isEmpty()) {</span>
+<span class="fc" id="L81">            return List.of();</span>
+        }
+
+<span class="fc" id="L84">        return rows.stream()</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                .filter(row -&gt; row.gmtSetNo() == gmtSetNo.longValue())</span>
+<span class="fc" id="L86">                .filter(row -&gt; knsnSienBrCdList.contains(row.knsnSienBrCd()))</span>
+<span class="fc" id="L87">                .sorted(ORDER_BY_SPEC)</span>
+<span class="fc" id="L88">                .map(KenssieDataAccessImpl::toRecord)</span>
+<span class="fc" id="L89">                .toList();</span>
+    }
+
+    private static KenssieRecord toRecord(InternalRow row) {
+<span class="fc" id="L93">        return new KenssieRecord(</span>
+<span class="fc" id="L94">                row.gmtSetNo(),</span>
+<span class="fc" id="L95">                row.knsnSienBrCd(),</span>
+<span class="fc" id="L96">                row.renrakskSybCd(),</span>
+<span class="fc" id="L97">                row.idoMasyKhiCd(),</span>
+<span class="fc" id="L98">                row.renrakskTelNo(),</span>
+<span class="fc" id="L99">                row.torokuNaiyoMx(),</span>
+<span class="fc" id="L100">                row.recRegYmd(),</span>
+<span class="fc" id="L101">                row.recUpdYmd(),</span>
+<span class="fc" id="L102">                row.recUpdJnjNo(),</span>
+<span class="fc" id="L103">                row.kosinUserId(),</span>
+<span class="fc" id="L104">                row.kosinTranNo(),</span>
+<span class="fc" id="L105">                row.kosinTaskNo()</span>
+        );
+    }
+
+    /**
+     * KENSSIE のテストデータ行。
+     */
+    public static record InternalRow(
+            long gmtSetNo,
+            String knsnSienBrCd,
+            String renrakskSybCd,
+            String idoMasyKhiCd,
+            String renrakskTelNo,
+            String torokuNaiyoMx,
+            LocalDate recRegYmd,
+            LocalDate recUpdYmd,
+            int recUpdJnjNo,
+            String kosinUserId,
+            String kosinTranNo,
+            int kosinTaskNo
+    ) {
+        /** コンパクトコンストラクタ。 */
+<span class="fc" id="L127">        public InternalRow {</span>
+<span class="fc" id="L128">            Objects.requireNonNull(knsnSienBrCd, &quot;knsnSienBrCd&quot;);</span>
+<span class="fc" id="L129">            Objects.requireNonNull(renrakskSybCd, &quot;renrakskSybCd&quot;);</span>
+<span class="fc" id="L130">            Objects.requireNonNull(idoMasyKhiCd, &quot;idoMasyKhiCd&quot;);</span>
+<span class="fc" id="L131">            Objects.requireNonNull(renrakskTelNo, &quot;renrakskTelNo&quot;);</span>
+<span class="fc" id="L132">            Objects.requireNonNull(torokuNaiyoMx, &quot;torokuNaiyoMx&quot;);</span>
+<span class="fc" id="L133">            Objects.requireNonNull(recRegYmd, &quot;recRegYmd&quot;);</span>
+<span class="fc" id="L134">            Objects.requireNonNull(recUpdYmd, &quot;recUpdYmd&quot;);</span>
+<span class="fc" id="L135">            Objects.requireNonNull(kosinUserId, &quot;kosinUserId&quot;);</span>
+<span class="fc" id="L136">            Objects.requireNonNull(kosinTranNo, &quot;kosinTranNo&quot;);</span>
+<span class="fc" id="L137">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

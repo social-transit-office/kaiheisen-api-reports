@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SamedayReportCancelTargetGetClosingTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-cancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_tg</a> &gt; <span class="el_source">SamedayReportCancelTargetGetClosingTgRetailResource.java</span></div><h1>SamedayReportCancelTargetGetClosingTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_cancel.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailResponse.ContractCustomerInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailResponse.GasMeterLocationInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.SamedayReportCancelTargetGetClosingTgRetailResponse.ServiceContractInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingRelatedInfoEditProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingRelatedInfoEditProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningClosingInProgressErrorJudgment;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-037 当日報告取消対象取得 閉栓 TG小売リソース。
+ */
+@MainService(
+        identifier = &quot;MA-037&quot;,
+        name = &quot;当日報告取消対象取得-閉栓エラーフォロー取消・オンライン閉栓報告取消-小売-TG小売&quot;)
+@Path(SamedayReportCancelTargetGetClosingTgRetailEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(
+        name = &quot;当日報告取消対象取得-閉栓エラーフォロー取消・オンライン閉栓報告取消-小売-TG小売&quot;,
+        description = &quot;MA-037 当日報告取消対象取得 閉栓 TG小売 API&quot;)
+public class SamedayReportCancelTargetGetClosingTgRetailResource
+        extends BaseResource&lt;SamedayReportCancelTargetGetClosingTgRetailRequest&gt; {
+
+    private static final String ERROR_CODE_TARGET_NOT_FOUND = ErrorCodeConstants.ERROR_CODE_020000047;
+
+    private static final String SHR_KBN_RELATED_ACTIVE_OR_END_WAITING_OR_END = &quot;3&quot;;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final KiycstkDataAccess kiycstkDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment;
+
+    private final ServiceContractNumberAcquisition serviceContractNumberAcquisition;
+
+    private final MeterReadingRelatedInfoEditProcess meterReadingRelatedInfoEditProcess;
+
+    private final String openingInProgressErrorJudgmentDivision;
+
+    private final String underContractStatus;
+
+    private final String endOfContractStatus;
+
+    /**
+     * MA-037 の実行に必要な依存と必須定数を初期化する。
+     */
+    @Inject
+    public SamedayReportCancelTargetGetClosingTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            KiycstkDataAccess kiycstkDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment,
+            ServiceContractNumberAcquisition serviceContractNumberAcquisition,
+            MeterReadingRelatedInfoEditProcess meterReadingRelatedInfoEditProcess) {
+<span class="fc" id="L107">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L108">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L109">        this.kiycstkDataAccess = Objects.requireNonNull(kiycstkDataAccess, &quot;kiycstkDataAccess&quot;);</span>
+<span class="fc" id="L110">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L111">        this.openingClosingInProgressErrorJudgment = Objects.requireNonNull(</span>
+                openingClosingInProgressErrorJudgment,
+                &quot;openingClosingInProgressErrorJudgment&quot;);
+<span class="fc" id="L114">        this.serviceContractNumberAcquisition = Objects.requireNonNull(</span>
+                serviceContractNumberAcquisition,
+                &quot;serviceContractNumberAcquisition&quot;);
+<span class="fc" id="L117">        this.meterReadingRelatedInfoEditProcess = Objects.requireNonNull(</span>
+                meterReadingRelatedInfoEditProcess,
+                &quot;meterReadingRelatedInfoEditProcess&quot;);
+<span class="fc" id="L120">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L121">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L122">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L123">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L124">        this.openingInProgressErrorJudgmentDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.TYPE,
+                ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.OPENING);
+<span class="fc" id="L128">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L132">        this.endOfContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.END_OF_CONTRACT);
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * MA-037 を実行する。
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;当日報告取消対象取得-閉栓エラーフォロー取消・オンライン閉栓報告取消-小売-TG小売&quot;,
+            description = &quot;DA と SV の取得結果を MA-037 レスポンスへ変換して返却する。&quot;,
+            operationId = &quot;getSamedayReportCancelTargetGetClosingTgRetail&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;当日報告取消対象取得結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = SamedayReportCancelTargetGetClosingTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public SamedayReportCancelTargetGetClosingTgRetailResponse endpoint(
+            @BeanParam SamedayReportCancelTargetGetClosingTgRetailRequest request) {
+<span class="fc" id="L167">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    SamedayReportCancelTargetGetClosingTgRetailResponse handle(
+            SamedayReportCancelTargetGetClosingTgRetailRequest request) {
+<span class="fc" id="L172">        LocalDate targetMeterReadingDate = Rfc3339LocalDateParser.parse(request.trkKnsYmd());</span>
+<span class="fc" id="L173">        validateNotFuture(targetMeterReadingDate);</span>
+
+<span class="fc" id="L175">        long gasMtstNo = Long.parseLong(request.gasMtstNo());</span>
+<span class="fc" id="L176">        long contractCustomerNo = Long.parseLong(request.syoKyoTrno());</span>
+
+<span class="fc" id="L178">        GmtsetdRecord gmtsetdRecord = gmtsetdDataAccess</span>
+<span class="fc" id="L179">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, targetMeterReadingDate)</span>
+<span class="fc" id="L180">                .orElseThrow(() -&gt; new BusinessRuleException(ERROR_CODE_TARGET_NOT_FOUND));</span>
+
+        try {
+<span class="fc" id="L183">            openingClosingInProgressErrorJudgment.execute(</span>
+<span class="fc" id="L184">                    gmtsetdRecord.gmtKhsJtkb(),</span>
+                    openingInProgressErrorJudgmentDivision);
+<span class="fc" id="L186">        } catch (KaisenRuleException exception) {</span>
+<span class="fc" id="L187">            throw new BusinessRuleException(ERROR_CODE_TARGET_NOT_FOUND);</span>
+<span class="fc" id="L188">        }</span>
+
+<span class="fc" id="L190">        KiycstkRecord kiycstkRecord = kiycstkDataAccess.findByKyoTrkNo(contractCustomerNo)</span>
+<span class="fc" id="L191">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L192">                        kiycstkDataAccess.tableName(),</span>
+<span class="fc" id="L193">                        KiycstkDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="fc" id="L194">                        new FlatJsonBuilder().put(&quot;kyoTrkNo&quot;, contractCustomerNo)));</span>
+
+<span class="fc" id="L196">        ServiceContractNumberAcquisitionOutput serviceContractOutput =</span>
+<span class="fc" id="L197">                serviceContractNumberAcquisition.execute(</span>
+<span class="fc" id="L198">                        gasMtstNo,</span>
+<span class="fc" id="L199">                        gmtsetdRecord.mtgMtstNo(),</span>
+                        SHR_KBN_RELATED_ACTIVE_OR_END_WAITING_OR_END,
+<span class="fc" id="L201">                        gmtsetdRecord.ckrtGmscJtkb(),</span>
+                        targetMeterReadingDate);
+
+<span class="fc" id="L204">        Long serviceContractNumber = serviceContractOutput.svkyNo();</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">        if (serviceContractNumber == null || serviceContractNumber == 0L) {</span>
+<span class="fc" id="L206">            throw new KaiheisenException(&quot;ガスメーター設置場所番号の値が不正のため、処理を終了しました。&quot;);</span>
+        }
+
+<span class="fc" id="L209">        List&lt;SvckyaRecord&gt; serviceContractRecords = svckyaDataAccess.findAllBySvkyNoAtKnskKjnYmdAndSvkyJtkbList(</span>
+                serviceContractNumber,
+                targetMeterReadingDate,
+<span class="fc" id="L212">                List.of(underContractStatus, endOfContractStatus));</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (serviceContractRecords.isEmpty()) {</span>
+<span class="fc" id="L214">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L215">                    svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L216">                    SvckyaDataAccess.CallSpecs.FIND_ALL_BY_SVKY_NO_AT_KNSK_KJN_YMD_AND_SVKY_JTKB_LIST.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L218">                            .put(&quot;svkyNo&quot;, serviceContractNumber)</span>
+<span class="fc" id="L219">                            .put(&quot;knskKjnYmd&quot;, targetMeterReadingDate)</span>
+<span class="fc" id="L220">                            .put(&quot;svkyJtkbList&quot;, List.of(underContractStatus, endOfContractStatus)));</span>
+        }
+<span class="fc" id="L222">        SvckyaRecord serviceContractRecord = serviceContractRecords.getFirst();</span>
+
+<span class="fc" id="L224">        MeterReadingRelatedInfoEditProcessOutput meterReadingOutput =</span>
+<span class="fc" id="L225">                meterReadingRelatedInfoEditProcess.execute(</span>
+<span class="fc" id="L226">                        gasMtstNo,</span>
+                        targetMeterReadingDate,
+<span class="fc" id="L228">                        gmtsetdRecord.hesnJysb(),</span>
+                        ConstantLookupKeys.Kaiheisen.MeterReadingRelatedInfoEditProcessingDivision
+                                .CLOSING_METER_READING_RELATED_INFO_ACQUISITION);
+
+<span class="fc" id="L232">        return toResponse(</span>
+                kiycstkRecord,
+                gmtsetdRecord,
+                serviceContractRecord,
+                meterReadingOutput,
+<span class="fc" id="L237">                requestContext.getCorrelationId().orElseThrow(</span>
+<span class="nc" id="L238">                        () -&gt; new IllegalStateException(&quot;correlationId is not set&quot;)));</span>
+    }
+
+    private void validateNotFuture(LocalDate targetMeterReadingDate) {
+<span class="fc" id="L242">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="pc" id="L243">                .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set&quot;))</span>
+<span class="fc" id="L244">                .toLocalDate();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (targetMeterReadingDate.isAfter(systemDate)) {</span>
+<span class="fc" id="L246">            throw new BusinessRuleException(ERROR_CODE_TARGET_NOT_FOUND);</span>
+        }
+<span class="fc" id="L248">    }</span>
+
+    private static SamedayReportCancelTargetGetClosingTgRetailResponse toResponse(
+            KiycstkRecord kiycstkRecord,
+            GmtsetdRecord gmtsetdRecord,
+            SvckyaRecord svckyaRecord,
+            MeterReadingRelatedInfoEditProcessOutput meterReadingOutput,
+            String correlationId) {
+<span class="fc" id="L256">        return new SamedayReportCancelTargetGetClosingTgRetailResponse(</span>
+                new ContractCustomerInfo(
+<span class="fc" id="L258">                        kiycstkRecord.ctnmKn1(),</span>
+<span class="fc" id="L259">                        kiycstkRecord.ctnmKj1(),</span>
+<span class="fc" id="L260">                        kiycstkRecord.ctnmKjhkFlg(),</span>
+<span class="fc" id="L261">                        kiycstkRecord.ctnmKn2(),</span>
+<span class="fc" id="L262">                        kiycstkRecord.ctnmKj2(),</span>
+<span class="fc" id="L263">                        kiycstkRecord.ctnm2HujnShbt(),</span>
+<span class="fc" id="L264">                        kiycstkRecord.ctnm2HshiShbt(),</span>
+<span class="fc" id="L265">                        kiycstkRecord.ctnm1HujnShbt(),</span>
+<span class="fc" id="L266">                        kiycstkRecord.ctnm1HshiShbt()),</span>
+                new GasMeterLocationInfo(
+<span class="fc" id="L268">                        formatDate(gmtsetdRecord.kasYmd()),</span>
+<span class="fc" id="L269">                        formatDate(gmtsetdRecord.hesnYmd()),</span>
+<span class="fc" id="L270">                        gmtsetdRecord.kasJysb(),</span>
+<span class="fc" id="L271">                        gmtsetdRecord.hesnJysb()),</span>
+                new ServiceContractInfo(
+<span class="fc" id="L273">                        svckyaRecord.kiyShbt(),</span>
+<span class="fc" id="L274">                        svckyaRecord.svkySttJysb(),</span>
+<span class="fc" id="L275">                        svckyaRecord.svkyEndJysb(),</span>
+<span class="fc" id="L276">                        formatDate(svckyaRecord.rkkiEndYmd())),</span>
+<span class="fc" id="L277">                meterReadingOutput.knkkSsjyShbt(),</span>
+<span class="fc" id="L278">                meterReadingOutput.kkysSisnJtkb(),</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                meterReadingOutput.gasSyry() == null ? null : meterReadingOutput.gasSyry().doubleValue(),</span>
+<span class="fc" id="L280">                meterReadingOutput.shyDdsu(),</span>
+<span class="fc" id="L281">                meterReadingOutput.kgtsKknnFlg(),</span>
+                correlationId,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static String formatDate(LocalDate value) {
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        return value == null ? null : value.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

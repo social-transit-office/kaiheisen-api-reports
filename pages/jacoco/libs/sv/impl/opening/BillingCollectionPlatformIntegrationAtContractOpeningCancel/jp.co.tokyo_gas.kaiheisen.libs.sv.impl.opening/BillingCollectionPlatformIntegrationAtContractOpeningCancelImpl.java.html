@@ -1,0 +1,483 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationAtContractOpeningCancelImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformintegrationatcontractopeningcancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationAtContractOpeningCancelImpl.java</span></div><h1>BillingCollectionPlatformIntegrationAtContractOpeningCancelImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.irslkkz.IrslkkzDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.irslkkz.write.IrslkkzWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformApiIntegrationForPreviousContract;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationAtContractOpeningCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformapiintegrationforpreviouscontract.model.SkkbRkySgjhInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformapiintegrationforpreviouscontract.model.SktsKykHkirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformapiintegrationforpreviouscontract.model.SktsSihDlirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformapiintegrationforpreviouscontract.model.SktsSihHkirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.billingcollectionplatformapiintegrationforpreviouscontract.model.SktsSihTrirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdOgaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaOgaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.ServiceSuspensionCancellationReasonTypeAcquisition;
+
+/**
+ * 概要: SV-055（前契約継続開栓取消時請求回収基盤連携）のサービス実装。
+ * 主な仕様:
+ * - 判定、補完、下位 SV/DA 呼出しのみを行う void サービスとして実装する。
+ * - `SV-058` 実行後のみ `DA-030-C001` 登録を続行する。
+ */
+public final class BillingCollectionPlatformIntegrationAtContractOpeningCancelImpl
+        implements BillingCollectionPlatformIntegrationAtContractOpeningCancel {
+
+    private static final long FIXED_GAS_METER_LOCATION_NO = 11111111111L;
+
+    private static final int PREVIOUS_CONTRACT_PHONE_FETCH_LIMIT = 2;
+
+    private static final String SERVICE_USER_ID = &quot;KHSS055&quot;;
+
+<span class="fc" id="L48">    private static final DateTimeFormatter REQUEST_TIME_FORMAT = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private final KyotelkDataAccess kyotelkDataAccess;
+
+    private final ServiceSuspensionCancellationReasonTypeAcquisition
+            serviceSuspensionCancellationReasonTypeAcquisition;
+
+    private final BillingCollectionPlatformApiIntegrationForPreviousContract
+            billingCollectionPlatformApiIntegrationForPreviousContract;
+
+    private final IrslkkzDataAccess irslkkzDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String previousContractCategory;
+
+    private final String noServiceSuspensionOrCancellationReasonType;
+
+    private final String supplyOutageReasonType;
+
+    private final String blankContactType;
+
+    private final String noPhoneType;
+
+    private final String tokyoGasNetworkOperatorCode;
+
+    private final String billablePaymentManagementTransferCode;
+
+    private final String billableContractManagementTransferCode;
+
+    /**
+     * 概要: CDI から依存を受け取って初期化する。
+     */
+    @Inject
+    public BillingCollectionPlatformIntegrationAtContractOpeningCancelImpl(
+            KyotelkDataAccess kyotelkDataAccess,
+            ServiceSuspensionCancellationReasonTypeAcquisition
+                    serviceSuspensionCancellationReasonTypeAcquisition,
+            BillingCollectionPlatformApiIntegrationForPreviousContract
+                    billingCollectionPlatformApiIntegrationForPreviousContract,
+            IrslkkzDataAccess irslkkzDataAccess,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L93">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L94">        this.kyotelkDataAccess = Objects.requireNonNull(kyotelkDataAccess, &quot;kyotelkDataAccess&quot;);</span>
+<span class="fc" id="L95">        this.serviceSuspensionCancellationReasonTypeAcquisition = Objects.requireNonNull(</span>
+                serviceSuspensionCancellationReasonTypeAcquisition,
+                &quot;serviceSuspensionCancellationReasonTypeAcquisition&quot;);
+<span class="fc" id="L98">        this.billingCollectionPlatformApiIntegrationForPreviousContract = Objects.requireNonNull(</span>
+                billingCollectionPlatformApiIntegrationForPreviousContract,
+                &quot;billingCollectionPlatformApiIntegrationForPreviousContract&quot;);
+<span class="fc" id="L101">        this.irslkkzDataAccess = Objects.requireNonNull(irslkkzDataAccess, &quot;irslkkzDataAccess&quot;);</span>
+<span class="fc" id="L102">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L103">        CiriusConstantService requiredCiriusConstantService =</span>
+<span class="fc" id="L104">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L105">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L106">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L107">        this.previousContractCategory = requireKaiheisenCode(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory.TYPE,
+                ConstantLookupKeys.Kaiheisen.UnopeningCancellationRequestCollectionPlatformCollaborationCategory
+                        .CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L112">        this.noServiceSuspensionOrCancellationReasonType = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType
+                        .NO_SERVICE_SUSPENSION_OR_CANCELLATION);
+<span class="fc" id="L117">        this.supplyOutageReasonType = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L121">        this.blankContactType = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContactType.TYPE,
+                ConstantLookupKeys.Cirius.ContactType.BLANK);
+<span class="fc" id="L125">        this.noPhoneType = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.PhoneType.TYPE,
+                ConstantLookupKeys.Cirius.PhoneType.NO_PHONE);
+<span class="fc" id="L129">        this.tokyoGasNetworkOperatorCode = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L133">        this.billablePaymentManagementTransferCode = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_PAYMENT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L138">        this.billableContractManagementTransferCode = requireCiriusCode(</span>
+                requiredCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_CONTRACT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L143">    }</span>
+
+    @Override
+    public void execute(
+            String kastkSeqkRkKbn,
+            Integer suguGmtKnsu,
+            Boolean ksenFlg,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg,
+            Boolean suguKbnUpdFlg,
+            Long gasMtstNo,
+            SihakyInf sihakyInf,
+            SvckyaInf svckyaInf,
+            SvckyaOgaInf svckyaOgaInf,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            SvmstkrInf svmstkrInf) {
+<span class="fc" id="L159">        RequestState requestState = requireRequestState();</span>
+<span class="fc" id="L160">        InternalState state = new InternalState(blankContactType, noPhoneType);</span>
+<span class="fc" id="L161">        applyComprehensiveMeterCountStep(suguGmtKnsu, gasMtstNo, suguKbnUpdFlg, svckyaInf, svmstkrInf, state);</span>
+<span class="fc" id="L162">        applyServiceSuspensionReasonStep(suguKbnUpdFlg, svckyaOgaInf, gmtsetdOgaInf, state);</span>
+<span class="fc" id="L163">        applyCollaborationCategoryStep(kastkSeqkRkKbn, suguKbnUpdFlg, sihakyInf, svckyaOgaInf, gmtsetdOgaInf, state);</span>
+<span class="fc" id="L164">        executeCollaborationStep(</span>
+                kastkSeqkRkKbn,
+                suguGmtKnsu,
+                ksenFlg,
+                kkytskrKktUmFlg,
+                kkytskrUmFlg,
+                sihakyInf,
+                svckyaInf,
+                svckyaOgaInf,
+                requestState,
+                state);
+<span class="fc" id="L175">    }</span>
+
+    private void applyComprehensiveMeterCountStep(
+            Integer suguGmtKnsu,
+            Long gasMtstNo,
+            Boolean suguKbnUpdFlg,
+            SvckyaInf svckyaInf,
+            SvmstkrInf svmstkrInf,
+            InternalState state) {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        if (Integer.valueOf(0).equals(suguGmtKnsu)) {</span>
+<span class="fc" id="L185">            state.gasMeterLocationNo = FIXED_GAS_METER_LOCATION_NO;</span>
+<span class="fc" id="L186">            state.noticeCustomerNo = gasMtstNo;</span>
+<span class="fc" id="L187">            return;</span>
+        }
+<span class="fc" id="L189">        state.gasMeterLocationNo = svckyaInf.svkyNo();</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (Boolean.TRUE.equals(suguKbnUpdFlg)) {</span>
+<span class="fc" id="L191">            state.noticeCustomerNo = svmstkrInf.mtstNo();</span>
+<span class="fc" id="L192">            return;</span>
+        }
+<span class="fc" id="L194">        state.noticeCustomerNo = svckyaInf.svkyNo();</span>
+<span class="fc" id="L195">    }</span>
+
+    private void applyServiceSuspensionReasonStep(
+            Boolean suguKbnUpdFlg,
+            SvckyaOgaInf svckyaOgaInf,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            InternalState state) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (Boolean.TRUE.equals(suguKbnUpdFlg)) {</span>
+<span class="fc" id="L203">            state.serviceSuspensionCancellationReasonType = noServiceSuspensionOrCancellationReasonType;</span>
+<span class="fc" id="L204">            return;</span>
+        }
+<span class="fc" id="L206">        state.serviceSuspensionCancellationReasonType =</span>
+<span class="fc" id="L207">                serviceSuspensionCancellationReasonTypeAcquisition.execute(</span>
+<span class="fc" id="L208">                        svckyaOgaInf.svkyEndJysb(),</span>
+<span class="fc" id="L209">                        gmtsetdOgaInf.hesnJysb()).svkjyShbt();</span>
+<span class="fc" id="L210">    }</span>
+
+    private void applyCollaborationCategoryStep(
+            String kastkSeqkRkKbn,
+            Boolean suguKbnUpdFlg,
+            SihakyInf sihakyInf,
+            SvckyaOgaInf svckyaOgaInf,
+            GmtsetdOgaInf gmtsetdOgaInf,
+            InternalState state) {
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (isPreviousContract(kastkSeqkRkKbn)) {</span>
+<span class="fc" id="L220">            state.requestSourceCustomerRoleNo = sihakyInf.sihKiyNo();</span>
+<span class="fc" id="L221">            state.networkOperatorCode = tokyoGasNetworkOperatorCode;</span>
+<span class="fc" id="L222">            state.billingEndDate = svckyaOgaInf.rkkiEndYmd();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (!Boolean.TRUE.equals(suguKbnUpdFlg)) {</span>
+<span class="fc" id="L224">                state.serviceSuspensionCancellationDate = svckyaOgaInf.rkkiEndYmd();</span>
+<span class="fc" id="L225">                state.contractEndDate = svckyaOgaInf.rkkiEndYmd();</span>
+            }
+<span class="fc" id="L227">            return;</span>
+        }
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (supplyOutageReasonType.equals(state.serviceSuspensionCancellationReasonType)) {</span>
+<span class="fc" id="L230">            state.serviceSuspensionCancellationDate = gmtsetdOgaInf.hesnYmd();</span>
+<span class="fc" id="L231">            return;</span>
+        }
+<span class="fc" id="L233">        state.serviceSuspensionCancellationDate = svckyaOgaInf.rkkiEndYmd();</span>
+<span class="fc" id="L234">    }</span>
+
+    private void executeCollaborationStep(
+            String kastkSeqkRkKbn,
+            Integer suguGmtKnsu,
+            Boolean ksenFlg,
+            Boolean kkytskrKktUmFlg,
+            Boolean kkytskrUmFlg,
+            SihakyInf sihakyInf,
+            SvckyaInf svckyaInf,
+            SvckyaOgaInf svckyaOgaInf,
+            RequestState requestState,
+            InternalState state) {
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        if (isPreviousContract(kastkSeqkRkKbn)) {</span>
+<span class="pc bpc" id="L248" title="1 of 4 branches missed.">            if (suguGmtKnsu != null &amp;&amp; suguGmtKnsu.intValue() &lt;= PREVIOUS_CONTRACT_PHONE_FETCH_LIMIT) {</span>
+<span class="fc" id="L249">                loadPayerPhoneNumbers(sihakyInf.shsyKyoTrno(), state);</span>
+<span class="fc" id="L250">                executePreviousContractIntegration(sihakyInf, svckyaInf, svckyaOgaInf, requestState, state);</span>
+            }
+<span class="fc" id="L252">            return;</span>
+        }
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(ksenFlg)</span>
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">                &amp;&amp; (Boolean.TRUE.equals(kkytskrKktUmFlg) || Boolean.TRUE.equals(kkytskrUmFlg))) {</span>
+<span class="fc" id="L256">            executePreviousContractIntegration(sihakyInf, svckyaInf, svckyaOgaInf, requestState, state);</span>
+        }
+<span class="fc" id="L258">    }</span>
+
+    private void loadPayerPhoneNumbers(Long kyoTrkNo, InternalState state) {
+<span class="fc" id="L261">        List&lt;KyotelkRecord&gt; phoneRecords = kyotelkDataAccess.findAllByKyoTrkNo(kyoTrkNo);</span>
+<span class="pc bpc" id="L262" title="1 of 4 branches missed.">        if (!phoneRecords.isEmpty() &amp;&amp; hasPhoneNumber(phoneRecords.get(0))) {</span>
+<span class="fc" id="L263">            KyotelkRecord firstRecord = phoneRecords.get(0);</span>
+<span class="fc" id="L264">            state.contactType1 = firstRecord.telRrskShbt();</span>
+<span class="fc" id="L265">            state.phoneNumber1 = firstRecord.kyoTelNo();</span>
+<span class="fc" id="L266">            state.phoneType1 = firstRecord.telShbt();</span>
+<span class="pc bpc" id="L267" title="1 of 4 branches missed.">            if (phoneRecords.size() &gt; 1 &amp;&amp; hasPhoneNumber(phoneRecords.get(1))) {</span>
+<span class="fc" id="L268">                KyotelkRecord secondRecord = phoneRecords.get(1);</span>
+<span class="fc" id="L269">                state.contactType2 = secondRecord.telRrskShbt();</span>
+<span class="fc" id="L270">                state.phoneNumber2 = secondRecord.kyoTelNo();</span>
+<span class="fc" id="L271">                state.phoneType2 = secondRecord.telShbt();</span>
+            }
+        }
+<span class="fc" id="L274">    }</span>
+
+    private void executePreviousContractIntegration(
+            SihakyInf sihakyInf,
+            SvckyaInf svckyaInf,
+            SvckyaOgaInf svckyaOgaInf,
+            RequestState requestState,
+            InternalState state) {
+<span class="fc" id="L282">        billingCollectionPlatformApiIntegrationForPreviousContract.execute(</span>
+<span class="fc" id="L283">                buildSkkbRkySgjhInf(sihakyInf, svckyaInf, requestState, state),</span>
+<span class="fc" id="L284">                buildSktsSihTrirInf(sihakyInf, svckyaOgaInf, state),</span>
+<span class="fc" id="L285">                buildSktsSihHkirInf(state),</span>
+<span class="fc" id="L286">                buildSktsKykHkirInf(svckyaOgaInf, state),</span>
+                new SktsSihDlirInf(billablePaymentManagementTransferCode));
+<span class="fc" id="L288">        irslkkzDataAccess.insert(</span>
+<span class="fc" id="L289">                buildIrslkkzWriteRecord(sihakyInf, svckyaInf, requestState, state),</span>
+<span class="fc" id="L290">                AuditContext.of(SERVICE_USER_ID, requestState.originFunctionId()));</span>
+<span class="fc" id="L291">    }</span>
+
+    private SkkbRkySgjhInf buildSkkbRkySgjhInf(
+            SihakyInf sihakyInf,
+            SvckyaInf svckyaInf,
+            RequestState requestState,
+            InternalState state) {
+<span class="fc" id="L298">        return new SkkbRkySgjhInf(</span>
+                null,
+<span class="fc" id="L300">                sihakyInf.sikKrno(),</span>
+<span class="fc" id="L301">                svckyaInf.sqtiKiyNo(),</span>
+<span class="fc" id="L302">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L303">                svckyaInf.skno(),</span>
+<span class="fc" id="L304">                sihakyInf.sihKiyNo(),</span>
+<span class="fc" id="L305">                sihakyInf.skno(),</span>
+                state.gasMeterLocationNo,
+<span class="fc" id="L307">                svckyaInf.rkkiSttYmd(),</span>
+<span class="fc" id="L308">                svckyaInf.rkkiEndYmd(),</span>
+                Boolean.TRUE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+<span class="fc" id="L313">                requestState.systemDate());</span>
+    }
+
+    private SktsSihTrirInf buildSktsSihTrirInf(
+            SihakyInf sihakyInf,
+            SvckyaOgaInf svckyaOgaInf,
+            InternalState state) {
+<span class="fc" id="L320">        return new SktsSihTrirInf(</span>
+                null,
+                null,
+                state.requestSourceCustomerRoleNo,
+                null,
+                null,
+                state.contactType1,
+                state.contactType2,
+                state.phoneNumber1,
+                state.phoneNumber2,
+                state.phoneType1,
+                state.phoneType2,
+                billablePaymentManagementTransferCode,
+<span class="fc" id="L333">                svckyaOgaInf.rkkiEndYmd(),</span>
+<span class="fc" id="L334">                sihakyInf.tkysYmd(),</span>
+                state.networkOperatorCode);
+    }
+
+    private SktsSihHkirInf buildSktsSihHkirInf(InternalState state) {
+<span class="fc" id="L339">        return new SktsSihHkirInf(</span>
+                billablePaymentManagementTransferCode,
+                state.billingEndDate);
+    }
+
+    private SktsKykHkirInf buildSktsKykHkirInf(
+            SvckyaOgaInf svckyaOgaInf,
+            InternalState state) {
+<span class="fc" id="L347">        return new SktsKykHkirInf(</span>
+                state.serviceSuspensionCancellationReasonType,
+                state.serviceSuspensionCancellationDate,
+                state.contractEndDate,
+                billableContractManagementTransferCode,
+                state.noticeCustomerNo,
+<span class="fc" id="L353">                svckyaOgaInf.szirHtyoYmd());</span>
+    }
+
+    private IrslkkzWriteRecord buildIrslkkzWriteRecord(
+            SihakyInf sihakyInf,
+            SvckyaInf svckyaInf,
+            RequestState requestState,
+            InternalState state) {
+<span class="fc" id="L361">        return new IrslkkzWriteRecord(</span>
+<span class="fc" id="L362">                requestState.systemDate(),</span>
+<span class="fc" id="L363">                Integer.valueOf(REQUEST_TIME_FORMAT.format(requestState.systemDatetime())),</span>
+                state.gasMeterLocationNo,
+                Boolean.TRUE,
+                Boolean.FALSE,
+                state.gasMeterLocationNo,
+<span class="fc" id="L368">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L369">                sihakyInf.sihKiyNo(),</span>
+<span class="fc" id="L370">                sihakyInf.sikKrno(),</span>
+<span class="fc" id="L371">                svckyaInf.sqtiKiyNo(),</span>
+<span class="fc" id="L372">                svckyaInf.rkkiEndYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private RequestState requireRequestState() {
+<span class="fc" id="L385">        LocalDateTime systemDatetime = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L386">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L387">        String reportingSystemTypeCode = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L388">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L389">        return new RequestState(</span>
+<span class="fc" id="L390">                systemDatetime.toLocalDate(),</span>
+                systemDatetime,
+<span class="fc" id="L392">                requireOriginFunctionId(reportingSystemTypeCode));</span>
+    }
+
+    private String requireOriginFunctionId(String reportingSystemTypeCode) {
+<span class="fc" id="L396">        String type = ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE;</span>
+<span class="fc" id="L397">        String originFunctionId = kaiheisenConstantService.findNameByTypeAndValue(type, reportingSystemTypeCode);</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        if (originFunctionId == null) {</span>
+<span class="nc" id="L399">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + type + &quot;, value=&quot; + reportingSystemTypeCode);
+        }
+<span class="fc" id="L403">        return originFunctionId;</span>
+    }
+
+    private boolean isPreviousContract(String kastkSeqkRkKbn) {
+<span class="fc" id="L407">        return previousContractCategory.equals(kastkSeqkRkKbn);</span>
+    }
+
+    private static boolean hasPhoneNumber(KyotelkRecord record) {
+<span class="pc bpc" id="L411" title="2 of 4 branches missed.">        return record.kyoTelNo() != null &amp;&amp; !record.kyoTelNo().isBlank();</span>
+    }
+
+    private static String requireKaiheisenCode(
+            KaiheisenConstantService kaiheisenConstantService,
+            String type,
+            String value) {
+<span class="fc" id="L418">        String name = kaiheisenConstantService.findNameByTypeAndValue(type, value);</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        if (name == null) {</span>
+<span class="nc" id="L420">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + type + &quot;, value=&quot; + value);
+        }
+<span class="fc" id="L424">        return value;</span>
+    }
+
+    private static String requireCiriusCode(
+            CiriusConstantService ciriusConstantService,
+            String typeCode,
+            String code) {
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        if (ciriusConstantService.findActiveByTypeCodeAndCode(typeCode, code) == null) {</span>
+<span class="fc" id="L432">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;CiriusConstantService&quot;,
+                    &quot;typeCode=&quot; + typeCode + &quot;, code=&quot; + code);
+        }
+<span class="fc" id="L436">        return code;</span>
+    }
+
+<span class="fc" id="L439">    private record RequestState(</span>
+            LocalDate systemDate,
+            LocalDateTime systemDatetime,
+            String originFunctionId) {
+    }
+
+    private static final class InternalState {
+
+        private Long gasMeterLocationNo;
+
+        private Long requestSourceCustomerRoleNo;
+
+        private String contactType1;
+
+        private String contactType2;
+
+        private String phoneNumber1;
+
+        private String phoneNumber2;
+
+        private String phoneType1;
+
+        private String phoneType2;
+
+        private LocalDate billingEndDate;
+
+        private String networkOperatorCode;
+
+        private LocalDate contractEndDate;
+
+        private String serviceSuspensionCancellationReasonType;
+
+        private LocalDate serviceSuspensionCancellationDate;
+
+        private Long noticeCustomerNo;
+
+<span class="fc" id="L475">        private InternalState(String blankContactType, String noPhoneType) {</span>
+<span class="fc" id="L476">            this.contactType1 = blankContactType;</span>
+<span class="fc" id="L477">            this.contactType2 = blankContactType;</span>
+<span class="fc" id="L478">            this.phoneType1 = noPhoneType;</span>
+<span class="fc" id="L479">            this.phoneType2 = noPhoneType;</span>
+<span class="fc" id="L480">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

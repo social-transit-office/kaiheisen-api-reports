@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InMemoryOptimisticUpdateSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core</a> &gt; <span class="el_source">InMemoryOptimisticUpdateSupport.java</span></div><h1>InMemoryOptimisticUpdateSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.ExclusiveException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+
+/** in-memory 更新に対して共通の排他チェックを適用する helper。 */
+public final class InMemoryOptimisticUpdateSupport {
+
+    private InMemoryOptimisticUpdateSupport() {
+    }
+
+    /**
+     * 排他制御付き update を適用する。
+     *
+     * @param rows 保存行
+     * @param baseMatcher 排他列を除く基本一致条件
+     * @param preparedFactory 行ごとの更新 payload 生成
+     * @param applier payload 適用処理
+     * @param recUpdJnjNoColumn 排他列
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @param &lt;TColumn&gt; 列型
+     * @return 更新件数
+     */
+    public static &lt;TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn&gt; int update(
+            Iterable&lt;? extends Map&lt;TColumn, Object&gt;&gt; rows,
+            Predicate&lt;Map&lt;TColumn, Object&gt;&gt; baseMatcher,
+            Function&lt;Map&lt;TColumn, Object&gt;, PreparedTargetColumnUpdate&lt;TColumn&gt;&gt; preparedFactory,
+            BiConsumer&lt;Map&lt;TColumn, Object&gt;, PreparedTargetColumnUpdate&lt;TColumn&gt;&gt; applier,
+            TColumn recUpdJnjNoColumn,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier,
+            Object... optimisticBindValues) {
+<span class="nc" id="L42">        return update(</span>
+                rows,
+                baseMatcher,
+                preparedFactory,
+                applier,
+                recUpdJnjNoColumn,
+                expectedRecUpdJnjNo,
+                daIdentifier,
+<span class="nc" id="L50">                () -&gt; new DataInconsistencyException(&quot;UNKNOWN&quot;, daIdentifier, &quot;{}&quot;),</span>
+                optimisticBindValues);
+    }
+
+    /**
+     * 排他制御付き update を適用する。
+     *
+     * @param rows 保存行
+     * @param baseMatcher 排他列を除く基本一致条件
+     * @param preparedFactory 行ごとの更新 payload 生成
+     * @param applier payload 適用処理
+     * @param recUpdJnjNoColumn 排他列
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @param notFoundExceptionSupplier 対象データなし時の例外生成
+         * @param optimisticBindValues 排他不一致時に復旧用として保持する bind 値
+     * @param &lt;TColumn&gt; 列型
+     * @return 更新件数
+     */
+    public static &lt;TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn&gt; int update(
+            Iterable&lt;? extends Map&lt;TColumn, Object&gt;&gt; rows,
+            Predicate&lt;Map&lt;TColumn, Object&gt;&gt; baseMatcher,
+            Function&lt;Map&lt;TColumn, Object&gt;, PreparedTargetColumnUpdate&lt;TColumn&gt;&gt; preparedFactory,
+            BiConsumer&lt;Map&lt;TColumn, Object&gt;, PreparedTargetColumnUpdate&lt;TColumn&gt;&gt; applier,
+            TColumn recUpdJnjNoColumn,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier,
+            Supplier&lt;? extends RuntimeException&gt; notFoundExceptionSupplier,
+            Object... optimisticBindValues) {
+<span class="fc" id="L79">        Objects.requireNonNull(rows, &quot;rows&quot;);</span>
+<span class="fc" id="L80">        Objects.requireNonNull(baseMatcher, &quot;baseMatcher&quot;);</span>
+<span class="fc" id="L81">        Objects.requireNonNull(preparedFactory, &quot;preparedFactory&quot;);</span>
+<span class="fc" id="L82">        Objects.requireNonNull(applier, &quot;applier&quot;);</span>
+<span class="fc" id="L83">        Objects.requireNonNull(recUpdJnjNoColumn, &quot;recUpdJnjNoColumn&quot;);</span>
+
+        Object[] effectiveOptimisticBindValues =
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                optimisticBindValues == null ? new Object[0] : optimisticBindValues.clone();</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (expectedRecUpdJnjNo != null) {</span>
+<span class="fc" id="L88">            Objects.requireNonNull(daIdentifier, &quot;daIdentifier&quot;);</span>
+        }
+
+<span class="fc" id="L91">        int updated = 0;</span>
+<span class="fc" id="L92">        boolean baseMatched = false;</span>
+<span class="fc" id="L93">        boolean exactMatched = false;</span>
+<span class="fc" id="L94">        boolean nonEmptyPreparedFound = false;</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (Map&lt;TColumn, Object&gt; row : rows) {</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (!baseMatcher.test(row)) {</span>
+<span class="nc" id="L97">                continue;</span>
+            }
+<span class="fc" id="L99">            baseMatched = true;</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (expectedRecUpdJnjNo != null</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                    &amp;&amp; !Objects.equals(toInteger(row.get(recUpdJnjNoColumn)), expectedRecUpdJnjNo)) {</span>
+<span class="fc" id="L102">                continue;</span>
+            }
+<span class="nc" id="L104">            exactMatched = true;</span>
+<span class="nc" id="L105">            PreparedTargetColumnUpdate&lt;TColumn&gt; prepared = preparedFactory.apply(row);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if (prepared.isEmpty()) {</span>
+<span class="nc" id="L107">                continue;</span>
+            }
+<span class="nc" id="L109">            nonEmptyPreparedFound = true;</span>
+<span class="nc" id="L110">            applier.accept(row, prepared);</span>
+<span class="nc" id="L111">            updated++;</span>
+<span class="nc" id="L112">        }</span>
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        if (updated &gt; 0 || expectedRecUpdJnjNo == null) {</span>
+<span class="nc" id="L114">            return updated;</span>
+        }
+<span class="pc bpc" id="L116" title="3 of 4 branches missed.">        if (exactMatched &amp;&amp; !nonEmptyPreparedFound) {</span>
+<span class="nc" id="L117">            return 0;</span>
+        }
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (baseMatched) {</span>
+<span class="fc" id="L120">            throw new ExclusiveException(</span>
+                    daIdentifier,
+                    null,
+<span class="fc" id="L123">                    buildExclusiveBindParameters(effectiveOptimisticBindValues, expectedRecUpdJnjNo));</span>
+        }
+<span class="nc" id="L125">        throw Objects.requireNonNull(notFoundExceptionSupplier, &quot;notFoundExceptionSupplier&quot;).get();</span>
+    }
+
+    private static Object[] buildExclusiveBindParameters(
+            Object[] optimisticBindValues, Integer expectedRecUpdJnjNo) {
+<span class="fc" id="L130">        Object[] bindParameters = Arrays.copyOf(optimisticBindValues, optimisticBindValues.length + 1);</span>
+<span class="fc" id="L131">        bindParameters[optimisticBindValues.length] = expectedRecUpdJnjNo;</span>
+<span class="fc" id="L132">        return bindParameters;</span>
+    }
+
+    private static Integer toInteger(Object value) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L137">            return null;</span>
+        }
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L140">            return number.intValue();</span>
+        }
+<span class="nc" id="L142">        return Integer.valueOf(value.toString());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

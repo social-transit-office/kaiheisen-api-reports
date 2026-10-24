@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MaPassthroughMaApiExceptionMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.exception_mapper</a> &gt; <span class="el_source">MaPassthroughMaApiExceptionMapper.java</span></div><h1>MaPassthroughMaApiExceptionMapper.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.exception_mapper;
+
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.ext.ExceptionMapper;
+import jakarta.ws.rs.ext.Provider;
+import java.util.Optional;
+import java.util.function.Function;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.ErrorResponseBody;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.external.MaApiException;
+
+/**
+ * MA から返された HTTP エラーを MA からそのまま返却するマッパー。
+ * ただし、呼出し元MAの個別仕様が存在する場合は、それを取り込む。
+ */
+@Provider
+<span class="nc" id="L17">public class MaPassthroughMaApiExceptionMapper implements ExceptionMapper&lt;MaPassthroughMaApiException&gt; {</span>
+
+    /**
+     * MA から返された HTTP エラーをレスポンスへ変換する。
+     * 呼出し元MAの個別仕様が存在する場合はそれを取り込む。
+     *
+     * @param exception MA エラー
+     * @return 変換後レスポンス
+     */
+    @Override
+    public Response toResponse(MaPassthroughMaApiException exception) {
+
+<span class="nc" id="L29">        Function&lt;MaPassthroughMaApiException, MaPassthroughMaApiException&gt; safeCustomizer =</span>
+<span class="nc" id="L30">                Optional.ofNullable(exception.getCustomizer()).orElse(Function.identity());</span>
+
+<span class="nc" id="L32">        return MaPassthroughMaApiException.from(exception.getMaApiException())</span>
+<span class="nc" id="L33">                .map(safeCustomizer)</span>
+<span class="nc" id="L34">                .map(this::toPassthroughResponse)</span>
+<span class="nc" id="L35">                .orElseGet(() -&gt; toFallbackResponse(exception.getMaApiException()));</span>
+    }
+
+    private Response toPassthroughResponse(MaPassthroughMaApiException exception) {
+<span class="nc" id="L39">        Response.ResponseBuilder builder = Response.status(exception.getStatus());</span>
+<span class="nc" id="L40">        String mediaType = exception.getMediaType();</span>
+<span class="nc bnc" id="L41" title="All 2 branches missed.">        builder.type(mediaType == null ? MediaType.APPLICATION_JSON : mediaType);</span>
+
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        if (exception.getResponseBody() != null) {</span>
+<span class="nc" id="L44">            builder.entity(exception.getResponseBody());</span>
+        }
+<span class="nc" id="L46">        return builder.build();</span>
+    }
+
+    private Response toFallbackResponse(MaApiException exception) {
+<span class="nc" id="L50">        ErrorResponseBody body = MaErrorResponseResolver.fromKaiheisenException(exception);</span>
+<span class="nc" id="L51">        return Response.status(MaErrorResponseResolver.resolveHttpStatus(exception))</span>
+<span class="nc" id="L52">                .type(MediaType.APPLICATION_JSON)</span>
+<span class="nc" id="L53">                .entity(body)</span>
+<span class="nc" id="L54">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
