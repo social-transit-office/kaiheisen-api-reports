@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JpaTargetColumnUpdateSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">JpaTargetColumnUpdateSupport.java</span></div><h1>JpaTargetColumnUpdateSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.ExclusiveException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.TableWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WriteColumnResolver;
+
+/**
+ * targetColumns 指定型 UPDATE を実行する reusable helper。
+ *
+ * @param &lt;RecordT&gt; API レコード型
+ * @param &lt;EntityT&gt; JPA エンティティ型
+ * @param &lt;ColumnT&gt; 列型
+ */
+public final class JpaTargetColumnUpdateSupport&lt;
+        RecordT, EntityT, ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt; {
+
+    private final EntityManager entityManager;
+
+    private final String tableName;
+
+    private final TableWriteDefinition&lt;RecordT, ColumnT&gt; definition;
+
+    private final JpaEntityWriteSupport&lt;RecordT, EntityT&gt; entityWriteSupport;
+
+    /**
+     * helper を生成する。
+     *
+     * @param entityManager JPA エンティティマネージャ
+     * @param tableName 物理テーブル名
+     * @param definition テーブル write 定義
+     * @param entityClass JPA エンティティ型
+     * @param entityMapper Record/Entity 変換
+     */
+    public JpaTargetColumnUpdateSupport(
+            EntityManager entityManager,
+            String tableName,
+            TableWriteDefinition&lt;RecordT, ColumnT&gt; definition,
+            Class&lt;EntityT&gt; entityClass,
+<span class="fc" id="L51">            Function&lt;RecordT, EntityT&gt; entityMapper) {</span>
+<span class="fc" id="L52">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L53">        this.tableName = Objects.requireNonNull(tableName, &quot;tableName&quot;);</span>
+<span class="fc" id="L54">        this.definition = Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+<span class="fc" id="L55">        this.entityWriteSupport = new JpaEntityWriteSupport&lt;&gt;(entityClass, entityMapper);</span>
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * targetColumns 指定型 UPDATE を実行する。
+     *
+     * @param record 更新値
+     * @param targetColumns SET 対象列
+     * @param updateDefaultsApplier update 前の DA 管理列設定
+     * @param where WHERE 句 helper
+     * @return 更新件数
+     */
+    public int update(
+            RecordT record,
+            Set&lt;ColumnT&gt; targetColumns,
+            BiConsumer&lt;EntityT, List&lt;? extends DataAccessColumn&gt;&gt; updateDefaultsApplier,
+            PreparedWhere where) {
+<span class="fc" id="L72">        return update(record, targetColumns, updateDefaultsApplier, where, null, null);</span>
+    }
+
+    /**
+     * 排他制御付き targetColumns 指定型 UPDATE を実行する。
+     *
+     * @param record 更新値
+     * @param targetColumns SET 対象列
+     * @param updateDefaultsApplier update 前の DA 管理列設定
+     * @param where 排他制御列を除く WHERE 句 helper
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @return 更新件数
+     */
+    public int update(
+            RecordT record,
+            Set&lt;ColumnT&gt; targetColumns,
+            BiConsumer&lt;EntityT, List&lt;? extends DataAccessColumn&gt;&gt; updateDefaultsApplier,
+            PreparedWhere where,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier) {
+<span class="fc" id="L93">        return update(</span>
+                record,
+                targetColumns,
+                updateDefaultsApplier,
+                where,
+                expectedRecUpdJnjNo,
+                daIdentifier,
+<span class="nc" id="L100">                () -&gt; new DataInconsistencyException(tableName, daIdentifier, &quot;{}&quot;));</span>
+    }
+
+    /**
+     * 排他制御付き targetColumns 指定型 UPDATE を実行する。
+     *
+     * @param record 更新値
+     * @param targetColumns SET 対象列
+     * @param updateDefaultsApplier update 前の DA 管理列設定
+     * @param where 排他制御列を除く WHERE 句 helper
+     * @param expectedRecUpdJnjNo 排他チェック対象の順序番号。null の場合は排他チェックしない
+     * @param daIdentifier 例外に設定する DA 識別子
+     * @param notFoundExceptionSupplier 対象データなし時の例外生成
+     * @return 更新件数
+     */
+    public int update(
+            RecordT record,
+            Set&lt;ColumnT&gt; targetColumns,
+            BiConsumer&lt;EntityT, List&lt;? extends DataAccessColumn&gt;&gt; updateDefaultsApplier,
+            PreparedWhere where,
+            Integer expectedRecUpdJnjNo,
+            String daIdentifier,
+            Supplier&lt;? extends RuntimeException&gt; notFoundExceptionSupplier) {
+<span class="fc" id="L123">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L124">        Objects.requireNonNull(updateDefaultsApplier, &quot;updateDefaultsApplier&quot;);</span>
+<span class="fc" id="L125">        Objects.requireNonNull(where, &quot;where&quot;);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (expectedRecUpdJnjNo != null) {</span>
+<span class="fc" id="L127">            Objects.requireNonNull(daIdentifier, &quot;daIdentifier&quot;);</span>
+        }
+
+<span class="fc" id="L130">        List&lt;ColumnT&gt; orderedPublicColumns =</span>
+<span class="fc" id="L131">                WriteColumnResolver.resolveUpdatableColumns(definition, targetColumns, false);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (orderedPublicColumns.isEmpty()) {</span>
+<span class="fc" id="L133">            return 0;</span>
+        }
+
+<span class="fc" id="L136">        List&lt;ColumnT&gt; effectiveColumns =</span>
+<span class="fc" id="L137">                WriteColumnResolver.effectiveColumns(</span>
+<span class="fc" id="L138">                        orderedPublicColumns, definition.updateManagedColumns());</span>
+<span class="fc" id="L139">        EntityT entity = entityWriteSupport.toEntity(record);</span>
+<span class="fc" id="L140">        updateDefaultsApplier.accept(entity, effectiveColumns);</span>
+<span class="fc" id="L141">        entityWriteSupport.complementNotNullColumns(entity, effectiveColumns);</span>
+<span class="fc" id="L142">        PreparedNativeUpdate prepared =</span>
+<span class="fc" id="L143">                PreparedNativeUpdate.of(</span>
+                        effectiveColumns,
+<span class="fc" id="L145">                        entityWriteSupport.toBindValues(entity, effectiveColumns));</span>
+
+        String effectiveWhereClause =
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                expectedRecUpdJnjNo == null</span>
+<span class="fc" id="L149">                        ? where.clause()</span>
+<span class="fc" id="L150">                        : where.clause() + &quot; AND REC_UPD_JNJ_NO = ?&quot;;</span>
+        String sql =
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                prepared.includesRecUpdJnjNo()</span>
+<span class="nc" id="L153">                        ? prepared.sqlIncrementingRecUpdJnjNo(tableName, effectiveWhereClause)</span>
+<span class="fc" id="L154">                        : prepared.sql(tableName, effectiveWhereClause);</span>
+<span class="fc" id="L155">        SqlCapture.set(sql);</span>
+<span class="fc" id="L156">        Query query = entityManager.createNativeQuery(sql);</span>
+        int nextIndex =
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">                prepared.includesRecUpdJnjNo()</span>
+<span class="nc" id="L159">                        ? prepared.bindSetParametersSkippingRecUpdJnjNo(query, 1)</span>
+<span class="fc" id="L160">                        : prepared.bindSetParameters(query, 1);</span>
+<span class="fc" id="L161">        nextIndex = where.bind(query, nextIndex);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (expectedRecUpdJnjNo != null) {</span>
+<span class="fc" id="L163">            query.setParameter(nextIndex, JpaDbWriteValues.bigDecimal(expectedRecUpdJnjNo));</span>
+        }
+<span class="fc" id="L165">        int updated = query.executeUpdate();</span>
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">        if (updated &gt; 0 || expectedRecUpdJnjNo == null) {</span>
+<span class="fc" id="L167">            return updated;</span>
+        }
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (existsByBaseKey(where)) {</span>
+<span class="fc" id="L170">            throw new ExclusiveException(</span>
+                    daIdentifier,
+                    sql,
+<span class="fc" id="L173">                    optimisticConflictBindParameters(prepared, where, expectedRecUpdJnjNo));</span>
+        }
+<span class="nc" id="L175">        throw Objects.requireNonNull(notFoundExceptionSupplier, &quot;notFoundExceptionSupplier&quot;).get();</span>
+    }
+
+    private Object[] optimisticConflictBindParameters(
+            PreparedNativeUpdate prepared, PreparedWhere where, Integer expectedRecUpdJnjNo) {
+<span class="fc" id="L180">        List&lt;Object&gt; bindParameters = new ArrayList&lt;&gt;(prepared.effectiveSetBindValues());</span>
+<span class="fc" id="L181">        bindParameters.addAll(where.bindValues());</span>
+<span class="fc" id="L182">        bindParameters.add(</span>
+<span class="fc" id="L183">                JpaDbWriteValues.bigDecimal(</span>
+<span class="fc" id="L184">                        Objects.requireNonNull(expectedRecUpdJnjNo, &quot;expectedRecUpdJnjNo&quot;)));</span>
+<span class="fc" id="L185">        return bindParameters.toArray();</span>
+    }
+
+    private boolean existsByBaseKey(PreparedWhere where) {
+<span class="fc" id="L189">        String sql = &quot;SELECT 1 FROM &quot; + tableName + &quot; WHERE &quot; + where.clause();</span>
+<span class="fc" id="L190">        SqlCapture.set(sql);</span>
+<span class="fc" id="L191">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L192">        where.bind(query, 1);</span>
+<span class="fc" id="L193">        query.setMaxResults(1);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        return !query.getResultList().isEmpty();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

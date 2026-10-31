@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IsrrkrDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-isrrkr</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.isrrkr</a> &gt; <span class="el_source">IsrrkrDataAccessImpl.java</span></div><h1>IsrrkrDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.isrrkr;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.IsrrkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.IsrrkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrUpdatableColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.isrrkr.write.IsrrkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbReadValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.converter.BooleanFlagStringConverter;
+
+/** ISRRKR データアクセスの JPA 実装。 */
+public class IsrrkrDataAccessImpl extends DataAccessBase implements IsrrkrDataAccess {
+
+    private static final String TABLE_NAME = &quot;ISRRKR&quot;;
+
+    private static final int ISRR_GYM_CD_LENGTH = 6;
+
+    private static final int ISRR_GMSS_CD_LENGTH = 8;
+
+    private static final int TJT_TRKS_FLG_LENGTH = 1;
+
+    private static final String PK_WHERE_CLAUSE =
+            &quot;CST_NO = ? AND ISRR_TRI_YMD = ? AND ISRR_RKKR_TSNO = ?&quot;;
+
+<span class="fc" id="L51">    private static final ReflectiveRecordEntityMapper&lt;IsrrkrRecord, IsrrkrEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L52">            ReflectiveRecordEntityMapper.create(IsrrkrRecord.class, IsrrkrEntity.class);</span>
+
+<span class="fc" id="L54">    private static final ReflectiveRecordEntityMapper&lt;IsrrkrWriteRecord, IsrrkrEntity&gt; WRITE_MAPPER =</span>
+<span class="fc" id="L55">            ReflectiveRecordEntityMapper.create(IsrrkrWriteRecord.class, IsrrkrEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;IsrrkrEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;IsrrkrWriteRecord, IsrrkrEntity, IsrrkrColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;IsrrkrWriteRecord, IsrrkrEntity, IsrrkrColumn&gt; updateSupport;
+
+    /** JPA ベースの ISRRKR データアクセスを生成する。 */
+    public IsrrkrDataAccessImpl(EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L73">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L78">    }</span>
+
+    IsrrkrDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L84">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L85">    }</span>
+
+    IsrrkrDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L91">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L92">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L93">        this.criteriaBuilderFactory = Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L94">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L95">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(IsrrkrEntity.class);</span>
+<span class="fc" id="L96">        this.auditColumnAutoSetter = Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L97">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        IsrrkrWriteDefinition.INSTANCE,
+                        IsrrkrEntity.class,
+<span class="fc" id="L103">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L104">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        IsrrkrWriteDefinition.INSTANCE,
+                        IsrrkrEntity.class,
+<span class="fc" id="L110">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    public int insert(IsrrkrWriteRecord record, AuditContext context) {
+<span class="fc" id="L115">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L116">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L117">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L120">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L121">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public Optional&lt;IsrrkrRecord&gt; findByCstNoAndIsrrTriYmdAndIsrrGymCdAndIsrrGmssCdAndNotTjtTrksFlg(
+            Long cstNo,
+            LocalDate isrrTriYmd,
+            String isrrGymCd,
+            String isrrGmssCd,
+            Boolean tjtTrksFlg) {
+<span class="fc" id="L131">        var builder = criteriaBuilderFactory.create(entityManager, IsrrkrEntity.class);</span>
+<span class="fc" id="L132">        JpaWhere.eq(builder, &quot;cstNo&quot;, safeLong(cstNo, &quot;cstNo&quot;));</span>
+<span class="fc" id="L133">        JpaWhere.eq(builder, &quot;isrrTriYmd&quot;, safeYmd(isrrTriYmd, &quot;isrrTriYmd&quot;));</span>
+<span class="fc" id="L134">        JpaWhere.eq(builder, &quot;isrrGymCd&quot;, safeIsrrGymCd(isrrGymCd));</span>
+<span class="fc" id="L135">        JpaWhere.eq(builder, &quot;isrrGmssCd&quot;, safeIsrrGmssCd(isrrGmssCd));</span>
+<span class="fc" id="L136">        JpaWhere.notEq(builder, &quot;tjtTrksFlg&quot;, safeFlag(tjtTrksFlg, &quot;tjtTrksFlg&quot;));</span>
+<span class="fc" id="L137">        builder.orderByDesc(&quot;isrrRkkrTsno&quot;);</span>
+<span class="fc" id="L138">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L139">        return builder.setMaxResults(1).getResultList().stream()</span>
+<span class="fc" id="L140">                .map(READ_MAPPER::toRecord)</span>
+<span class="fc" id="L141">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;Integer&gt; findMaxIsrrRkkrTsnoByCstNoAndIsrrTriYmd(Long cstNo, LocalDate isrrTriYmd) {
+<span class="fc" id="L146">        BigDecimal safeCstNo = safeLong(cstNo, &quot;cstNo&quot;);</span>
+<span class="fc" id="L147">        BigDecimal safeIsrrTriYmd = safeYmd(isrrTriYmd, &quot;isrrTriYmd&quot;);</span>
+<span class="fc" id="L148">        String sql = &quot;SELECT MAX(ISRR_RKKR_TSNO) FROM ISRRKR WHERE CST_NO = ? AND ISRR_TRI_YMD = ?&quot;;</span>
+<span class="fc" id="L149">        SqlCapture.set(sql);</span>
+<span class="fc" id="L150">        Query query = entityManager.createNativeQuery(sql);</span>
+<span class="fc" id="L151">        int nextIndex = JpaBind.set(query, 1, safeCstNo);</span>
+<span class="fc" id="L152">        JpaBind.set(query, nextIndex, safeIsrrTriYmd);</span>
+<span class="fc" id="L153">        return readMaxIsrrRkkrTsno(query.getSingleResult());</span>
+    }
+
+    @Override
+    public int updateByCstNoAndIsrrTriYmdAndIsrrRkkrTsnoAndRecUpdJnjNo(
+            IsrrkrWriteRecord record,
+            Set&lt;IsrrkrUpdatableColumn&gt; targetColumns,
+            IsrrkrU002UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L162">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L163">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L164">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L165">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L166">        String daIdentifier = IsrrkrDataAccess.CallSpecs.U002.identifier();</span>
+
+<span class="fc" id="L168">        return updateSupport.update(</span>
+                record,
+<span class="fc" id="L170">                canonicalTargetColumns(targetColumns),</span>
+                (entity, ignoredColumns) -&gt; {
+<span class="fc" id="L172">                Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L173">                    auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L174">                            auditColumnAccessBinder.bind(entity),</span>
+                            context,
+                            clock,
+                            currentRecUpdJnjNo);
+<span class="fc" id="L178">                },</span>
+<span class="fc" id="L179">                preparedWhere(updateKey.cstNo(), updateKey.isrrTriYmd(), updateKey.isrrRkkrTsno()),</span>
+<span class="fc" id="L180">                updateKey.recUpdJnjNo(),</span>
+                daIdentifier);
+    }
+
+    @Override
+    public Optional&lt;IsrrkrRecord&gt; findByPrimaryKey(Long cstNo, LocalDate isrrTriYmd, Integer isrrRkkrTsno) {
+<span class="fc" id="L186">        IsrrkrId id = new IsrrkrId(</span>
+<span class="fc" id="L187">                safeLong(cstNo, &quot;cstNo&quot;),</span>
+<span class="fc" id="L188">                safeYmd(isrrTriYmd, &quot;isrrTriYmd&quot;),</span>
+<span class="fc" id="L189">                safeInteger(isrrRkkrTsno, &quot;isrrRkkrTsno&quot;));</span>
+<span class="fc" id="L190">        IsrrkrEntity entity = entityManager.find(IsrrkrEntity.class, id);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (entity == null) {</span>
+<span class="fc" id="L192">            return Optional.empty();</span>
+        }
+<span class="fc" id="L194">        return Optional.of(READ_MAPPER.toRecord(entity));</span>
+    }
+
+    private static Optional&lt;Integer&gt; readMaxIsrrRkkrTsno(Object result) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (result == null) {</span>
+<span class="fc" id="L199">            return Optional.empty();</span>
+        }
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (result instanceof BigDecimal value) {</span>
+<span class="fc" id="L202">            return Optional.ofNullable(JpaDbReadValues.integerOrNullIfZero(value));</span>
+        }
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (result instanceof Number value) {</span>
+<span class="nc" id="L205">            return Optional.ofNullable(JpaDbReadValues.integerOrNullIfZero(new BigDecimal(value.toString())));</span>
+        }
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (result instanceof String value) {</span>
+<span class="fc" id="L208">            String trimmedValue = value.trim();</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            if (trimmedValue.isEmpty()) {</span>
+<span class="nc" id="L210">                return Optional.empty();</span>
+            }
+            try {
+<span class="nc" id="L213">                return Optional.ofNullable(</span>
+<span class="nc" id="L214">                        JpaDbReadValues.integerOrNullIfZero(new BigDecimal(trimmedValue)));</span>
+<span class="fc" id="L215">            } catch (NumberFormatException ignored) {</span>
+<span class="fc" id="L216">                return Optional.empty();</span>
+            }
+        }
+<span class="nc" id="L219">        return Optional.empty();</span>
+    }
+
+    private static Set&lt;IsrrkrColumn&gt; canonicalTargetColumns(Set&lt;IsrrkrUpdatableColumn&gt; targetColumns) {
+<span class="fc" id="L223">        EnumSet&lt;IsrrkrColumn&gt; canonicalColumns = EnumSet.noneOf(IsrrkrColumn.class);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (IsrrkrUpdatableColumn targetColumn : targetColumns) {</span>
+<span class="fc" id="L225">            canonicalColumns.add(IsrrkrColumn.valueOf(targetColumn.name()));</span>
+<span class="fc" id="L226">        }</span>
+<span class="fc" id="L227">        return canonicalColumns;</span>
+    }
+
+    private static PreparedWhere preparedWhere(Long cstNo, LocalDate isrrTriYmd, Integer isrrRkkrTsno) {
+<span class="fc" id="L231">        BigDecimal safeCstNo = safeLong(cstNo, &quot;cstNo&quot;);</span>
+<span class="fc" id="L232">        BigDecimal safeIsrrTriYmd = safeYmd(isrrTriYmd, &quot;isrrTriYmd&quot;);</span>
+<span class="fc" id="L233">        BigDecimal safeIsrrRkkrTsno = safeInteger(isrrRkkrTsno, &quot;isrrRkkrTsno&quot;);</span>
+<span class="fc" id="L234">        return PreparedWhere.of(</span>
+                PK_WHERE_CLAUSE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L237">                    int nextIndex = JpaBind.set(query, startIndex, safeCstNo);</span>
+<span class="fc" id="L238">                    nextIndex = JpaBind.set(query, nextIndex, safeIsrrTriYmd);</span>
+<span class="fc" id="L239">                    return JpaBind.set(query, nextIndex, safeIsrrRkkrTsno);</span>
+                },
+                safeCstNo,
+                safeIsrrTriYmd,
+                safeIsrrRkkrTsno);
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L247">        return WhereParamGuard.complement(JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInteger(Integer value, String paramName) {
+<span class="fc" id="L251">        return WhereParamGuard.complement(JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L255">        return WhereParamGuard.complement(JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeIsrrGymCd(String value) {
+<span class="fc" id="L259">        return WhereParamGuard.fixedLengthNotNull(value, &quot;isrrGymCd&quot;, ISRR_GYM_CD_LENGTH);</span>
+    }
+
+    private static String safeIsrrGmssCd(String value) {
+<span class="fc" id="L263">        return WhereParamGuard.fixedLengthNotNull(value, &quot;isrrGmssCd&quot;, ISRR_GMSS_CD_LENGTH);</span>
+    }
+
+    private static String safeFlag(Boolean value, String paramName) {
+<span class="fc" id="L267">        return WhereParamGuard.fixedLengthNotNull(</span>
+<span class="fc" id="L268">                BooleanFlagStringConverter.INSTANCE.convert(value),</span>
+                paramName,
+                TJT_TRKS_FLG_LENGTH);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

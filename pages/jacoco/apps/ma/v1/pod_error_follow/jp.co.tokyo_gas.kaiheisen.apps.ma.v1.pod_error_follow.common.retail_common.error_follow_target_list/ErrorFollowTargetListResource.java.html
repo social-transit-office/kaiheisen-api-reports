@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ErrorFollowTargetListResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-error-follow</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list</a> &gt; <span class="el_source">ErrorFollowTargetListResource.java</span></div><h1>ErrorFollowTargetListResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list.qualifier.ErrorFollowTargetListConfiguration;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list.ErrorFollowTargetListEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list.ErrorFollowTargetListRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list.ErrorFollowTargetListResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_error_follow.common.retail_common.error_follow_target_list.model.KsenflIrResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.MixFieldEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.MixFieldEditOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-009 フォロー対象一覧取得-メーター取付待ち のリソース実装。
+ */
+@Path(ErrorFollowTargetListEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;フォロー対象一覧取得&quot;, description = &quot;MA-009 フォロー対象一覧取得 API&quot;)
+public class ErrorFollowTargetListResource extends BaseResource&lt;ErrorFollowTargetListRequest&gt; {
+
+    private final KseflDataAccess kseflDataAccess;
+
+    private String openErrorReasonCodeMeterError;
+
+    private String followStatusCodeN2NotYetStarted;
+
+    private final MixFieldEdit mixFieldEdit;
+
+    private static final String CIRIUS_MSG_ID = &quot;CXXM00037W&quot;;
+
+<span class="fc" id="L59">    private String meterTrtkMt = &quot;1&quot;;</span>
+
+    /** 定数：フォロー担当拠点コード.支社(&quot;0&quot;) */
+    private static final String SHISHA = &quot;0&quot;;
+
+    /**
+     * コンストラクタ
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @param kseflDataAccess 開栓エラーフォロー件名データアクセス
+     */
+    @Inject
+    public ErrorFollowTargetListResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            KseflDataAccess kseflDataAccess,
+            @ErrorFollowTargetListConfiguration
+            MixFieldEdit mixFieldEdit,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L81">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L82">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L83">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+
+<span class="fc" id="L87">        this.openErrorReasonCodeMeterError = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpenErrorReasonCode.TYPE,
+                ConstantLookupKeys.Cirius.OpenErrorReasonCode.WAITING_FOR_METER_INSTALLATION_ERROR);
+
+<span class="fc" id="L92">        this.followStatusCodeN2NotYetStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+
+<span class="fc" id="L97">        this.mixFieldEdit = Objects.requireNonNull(</span>
+                mixFieldEdit,
+                &quot;mixFieldEdit&quot;);
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * MA-009 フォロー対象一覧取得-メーター取付待ち API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;フォロー対象一覧取得&quot;,
+            description = &quot;フォロー対象一覧取得-メーター取付待ち&quot;,
+            operationId = &quot;getErrorFollowTargetList&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+                    description = &quot;フォロー対象一覧取得&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = ErrorFollowTargetListResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public ErrorFollowTargetListResponse endpoint(@BeanParam ErrorFollowTargetListRequest request) {
+<span class="fc" id="L133">        return execute(request, () -&gt; {</span>
+<span class="fc" id="L134">            String flttCktkCd = request.flttCktkCd();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            String flttKtnCd = SHISHA.equals(request.flttKtnCd()) ? null : request.flttKtnCd();</span>
+<span class="fc" id="L136">            String errBnriCd = request.errBnriCd();</span>
+<span class="fc" id="L137">            LocalDate knskKjnYmd = LocalDate.parse(request.knskKjnYmd().trim());</span>
+<span class="fc" id="L138">            List&lt;KseflRecord&gt; KseflRecords = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L139">            String ciriusMsgId = &quot;&quot;;</span>
+<span class="fc" id="L140">            List&lt;String&gt; ciriusMsgUmkm = List.of();</span>
+
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (errBnriCd.equals(meterTrtkMt)) {</span>
+<span class="fc" id="L143">                List&lt;KseflRecord&gt; kseflRecord =</span>
+<span class="fc" id="L144">                    kseflDataAccess.findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdAndKasgYmdAndFlwStCd(</span>
+                            flttCktkCd,
+                            flttCktkCd,
+                            flttKtnCd,
+                            openErrorReasonCodeMeterError,
+                            knskKjnYmd,
+                            followStatusCodeN2NotYetStarted);
+<span class="fc" id="L151">                KseflRecords = kseflRecord;</span>
+<span class="fc" id="L152">            } else {</span>
+<span class="fc" id="L153">                List&lt;KseflRecord&gt; kseflRecord =</span>
+<span class="fc" id="L154">                    kseflDataAccess.findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdOrKasErryCdAndKasgYmdAndFlwStCd(</span>
+                            flttCktkCd,
+                            flttCktkCd,
+                            flttKtnCd,
+                            openErrorReasonCodeMeterError,
+                            knskKjnYmd,
+                            followStatusCodeN2NotYetStarted);
+<span class="fc" id="L161">                KseflRecords = kseflRecord;</span>
+            }
+
+            //DA-139-R006取得件数分繰返し、レスポンスパラメーターを設定する
+<span class="fc" id="L165">            List&lt;KsenflIrResponse&gt; ksenflIrResponse = loopedRetrieval(KseflRecords);</span>
+
+            //DA-139-R001の取得件数=0件の場合
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (KseflRecords.size() == 0) {</span>
+<span class="fc" id="L169">                throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000093);</span>
+            }
+
+            //DAの取得件数によって判定
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (KseflRecords.size() &gt; 500) {</span>
+<span class="fc" id="L174">                ciriusMsgId = CIRIUS_MSG_ID;</span>
+<span class="fc" id="L175">                ciriusMsgUmkm = List.of(&quot;500&quot;);</span>
+            }
+
+<span class="fc" id="L178">            return toResponse(ksenflIrResponse, ciriusMsgId, ciriusMsgUmkm);</span>
+        });
+    }
+
+    /**
+     * 概要：DA-139-R006取得件数分繰返しレスポンスパラメーターを設定する
+     * - 主な仕様
+     * DA-139の取得件数≠0件」且つ「繰り返し項目の処理データ項番&lt;=500件の場合SV-017取得処理を行いレスポンスに設定する
+     * DA-139の取得件数≠0件」且つ「繰り返し項目の処理データ項番&lt;=500件以外の場合は処理なしで終了
+     * @param kseflRecords 開栓エラーフォロー件名レコード
+     * @param hyjPageNo 表示頁番号
+     * @return 開栓エラーフォロー件名一覧
+     */
+    private List&lt;KsenflIrResponse&gt; loopedRetrieval(List&lt;KseflRecord&gt; kseflRecords) {
+
+<span class="fc" id="L193">        List&lt;KsenflIrResponse&gt; ksenflIrResponse = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (0 &lt; kseflRecords.size()) {</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            for (int i = 0; i &lt; kseflRecords.size(); i++) {</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                if (i == 500) {</span>
+<span class="fc" id="L198">                    break;</span>
+                }
+<span class="fc" id="L200">                KseflRecord kseflRecord = kseflRecords.get(i);</span>
+
+                //SV-017取得処理
+<span class="fc" id="L203">                MixFieldEditOutput mixFieldEditOutput =</span>
+<span class="fc" id="L204">                    mixFieldEdit.execute(</span>
+<span class="fc" id="L205">                        kseflRecord.ctnmKjhkFlg(),</span>
+<span class="fc" id="L206">                        kseflRecord.ctnmKj1(),</span>
+                        null,
+<span class="fc" id="L208">                        kseflRecord.ctnmKn1(),</span>
+                        null,
+                        null,
+                        null,
+                        null);
+<span class="fc" id="L213">                ksenflIrResponse.add(createKsenflIrResponse(kseflRecord, mixFieldEditOutput));</span>
+            }
+        } else {
+<span class="fc" id="L216">            return null;</span>
+        }
+<span class="fc" id="L218">        return ksenflIrResponse;</span>
+    }
+
+    /**
+     * レスポンス成型する。
+     *
+     * @param kkisuInf 繰返し回数情報
+     * @param totalKnsu 総件数
+     * @param ksenflIr 開栓エラーフォロー件名一覧
+     * @param ciriusMsgId ＣＩＲＩＵＳメッセージＩＤ（ワーニング）
+     * @param ciriusMsgUmkm ＣＩＲＩＵＳメッセージ埋込み文字列リスト（ワーニング）
+     * @return ErrorFollowTargetListGetMeterWaitResponse レスポンス
+     */
+    private ErrorFollowTargetListResponse toResponse(
+        List&lt;KsenflIrResponse&gt; ksenflIr,
+        String ciriusMsgId,
+        List&lt;String&gt; ciriusMsgUmkm) {
+<span class="fc" id="L235">        return new ErrorFollowTargetListResponse(</span>
+                        ksenflIr,
+                        ciriusMsgId,
+                        ciriusMsgUmkm,
+<span class="fc" id="L239">                        requestContext.getCorrelationId()</span>
+<span class="fc" id="L240">                            .orElseThrow(() -&gt; new IllegalStateException(&quot;correlationId is not set in RequestContext&quot;))</span>
+                );
+    }
+
+    /**
+     * 開栓エラーフォロー件名一覧情報のレスポンスを生成する
+     *
+     * @param kseflRecord 開栓エラーフォロー件名record
+     * @param mixFieldEditOutput SV-017取得結果
+     * @return KsenflIrResponse 開栓エラーフォロー件名一覧情報
+     */
+    private KsenflIrResponse createKsenflIrResponse(KseflRecord kseflRecord, MixFieldEditOutput mixFieldEditOutput) {
+<span class="fc" id="L252">        return new KsenflIrResponse(</span>
+<span class="fc" id="L253">            kseflRecord.gasMtstNo(),</span>
+<span class="fc" id="L254">            kseflRecord.kasErryCd(),</span>
+<span class="fc" id="L255">            kseflRecord.flttCktkCd(),</span>
+<span class="fc" id="L256">            kseflRecord.gmb(),</span>
+<span class="fc" id="L257">            formatDate(kseflRecord.kasgYmd()),</span>
+<span class="fc" id="L258">            formatDate(kseflRecord.kasHukkYmd()),</span>
+<span class="fc" id="L259">            kseflRecord.tsgkKyoTrno(),</span>
+<span class="fc" id="L260">            kseflRecord.kasgNwkCd(),</span>
+<span class="fc" id="L261">            mixFieldEditOutput.ctnm1(),</span>
+<span class="fc" id="L262">            kseflRecord.sgyAnknNo(),</span>
+<span class="fc" id="L263">            kseflRecord.tkjMem(),</span>
+<span class="fc" id="L264">            kseflRecord.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 日付を ISO-8601 文字列へ変換する。
+     *
+     * @param value 変換対象日付
+     * @return 日付文字列。{@code value} が {@code null} の場合は {@code null}
+     */
+    private String formatDate(LocalDate value) {
+<span class="fc" id="L274">        return Objects.toString(value, null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

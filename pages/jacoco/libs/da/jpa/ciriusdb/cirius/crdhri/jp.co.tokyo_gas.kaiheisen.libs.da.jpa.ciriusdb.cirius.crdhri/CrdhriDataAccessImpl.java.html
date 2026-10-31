@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CrdhriDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-crdhri</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.crdhri</a> &gt; <span class="el_source">CrdhriDataAccessImpl.java</span></div><h1>CrdhriDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.crdhri;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.CrdhriDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.CrdhriRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriSihKiyJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/**
+ * CRDHRI データアクセスの JPA 実装.
+ */
+public class CrdhriDataAccessImpl
+        extends DataAccessBase implements CrdhriDataAccess {
+
+    /** 読み取り用 mapper. */
+    static final ReflectiveRecordEntityMapper&lt;CrdhriRecord, CrdhriEntity&gt;
+<span class="fc" id="L40">            READ_MAPPER = ReflectiveRecordEntityMapper.create(</span>
+                    CrdhriRecord.class,
+                    CrdhriEntity.class);
+
+    /** テーブル名. */
+    private static final String TABLE_NAME = &quot;CRDHRI&quot;;
+
+    /** 主キー条件句. */
+    private static final String WHERE_BY_PK =
+            &quot;SIH_KIY_NO = ? AND SIH_KIY_SKNO = ?&quot;;
+
+    /** 書き込み用 mapper. */
+    private static final ReflectiveRecordEntityMapper&lt;
+            CrdhriWriteRecord,
+<span class="fc" id="L54">            CrdhriEntity&gt; WRITE_MAPPER = ReflectiveRecordEntityMapper.create(</span>
+                    CrdhriWriteRecord.class,
+                    CrdhriEntity.class);
+
+    /** エンティティマネージャ. */
+    private final EntityManager entityManager;
+
+    /** CriteriaBuilderFactory. */
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    /** システム時刻プロバイダ. */
+    private final SystemDateTimeProvider clock;
+
+    /** 監査項目アクセサバインダ. */
+    private final JpaAuditColumnAccessBinder&lt;CrdhriEntity&gt;
+            auditColumnAccessBinder;
+
+    /** 監査項目自動設定. */
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    /** insert helper. */
+    private final JpaInsertSupport&lt;
+            CrdhriWriteRecord,
+            CrdhriEntity,
+            CrdhriColumn&gt;
+            insertSupport;
+
+    /** update helper. */
+    private final JpaTargetColumnUpdateSupport&lt;
+            CrdhriWriteRecord,
+            CrdhriEntity,
+            CrdhriColumn&gt; updateSupport;
+
+    /**
+     * 標準依存で初期化する.
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public CrdhriDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory) {
+<span class="fc" id="L96">        this(</span>
+                jpaEntityManager,
+                jpaCriteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L101">    }</span>
+
+    /**
+     * テスト差し替え用の時刻依存を含めて初期化する.
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     * @param systemClock システム時刻プロバイダ
+     */
+    CrdhriDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory,
+            final SystemDateTimeProvider systemClock) {
+<span class="nc" id="L114">        this(</span>
+                jpaEntityManager,
+                jpaCriteriaBuilderFactory,
+                systemClock,
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L119">    }</span>
+
+    /**
+     * テスト差し替え用の依存を含めて初期化する.
+     *
+     * @param jpaEntityManager エンティティマネージャ
+     * @param jpaCriteriaBuilderFactory CriteriaBuilderFactory
+     * @param systemClock システム時刻プロバイダ
+     * @param ciriusAuditColumnAutoSetter 監査項目自動設定
+     */
+    CrdhriDataAccessImpl(
+            final EntityManager jpaEntityManager,
+            final CriteriaBuilderFactory jpaCriteriaBuilderFactory,
+            final SystemDateTimeProvider systemClock,
+<span class="fc" id="L133">            final CiriusAuditColumnAutoSetter ciriusAuditColumnAutoSetter) {</span>
+<span class="fc" id="L134">        this.entityManager =</span>
+<span class="fc" id="L135">                Objects.requireNonNull(jpaEntityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L136">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L137">                Objects.requireNonNull(</span>
+                        jpaCriteriaBuilderFactory,
+                        &quot;criteriaBuilderFactory&quot;);
+<span class="fc" id="L140">        this.clock = Objects.requireNonNull(systemClock, &quot;clock&quot;);</span>
+<span class="fc" id="L141">        this.auditColumnAccessBinder =</span>
+                new JpaAuditColumnAccessBinder&lt;&gt;(CrdhriEntity.class);
+<span class="fc" id="L143">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L144">                Objects.requireNonNull(</span>
+                        ciriusAuditColumnAutoSetter,
+                        &quot;auditColumnAutoSetter&quot;);
+<span class="fc" id="L147">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        CrdhriWriteDefinition.INSTANCE,
+                        CrdhriEntity.class,
+<span class="fc" id="L153">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L154">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        CrdhriWriteDefinition.INSTANCE,
+                        CrdhriEntity.class,
+<span class="fc" id="L160">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L161">    }</span>
+
+    /** {@inheritDoc} */
+    @Override
+    public int insert(
+            final CrdhriWriteRecord record,
+            final AuditContext context) {
+<span class="fc" id="L168">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L169">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L170">        return insertSupport.insert(</span>
+                record,
+<span class="fc" id="L172">                entity -&gt; auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L173">                        auditColumnAccessBinder.bind(entity),</span>
+                        context,
+                        clock));
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public int deleteBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo) {
+<span class="fc" id="L184">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L185">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L186">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L187">                .delete(</span>
+<span class="fc" id="L188">                        PreparedWhere.of(</span>
+                                WHERE_BY_PK,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L191">                                    int nextIndex = JpaBind.set(</span>
+                                            query,
+                                            startIndex,
+                                            safeSihKiyNo);
+<span class="fc" id="L195">                                    return JpaBind.set(</span>
+                                            query,
+                                            nextIndex,
+                                            safeSihKiySkno);
+                                },
+                                safeSihKiyNo,
+                                safeSihKiySkno),
+                        recUpdJnjNo,
+<span class="fc" id="L203">                        CrdhriDataAccess.CallSpecs.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier());</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Optional&lt;CrdhriRecord&gt; findBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno) {
+<span class="fc" id="L211">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L212">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L213">        var builder = criteriaBuilderFactory.create(</span>
+                entityManager,
+                CrdhriEntity.class);
+<span class="fc" id="L216">        builder.where(&quot;sihKiyNo&quot;)</span>
+<span class="fc" id="L217">                .eq(safeSihKiyNo)</span>
+<span class="fc" id="L218">                .where(&quot;sihKiySkno&quot;)</span>
+<span class="fc" id="L219">                .eq(safeSihKiySkno);</span>
+<span class="fc" id="L220">        SqlCapture.set(builder.getQueryString());</span>
+<span class="fc" id="L221">        return builder.getResultList().stream()</span>
+<span class="fc" id="L222">                .map(READ_MAPPER::toRecord)</span>
+<span class="fc" id="L223">                .findFirst();</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public int updateBySihKiyNoAndSihKiySkno(
+            final CrdhriWriteRecord record,
+            final Set&lt;CrdhriColumn&gt; targetColumns,
+            final CrdhriSihKiyUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L233">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L234">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L237">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L238">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L239">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L241">                CrdhriDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier());</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public int updateBySihKiyNoAndSihKiySknoAndRecUpdJnjNo(
+            final CrdhriWriteRecord record,
+            final Set&lt;CrdhriColumn&gt; targetColumns,
+            final CrdhriSihKiyJnjUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L251">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L252">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L255">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L256">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L257">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L259">                CrdhriDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO_AND_REC_UPD_JNJ_NO.identifier());</span>
+    }
+
+    private int updateByKey(
+            final CrdhriWriteRecord record,
+            final Set&lt;CrdhriColumn&gt; targetColumns,
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo,
+            final AuditContext context,
+            final String dataAccessIdentifier) {
+<span class="fc" id="L270">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L271">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L272">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L273">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L274">        BigDecimal safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L275">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L279">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L280">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+<span class="fc" id="L283">                                Objects.requireNonNullElse(recUpdJnjNo, 0)),</span>
+<span class="fc" id="L284">                PreparedWhere.of(</span>
+                        WHERE_BY_PK,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L287">                            int nextIndex = JpaBind.set(</span>
+                                    query,
+                                    startIndex,
+                                    safeSihKiyNo);
+<span class="fc" id="L291">                            return JpaBind.set(</span>
+                                    query,
+                                    nextIndex,
+                                    safeSihKiySkno);
+                        },
+                        safeSihKiyNo,
+                        safeSihKiySkno),
+                recUpdJnjNo,
+                dataAccessIdentifier);
+    }
+
+    private static BigDecimal safeLong(
+            final Long value,
+            final String paramName) {
+<span class="fc" id="L305">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L306">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInteger(
+            final Integer value,
+            final String paramName) {
+<span class="fc" id="L312">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L313">                JpaDbWriteValues.bigDecimal(value),</span>
+                paramName,
+                BigDecimal.ZERO);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

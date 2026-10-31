@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingTargetGasMeterRetailCategoryJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingtargetgasmeterretailcategoryjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingTargetGasMeterRetailCategoryJudgmentImpl.java</span></div><h1>ClosingTargetGasMeterRetailCategoryJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterRetailCategoryJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterRetailCategoryJudgmentOutput;
+
+/**
+ * 概要: 閉栓対象ガスメーターの小売分類判定サービス実装。
+ * 主な仕様:
+ * - DA-108-R006 と DA-099-R008 を順に呼び出し、閉栓対象ガスメーターに紐づく託送契約情報を取得する。
+ * - 導管ユーザーは東京ガス契約時に、小売ユーザーは東京ガス以外契約時に業務エラー 020000027 を送出する。
+ * 既知の制約:
+ * - DA-108-R006 と DA-099-R008 は仕様上 1 件のみ返却される前提で、取得結果の先頭 1 件を判定対象とする。
+ * - correlationId、hukkSysShbt、systemDatetime は public 引数へ含めない。
+ */
+public final class ClosingTargetGasMeterRetailCategoryJudgmentImpl
+        implements ClosingTargetGasMeterRetailCategoryJudgment {
+
+    /** 託送サービス契約・ガスメーター設置場所関連データアクセス。 */
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    /** 託送サービス契約データアクセス。 */
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    /** リクエストコンテキスト。 */
+    private final RequestContext requestContext;
+
+    /** 導管ユーザーを表す選択メニュー区分。 */
+    private final String conduitMenu;
+
+    /** 託送サービス契約関連状態区分: 適用中。 */
+    private final String applicableRelatedStatus;
+
+    /** 託送サービス契約状態区分: 契約適用中。 */
+    private final String underContractStatus;
+
+    /** 東京ガスの小売事業者コード。 */
+    private final String tokyoGasRetailerCode;
+
+    /**
+     * 概要: 判定に必要な依存と CIRIUS 定数を初期化する。
+     * 主な仕様:
+     * - DA-108-R006 / DA-099-R008 呼び出しに必要なデータアクセスを保持する。
+     * - 基準日判定に必要な systemDatetime は RequestContext から取得する。
+     * - 託送契約関連状態、託送契約状態、東京ガス小売事業者コードをコンストラクタで fail-fast に解決する。
+     * 既知の制約:
+     * - 必須依存または必須定数が不足している場合はコンストラクタ初期化時点で例外となる。
+     * @param tskgmstDataAccessParam 託送サービス契約・ガスメーター設置場所関連データアクセス
+     * @param tkssvkyDataAccessParam 託送サービス契約データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public ClosingTargetGasMeterRetailCategoryJudgmentImpl(
+            TskgmstDataAccess tskgmstDataAccessParam,
+            TkssvkyDataAccess tkssvkyDataAccessParam,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L72">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L73">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccessParam, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccessParam, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L76">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L77">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L78">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L79">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L80">        this.conduitMenu =</span>
+<span class="fc" id="L81">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        resolvedKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ConduitRetail.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ConduitRetail.CONDUIT);
+<span class="fc" id="L85">        this.applicableRelatedStatus =</span>
+<span class="fc" id="L86">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING);
+<span class="fc" id="L90">        this.underContractStatus =</span>
+<span class="fc" id="L91">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L95">        this.tokyoGasRetailerCode =</span>
+<span class="fc" id="L96">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                        ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * 概要: 閉栓対象ガスメーターの小売分類を判定する。
+     * 主な仕様:
+     * - RequestContext の systemDatetime の年月日を基準日に変換し、DA-108-R006 で託送サービス契約番号を取得する。
+     * - 取得した託送サービス契約番号で DA-099-R008 を検索し、stkMnKbn と小売事業者コードの組み合わせを判定する。
+     * - 正常時は託送契約種別、託送供給依頼事業者コード、使用者契約お客さま登録番号を返却する。
+     * 既知の制約:
+     * - gasMtstNo を含む public メソッド引数の null 許容可否は SV では自己判断せず、上位層バリデーション結果を前提とする。
+     * - DA-108-R006 と DA-099-R008 は仕様上 1 件取得を前提とし、取得結果の先頭 1 件を使用する。
+     * - RequestContext に systemDatetime が無い場合は IllegalStateException を送出する。
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param stkMnKbn 選択メニュー区分
+     * @return 判定結果
+     */
+    @Override
+    public ClosingTargetGasMeterRetailCategoryJudgmentOutput execute(
+            Long gasMtstNo,
+            String stkMnKbn) {
+<span class="fc" id="L120">        LocalDate baseDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L121">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L122">                .toLocalDate();</span>
+
+<span class="fc" id="L124">        List&lt;TskgmstRecord&gt; tskgmstRecords =</span>
+<span class="fc" id="L125">                tskgmstDataAccess.findAllByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        baseDate,
+                        applicableRelatedStatus);
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (tskgmstRecords.isEmpty()) {</span>
+<span class="fc" id="L130">            throw businessRule();</span>
+        }
+
+<span class="fc" id="L133">        TskgmstRecord tskgmstRecord = tskgmstRecords.get(0);</span>
+<span class="fc" id="L134">        List&lt;TkssvkyRecord&gt; tkssvkyRecords =</span>
+<span class="fc" id="L135">                tkssvkyDataAccess.findAllByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(</span>
+<span class="fc" id="L136">                        tskgmstRecord.tksuSvkyNo(),</span>
+                        baseDate,
+                        underContractStatus);
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (tkssvkyRecords.isEmpty()) {</span>
+<span class="fc" id="L140">            throw businessRule();</span>
+        }
+
+<span class="fc" id="L143">        TkssvkyRecord tkssvkyRecord = tkssvkyRecords.get(0);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (shouldRaiseBusinessError(stkMnKbn, tkssvkyRecord.tksuKijsCd())) {</span>
+<span class="fc" id="L145">            throw businessRule();</span>
+        }
+
+<span class="fc" id="L148">        return new ClosingTargetGasMeterRetailCategoryJudgmentOutput(</span>
+<span class="fc" id="L149">                tkssvkyRecord.tkykShbt(),</span>
+<span class="fc" id="L150">                tkssvkyRecord.tksuKijsCd(),</span>
+<span class="fc" id="L151">                tkssvkyRecord.syoKyoTrno());</span>
+    }
+
+    /**
+     * 概要: メニュー区分と小売事業者コードの組み合わせが業務エラー条件かを判定する。
+     * 主な仕様:
+     * - 導管ユーザーは KH004 の導管区分と一致する場合に東京ガス契約時エラーとする。
+     * - 小売ユーザーは東京ガス以外契約時にエラーとする。
+     * 既知の制約:
+     * - stkMnKbn が KH004 の導管区分以外であればすべて小売ユーザーとして扱う。
+     * @param stkMnKbn 選択メニュー区分
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @return 業務エラー条件に該当する場合は true
+     */
+    private boolean shouldRaiseBusinessError(String stkMnKbn, String tksuKijsCd) {
+<span class="fc" id="L166">        boolean pipelineMenu = conduitMenu.equals(stkMnKbn);</span>
+<span class="fc" id="L167">        boolean tokyoGasRetailer = tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        return pipelineMenu == tokyoGasRetailer;</span>
+    }
+
+    /**
+     * 概要: SV-267 の業務エラー例外を生成する。
+     * 主な仕様:
+     * - 有効な契約が存在しない、または契約分類条件に一致しない場合の共通業務エラー 020000027 を返す。
+     * 既知の制約:
+     * - 例外の補足情報は本メソッドでは付加しない。
+     * @return 業務エラー 020000027
+     */
+    private static BusinessRuleException businessRule() {
+<span class="fc" id="L180">        return new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000027);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

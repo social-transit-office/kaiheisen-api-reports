@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingRelatedInfoEditProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-meterreadingrelatedinfoeditprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">MeterReadingRelatedInfoEditProcessImpl.java</span></div><h1>MeterReadingRelatedInfoEditProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingRelatedInfoEditProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingRelatedInfoEditProcessOutput;
+
+/**
+ * 検針関連情報編集処理サービス実装。
+ */
+public final class MeterReadingRelatedInfoEditProcessImpl
+        implements MeterReadingRelatedInfoEditProcess {
+
+    private final RequestContext requestContext;
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    private final String openingRelatedInfoAcquisitionDivision;
+
+    private final List&lt;String&gt; openingReasonTypes;
+
+    private final List&lt;String&gt; closingReasonTypes;
+
+    private final String supplyOutageClosureReason;
+
+    private final String supplyStopPaymentUnnecessaryStatus;
+
+    private final String supplyStopPaymentPendingStatus;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果データアクセス
+     * @param kkytskrDataAccess 供給停止管理データアクセス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    @Inject
+    public MeterReadingRelatedInfoEditProcessImpl(
+            RequestContext requestContext,
+            KtmgmkkDataAccess ktmgmkkDataAccess,
+            KkytskrDataAccess kkytskrDataAccess,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L62">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L65">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L66">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L67">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L68">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L69">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L70">        this.openingRelatedInfoAcquisitionDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.MeterReadingRelatedInfoEditProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.MeterReadingRelatedInfoEditProcessingDivision
+                        .OPENING_METER_READING_RELATED_INFO_ACQUISITION);
+<span class="fc" id="L75">        String openingReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.OPENING);
+<span class="fc" id="L79">        String supplyResumedReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_RESUMED);
+<span class="fc" id="L83">        String relocationClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.RELOCATION_CLOSURE);
+<span class="fc" id="L87">        String unusedClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.UNUSED_CLOSURE);
+<span class="fc" id="L91">        this.openingReasonTypes = List.of(openingReason, supplyResumedReason);</span>
+<span class="fc" id="L92">        this.closingReasonTypes = List.of(relocationClosureReason, unusedClosureReason);</span>
+<span class="fc" id="L93">        this.supplyOutageClosureReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L97">        this.supplyStopPaymentUnnecessaryStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOPPAGE_PAYMENT_UNNECESSARY);
+<span class="fc" id="L101">        this.supplyStopPaymentPendingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L105">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MeterReadingRelatedInfoEditProcessOutput execute(
+            Long gasMtstNo,
+            LocalDate knskKjnYmd,
+            String hesnJysb,
+            String knsKnrnInfHnsShrKbn) {
+<span class="fc" id="L116">        requireCorrelationId();</span>
+<span class="fc" id="L117">        requireHukkSysShbt();</span>
+<span class="fc" id="L118">        requireSystemDatetime();</span>
+
+<span class="fc" id="L120">        Optional&lt;KtmgmkkRecord&gt; preliminaryMeterReadingInfo =</span>
+<span class="fc" id="L121">                findPreliminaryMeterReadingInfo(gasMtstNo, knskKjnYmd, knsKnrnInfHnsShrKbn);</span>
+<span class="fc" id="L122">        Optional&lt;KkytskrRecord&gt; supplyStopManagementInfo =</span>
+<span class="fc" id="L123">                findSupplyStopManagementInfo(gasMtstNo, knskKjnYmd, knsKnrnInfHnsShrKbn);</span>
+
+<span class="fc bfc" id="L125" title="All 4 branches covered.">        if (preliminaryMeterReadingInfo.isEmpty() &amp;&amp; supplyStopManagementInfo.isEmpty()) {</span>
+<span class="fc" id="L126">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000047);</span>
+        }
+
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (supplyOutageClosureReason.equals(hesnJysb)) {</span>
+                        // 供給停止事由では供給停止管理情報を正とし、0件なら全項目 null を返却する。
+<span class="fc" id="L131">            return mapFromSupplyStopManagementInfo(supplyStopManagementInfo.orElse(null));</span>
+        }
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (preliminaryMeterReadingInfo.isPresent()) {</span>
+<span class="fc" id="L135">            return mapFromPreliminaryMeterReadingInfo(preliminaryMeterReadingInfo.get());</span>
+        }
+
+<span class="fc" id="L138">        return mapFromSupplyStopManagementInfo(supplyStopManagementInfo.orElse(null));</span>
+    }
+
+    /**
+     * 確定前ガスメーター検針結果情報を取得する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @param knsKnrnInfHnsShrKbn 検針関連情報編集処理区分
+     * @return 確定前ガスメーター検針結果情報
+     */
+    private Optional&lt;KtmgmkkRecord&gt; findPreliminaryMeterReadingInfo(
+            Long gasMtstNo,
+            LocalDate knskKjnYmd,
+            String knsKnrnInfHnsShrKbn) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        List&lt;String&gt; targetReasonTypes = isOpeningRelatedInfoAcquisitionDivision(knsKnrnInfHnsShrKbn)</span>
+<span class="fc" id="L154">                ? openingReasonTypes</span>
+<span class="fc" id="L155">                : closingReasonTypes;</span>
+<span class="fc" id="L156">        return ktmgmkkDataAccess.findByGasMtstNoAndKnsYmdAndKnkkSksiJysb(</span>
+                gasMtstNo,
+                knskKjnYmd,
+                targetReasonTypes);
+    }
+
+    /**
+     * 供給停止管理情報を取得する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @param knsKnrnInfHnsShrKbn 検針関連情報編集処理区分
+     * @return 供給停止管理情報
+     */
+    private Optional&lt;KkytskrRecord&gt; findSupplyStopManagementInfo(
+            Long gasMtstNo,
+            LocalDate knskKjnYmd,
+            String knsKnrnInfHnsShrKbn) {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (isOpeningRelatedInfoAcquisitionDivision(knsKnrnInfHnsShrKbn)) {</span>
+<span class="fc" id="L175">            return kkytskrDataAccess.findByGasMtstNoAndKasYmdAndKkysSisnJtkb(</span>
+                    gasMtstNo,
+                    knskKjnYmd,
+                    supplyStopPaymentUnnecessaryStatus);
+        }
+<span class="fc" id="L180">        return kkytskrDataAccess.findByGasMtstNoAndHesnYmdAndKkysSisnJtkb(</span>
+                gasMtstNo,
+                knskKjnYmd,
+                supplyStopPaymentPendingStatus);
+    }
+
+    /**
+     * 検針関連情報編集処理区分が開栓の検針関連情報取得かどうかを判定する。
+     *
+     * @param knsKnrnInfHnsShrKbn 検針関連情報編集処理区分
+     * @return 開栓の検針関連情報取得の場合 true
+     */
+    private boolean isOpeningRelatedInfoAcquisitionDivision(String knsKnrnInfHnsShrKbn) {
+<span class="fc" id="L193">        return Objects.equals(openingRelatedInfoAcquisitionDivision, knsKnrnInfHnsShrKbn);</span>
+    }
+
+    private String requireCorrelationId() {
+<span class="fc" id="L197">        return requestContext.getCorrelationId()</span>
+<span class="fc" id="L198">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+    }
+
+    private String requireHukkSysShbt() {
+<span class="fc" id="L202">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L203">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L207">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L208">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 確定前ガスメーター検針結果情報を出力 DTO に変換する。
+     *
+     * @param record 確定前ガスメーター検針結果情報
+     * @return 出力 DTO
+     */
+    private MeterReadingRelatedInfoEditProcessOutput mapFromPreliminaryMeterReadingInfo(
+            KtmgmkkRecord record) {
+<span class="fc" id="L219">        return new MeterReadingRelatedInfoEditProcessOutput(</span>
+<span class="fc" id="L220">                record.knkkSksiJysb(),</span>
+                null,
+<span class="fc" id="L222">                record.gasSyry(),</span>
+<span class="fc" id="L223">                record.shyDdsu(),</span>
+<span class="fc" id="L224">                record.kgtsKknnFlg());</span>
+    }
+
+    /**
+     * 供給停止管理情報を出力 DTO に変換する。
+     *
+     * @param record 供給停止管理情報
+     * @return 出力 DTO
+     */
+    private MeterReadingRelatedInfoEditProcessOutput mapFromSupplyStopManagementInfo(
+            KkytskrRecord record) {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L236">            return new MeterReadingRelatedInfoEditProcessOutput(null, null, null, null, null);</span>
+        }
+<span class="fc" id="L238">        return new MeterReadingRelatedInfoEditProcessOutput(</span>
+                null,
+<span class="fc" id="L240">                record.kkysSisnJtkb(),</span>
+<span class="fc" id="L241">                record.gasSyry(),</span>
+<span class="fc" id="L242">                record.shyDdsu(),</span>
+<span class="fc" id="L243">                record.sgttKknnFlg());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

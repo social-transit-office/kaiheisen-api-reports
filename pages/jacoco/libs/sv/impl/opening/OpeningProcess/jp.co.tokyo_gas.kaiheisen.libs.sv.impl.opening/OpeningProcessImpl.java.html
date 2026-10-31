@@ -1,0 +1,689 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningProcessImpl.java</span></div><h1>OpeningProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsssvc.KnsssvcDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.cstsvc.CstsvcDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.NextRegularMeterReadingScheduledDateUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.JusyoKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsytiInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningProcessGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.OpeningProcessGmtsetdSystemDateInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TatemonInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoAddition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.SupportInfoDeletion;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdTerminationInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkTerminationInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkTerminationInf;
+
+/**
+ * SV-230 開栓処理のサービス実装。
+ */
+public class OpeningProcessImpl implements OpeningProcess {
+
+    private final SupportInfoDeletion supportInfoDeletion;
+
+    private final GasMeterLocationInfoTermination gasMeterLocationInfoTermination;
+
+    private final GasMeterLocationInfoAddition gasMeterLocationInfoAddition;
+
+    private final NextRegularMeterReadingScheduledDateUpdate nextRegularMeterReadingScheduledDateUpdate;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final MtsetkDataAccess mtsetkDataAccess;
+
+    private final TatemonDataAccess tatemonDataAccess;
+
+    private final KnsssvcDataAccess knsssvcDataAccess;
+
+    private final CstsvcDataAccess cstsvcDataAccess;
+
+    private final String noExclusionDivision;
+
+    private final String openingStatus;
+
+    private final String gasMeterType;
+
+    private final String tokyoGasOperatorCode;
+
+    private final String deleteCode;
+
+    /**
+     * コンストラクタ。
+     */
+    public OpeningProcessImpl(
+            SupportInfoDeletion supportInfoDeletion,
+            GasMeterLocationInfoTermination gasMeterLocationInfoTermination,
+            GasMeterLocationInfoAddition gasMeterLocationInfoAddition,
+            NextRegularMeterReadingScheduledDateUpdate nextRegularMeterReadingScheduledDateUpdate,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            MtsetkDataAccess mtsetkDataAccess,
+            TatemonDataAccess tatemonDataAccess,
+            KnsssvcDataAccess knsssvcDataAccess,
+            CstsvcDataAccess cstsvcDataAccess,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L89">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L90">        this.supportInfoDeletion = Objects.requireNonNull(supportInfoDeletion, &quot;supportInfoDeletion&quot;);</span>
+<span class="fc" id="L91">        this.gasMeterLocationInfoTermination = Objects.requireNonNull(</span>
+                gasMeterLocationInfoTermination,
+                &quot;gasMeterLocationInfoTermination&quot;);
+<span class="fc" id="L94">        this.gasMeterLocationInfoAddition = Objects.requireNonNull(</span>
+                gasMeterLocationInfoAddition,
+                &quot;gasMeterLocationInfoAddition&quot;);
+<span class="fc" id="L97">        this.nextRegularMeterReadingScheduledDateUpdate = Objects.requireNonNull(</span>
+                nextRegularMeterReadingScheduledDateUpdate,
+                &quot;nextRegularMeterReadingScheduledDateUpdate&quot;);
+<span class="fc" id="L100">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L101">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L102">        this.mtsetkDataAccess = Objects.requireNonNull(mtsetkDataAccess, &quot;mtsetkDataAccess&quot;);</span>
+<span class="fc" id="L103">        this.tatemonDataAccess = Objects.requireNonNull(tatemonDataAccess, &quot;tatemonDataAccess&quot;);</span>
+<span class="fc" id="L104">        this.knsssvcDataAccess = Objects.requireNonNull(knsssvcDataAccess, &quot;knsssvcDataAccess&quot;);</span>
+<span class="fc" id="L105">        this.cstsvcDataAccess = Objects.requireNonNull(cstsvcDataAccess, &quot;cstsvcDataAccess&quot;);</span>
+<span class="fc" id="L106">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L109">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L112">        this.noExclusionDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.Exclusive.TYPE,
+                ConstantLookupKeys.Kaiheisen.Exclusive.NO_EXCLUSION);
+<span class="fc" id="L116">        this.openingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L120">        this.gasMeterType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterType.TYPE,
+                ConstantLookupKeys.Cirius.MeterType.GAS);
+<span class="fc" id="L124">        this.tokyoGasOperatorCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L128">        this.deleteCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferDeletionAvailabilityCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferDeletionAvailabilityCode.DELETE);
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * 開栓処理を実行する。
+     */
+    @Override
+    public OpeningProcessOutput execute(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            String kasJysb,
+            LocalDate kktTyenYmd,
+            LocalDate kktTkysYmd,
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            Boolean ksenYmdTskgmstUmFlg,
+            OpeningProcessGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            TatemonInf tatemonInf,
+            String ohmKj,
+            String kktGmtsetdGasYtCd,
+            JusyoKktInf jusyoKktInf) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (Boolean.TRUE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L155">            supportInfoDeletion.execute(digwrHntFlg, gasMtstNo);</span>
+<span class="fc" id="L156">            knsssvcDataAccess.deleteByGasMtstNoAndIdujMskhFlg(gasMtstNo, Boolean.TRUE, null);</span>
+<span class="fc" id="L157">            cstsvcDataAccess.deleteByGmtSetNoAndIdoMasyKhiCd(gasMtstNo, deleteCode, null);</span>
+        }
+
+<span class="fc" id="L160">        GmtsetkRecord currentGmtsetk = requireGmtsetk(gmtsetdKsenSaymdInf.gasMtstNo(), kasgYmd);</span>
+
+<span class="pc bpc" id="L162" title="1 of 4 branches missed.">        if (gmtsetdKsenSaymdInf.tkysYmd() != null &amp;&amp; gmtsetdKsenSaymdInf.tkysYmd().isEqual(kktTkysYmd)) {</span>
+<span class="fc" id="L163">            deleteCurrentGeneration(</span>
+                    gmtsetdKsenSaymdInf,
+                    currentGmtsetk);
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">        } else if (gmtsetdKsenSaymdInf.tkysYmd() != null &amp;&amp; gmtsetdKsenSaymdInf.tkysYmd().isBefore(kktTkysYmd)) {</span>
+<span class="fc" id="L167">            gasMeterLocationInfoTermination.execute(</span>
+                    noExclusionDivision,
+                    new GmtsetdTerminationInf(
+<span class="fc" id="L170">                            gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L171">                            gmtsetdKsenSaymdInf.tkysYmd(),</span>
+                            kktTyenYmd,
+                            null),
+                    new GmtsetkTerminationInf(
+<span class="fc" id="L175">                            gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L176">                            gmtsetdKsenSaymdInf.tkysYmd(),</span>
+                            kktTyenYmd,
+                            null),
+                    new MtsetkTerminationInf(
+<span class="fc" id="L180">                            gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L181">                            gmtsetdKsenSaymdInf.tkysYmd(),</span>
+                            kktTyenYmd,
+                            null));
+        }
+
+<span class="fc" id="L186">        String currentJutKbn = resolveCurrentJutKbn(gmtsetdSystemDateInf, tatemonInf);</span>
+<span class="fc" id="L187">        registerGeneration(</span>
+                kktTkysYmd,
+                kasgYmd,
+                kasJysb,
+                kktGmtsetdGasYtCd,
+                snyTkmtFlg,
+                digwrHntFlg,
+                suguHtkFlg,
+                ksenYmdTskgmstUmFlg,
+                gmtsetdKsenSaymdInf,
+                gmtsetdSystemDateInf,
+                ohmKj,
+                jusyoKktInf,
+                currentGmtsetk,
+                currentJutKbn);
+
+<span class="fc" id="L203">        rebuildFutureGenerations(</span>
+<span class="fc" id="L204">                gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+                kasgYmd,
+                kasJysb,
+                kktGmtsetdGasYtCd,
+                snyTkmtFlg,
+                digwrHntFlg,
+                suguHtkFlg,
+                ksenYmdTskgmstUmFlg,
+                gmtsetdSystemDateInf,
+                ohmKj,
+                jusyoKktInf);
+
+<span class="fc" id="L216">        var scheduledDateUpdateOutput = nextRegularMeterReadingScheduledDateUpdate.execute(gasMtstNo);</span>
+<span class="fc" id="L217">        return new OpeningProcessOutput(toKnsytiInf(scheduledDateUpdateOutput));</span>
+    }
+
+    private GmtsetkRecord requireGmtsetk(Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L221">        return gmtsetkDataAccess.findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, knskKjnYmd)</span>
+<span class="fc" id="L222">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L223">                        gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L224">                        GmtsetkDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD.identifier(),</span>
+<span class="fc" id="L225">                        new FlatJsonBuilder().put(&quot;gasMtstNo&quot;, gasMtstNo).put(&quot;knskKjnYmd&quot;, knskKjnYmd)));</span>
+    }
+
+    private void deleteCurrentGeneration(
+            OpeningProcessGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            GmtsetkRecord currentGmtsetk) {
+<span class="fc" id="L231">        int gmtsetdDeletedCount = gmtsetdDataAccess.deleteByGasMtstNoAndTkysYmd(</span>
+<span class="fc" id="L232">                gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L233">                gmtsetdKsenSaymdInf.tkysYmd(),</span>
+<span class="fc" id="L234">                gmtsetdKsenSaymdInf.recUpdJnjNo());</span>
+<span class="fc" id="L235">        ensureDeletedCount(</span>
+                gmtsetdDeletedCount,
+<span class="fc" id="L237">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L238">                GmtsetdDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L240">                        .put(&quot;gasMtstNo&quot;, gmtsetdKsenSaymdInf.gasMtstNo())</span>
+<span class="fc" id="L241">                        .put(&quot;tkysYmd&quot;, gmtsetdKsenSaymdInf.tkysYmd())</span>
+<span class="fc" id="L242">                        .put(&quot;recUpdJnjNo&quot;, gmtsetdKsenSaymdInf.recUpdJnjNo()));</span>
+
+<span class="fc" id="L244">        int gmtsetkDeletedCount = gmtsetkDataAccess.deleteByGasMtstNoAndTkysYmdAndRecUpdJnjNo(</span>
+<span class="fc" id="L245">                currentGmtsetk.gasMtstNo(),</span>
+<span class="fc" id="L246">                currentGmtsetk.tkysYmd(),</span>
+<span class="fc" id="L247">                currentGmtsetk.recUpdJnjNo());</span>
+<span class="fc" id="L248">        ensureDeletedCount(</span>
+                gmtsetkDeletedCount,
+<span class="fc" id="L250">                gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L251">                GmtsetkDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L253">                        .put(&quot;gasMtstNo&quot;, currentGmtsetk.gasMtstNo())</span>
+<span class="fc" id="L254">                        .put(&quot;tkysYmd&quot;, currentGmtsetk.tkysYmd())</span>
+<span class="fc" id="L255">                        .put(&quot;recUpdJnjNo&quot;, currentGmtsetk.recUpdJnjNo()));</span>
+
+<span class="fc" id="L257">        int mtsetkDeletedCount = mtsetkDataAccess.deleteByMtstNoAndTkysYmd(</span>
+<span class="fc" id="L258">                gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L259">                gmtsetdKsenSaymdInf.tkysYmd(),</span>
+                null);
+<span class="fc" id="L261">        ensureDeletedCount(</span>
+                mtsetkDeletedCount,
+<span class="fc" id="L263">                mtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L264">                MtsetkDataAccess.CallSpecs.DELETE_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L266">                        .put(&quot;mtstNo&quot;, gmtsetdKsenSaymdInf.gasMtstNo())</span>
+<span class="fc" id="L267">                        .put(&quot;tkysYmd&quot;, gmtsetdKsenSaymdInf.tkysYmd())</span>
+<span class="fc" id="L268">                        .put(&quot;recUpdJnjNo&quot;, null));</span>
+<span class="fc" id="L269">    }</span>
+
+    private void rebuildFutureGenerations(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            String kasJysb,
+            String kktGmtsetdGasYtCd,
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            Boolean ksenYmdTskgmstUmFlg,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            String ohmKj,
+            JusyoKktInf jusyoKktInf) {
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        for (GmtsetdRecord futureGmtsetd : gmtsetdDataAccess.findAllByGasMtstNoAndTkysYmd(gasMtstNo, kasgYmd)) {</span>
+<span class="fc" id="L284">            OpeningProcessGmtsetdKsenSaymdInf futureSource = toOpeningSource(futureGmtsetd);</span>
+<span class="fc" id="L285">            GmtsetkRecord futureGmtsetk =</span>
+<span class="fc" id="L286">                    requireGmtsetkByTkysYmd(futureGmtsetd.gasMtstNo(), futureGmtsetd.tkysYmd());</span>
+<span class="fc" id="L287">            MtsetkRecord futureMtsetk =</span>
+<span class="fc" id="L288">                    requireMtsetk(futureSource.gasMtstNo(), futureGmtsetd.tkysYmd());</span>
+
+<span class="fc" id="L290">            int gmtsetdDeletedCount = gmtsetdDataAccess.deleteByGasMtstNoAndTkysYmd(</span>
+<span class="fc" id="L291">                    futureGmtsetd.gasMtstNo(),</span>
+<span class="fc" id="L292">                    futureGmtsetd.tkysYmd(),</span>
+<span class="fc" id="L293">                    futureGmtsetd.recUpdJnjNo());</span>
+<span class="fc" id="L294">            ensureDeletedCount(</span>
+                    gmtsetdDeletedCount,
+<span class="fc" id="L296">                    gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L297">                    GmtsetdDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L299">                            .put(&quot;gasMtstNo&quot;, futureGmtsetd.gasMtstNo())</span>
+<span class="fc" id="L300">                            .put(&quot;tkysYmd&quot;, futureGmtsetd.tkysYmd())</span>
+<span class="fc" id="L301">                            .put(&quot;recUpdJnjNo&quot;, futureGmtsetd.recUpdJnjNo()));</span>
+
+<span class="fc" id="L303">            int gmtsetkDeletedCount = gmtsetkDataAccess.deleteByGasMtstNoAndTkysYmdAndRecUpdJnjNo(</span>
+<span class="fc" id="L304">                    futureGmtsetk.gasMtstNo(),</span>
+<span class="fc" id="L305">                    futureGmtsetk.tkysYmd(),</span>
+<span class="fc" id="L306">                    futureGmtsetk.recUpdJnjNo());</span>
+<span class="fc" id="L307">            ensureDeletedCount(</span>
+                    gmtsetkDeletedCount,
+<span class="fc" id="L309">                    gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L310">                    GmtsetkDataAccess.CallSpecs.DELETE_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L312">                            .put(&quot;gasMtstNo&quot;, futureGmtsetk.gasMtstNo())</span>
+<span class="fc" id="L313">                            .put(&quot;tkysYmd&quot;, futureGmtsetk.tkysYmd())</span>
+<span class="fc" id="L314">                            .put(&quot;recUpdJnjNo&quot;, futureGmtsetk.recUpdJnjNo()));</span>
+
+<span class="fc" id="L316">            int mtsetkDeletedCount = mtsetkDataAccess.deleteByMtstNoAndTkysYmd(</span>
+<span class="fc" id="L317">                    futureMtsetk.mtstNo(),</span>
+<span class="fc" id="L318">                    futureMtsetk.tkysYmd(),</span>
+<span class="fc" id="L319">                    futureMtsetk.recUpdJnjNo());</span>
+<span class="fc" id="L320">            ensureDeletedCount(</span>
+                    mtsetkDeletedCount,
+<span class="fc" id="L322">                    mtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L323">                    MtsetkDataAccess.CallSpecs.DELETE_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L325">                            .put(&quot;mtstNo&quot;, futureMtsetk.mtstNo())</span>
+<span class="fc" id="L326">                            .put(&quot;tkysYmd&quot;, futureMtsetk.tkysYmd())</span>
+<span class="fc" id="L327">                            .put(&quot;recUpdJnjNo&quot;, futureMtsetk.recUpdJnjNo()));</span>
+
+<span class="fc" id="L329">            registerGeneration(</span>
+<span class="fc" id="L330">                    futureGmtsetd.tkysYmd(),</span>
+                    kasgYmd,
+                    kasJysb,
+                    kktGmtsetdGasYtCd,
+                    snyTkmtFlg,
+                    digwrHntFlg,
+                    suguHtkFlg,
+                    ksenYmdTskgmstUmFlg,
+                    futureSource,
+                    gmtsetdSystemDateInf,
+                    ohmKj,
+                    jusyoKktInf,
+                    futureGmtsetk,
+<span class="fc" id="L343">                    resolveFutureJutKbn(futureSource));</span>
+<span class="fc" id="L344">        }</span>
+<span class="fc" id="L345">    }</span>
+
+    private GmtsetkRecord requireGmtsetkByTkysYmd(Long gasMtstNo, LocalDate tkysYmd) {
+<span class="fc" id="L348">        return gmtsetkDataAccess.findByGasMtstNoAndTkysYmd(gasMtstNo, tkysYmd)</span>
+<span class="pc" id="L349">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="nc" id="L350">                        gmtsetkDataAccess.tableName(),</span>
+<span class="nc" id="L351">                        GmtsetkDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+<span class="nc" id="L352">                        new FlatJsonBuilder().put(&quot;gasMtstNo&quot;, gasMtstNo).put(&quot;tkysYmd&quot;, tkysYmd)));</span>
+    }
+
+    private void ensureDeletedCount(int deletedCount, String tableName, String daIdentifier, FlatJsonBuilder jsonBuilder) {
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">        if (deletedCount == 0) {</span>
+<span class="nc" id="L357">            throw DataInconsistencySupport.create(tableName, daIdentifier, jsonBuilder);</span>
+        }
+<span class="fc" id="L359">    }</span>
+
+    private void registerGeneration(
+            LocalDate tkysYmd,
+            LocalDate kasgYmd,
+            String kasJysb,
+            String gasYtCd,
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            Boolean ksenYmdTskgmstUmFlg,
+            OpeningProcessGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            String ohmKj,
+            JusyoKktInf jusyoKktInf,
+            GmtsetkRecord gmtsetkRecord,
+            String jutKbn) {
+<span class="fc" id="L376">        GmtsetdInsInf gmtsetdInsInf = toGmtsetdInsInf(</span>
+                tkysYmd,
+                kasgYmd,
+                kasJysb,
+                snyTkmtFlg,
+                digwrHntFlg,
+                suguHtkFlg,
+                ksenYmdTskgmstUmFlg,
+                gmtsetdKsenSaymdInf,
+                gmtsetdSystemDateInf,
+                ohmKj,
+                gasYtCd,
+                jusyoKktInf);
+
+<span class="fc" id="L390">        gasMeterLocationInfoAddition.execute(</span>
+                gmtsetdInsInf,
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">                new GmtsetkInsInf(gmtsetkRecord != null ? gmtsetkRecord.kkyCitnTtno() : null),</span>
+<span class="fc" id="L393">                toMtsetkInsInf(gmtsetdInsInf, jutKbn));</span>
+<span class="fc" id="L394">    }</span>
+
+    private MtsetkRecord requireMtsetk(Long mtstNo, LocalDate kktTkysYmd) {
+<span class="fc" id="L397">        return mtsetkDataAccess.findByMtstNoAndTkysYmd(mtstNo, kktTkysYmd)</span>
+<span class="pc" id="L398">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="nc" id="L399">                        mtsetkDataAccess.tableName(),</span>
+<span class="nc" id="L400">                        MtsetkDataAccess.CallSpecs.FIND_BY_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+<span class="nc" id="L401">                        new FlatJsonBuilder().put(&quot;mtstNo&quot;, mtstNo).put(&quot;tkysYmd&quot;, kktTkysYmd)));</span>
+    }
+
+    private GmtsetdInsInf toGmtsetdInsInf(
+            LocalDate tkysYmd,
+            LocalDate kasgYmd,
+            String kasJysb,
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            Boolean ksenYmdTskgmstUmFlg,
+            OpeningProcessGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            String ohmKj,
+            String kktGmtsetdGasYtCd,
+            JusyoKktInf jusyoKktInf) {
+<span class="fc" id="L417">        AddressInfo addressInfo = resolveAddressInfo(</span>
+                snyTkmtFlg,
+                digwrHntFlg,
+                suguHtkFlg,
+                gmtsetdKsenSaymdInf,
+                gmtsetdSystemDateInf,
+                jusyoKktInf);
+<span class="fc" id="L424">        return new GmtsetdInsInf(</span>
+<span class="fc" id="L425">                gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+                tkysYmd,
+<span class="fc" id="L427">                gmtsetdKsenSaymdInf.tyenYmd(),</span>
+<span class="fc" id="L428">                gmtsetdKsenSaymdInf.kngmStbJtkb(),</span>
+                openingStatus,
+<span class="fc" id="L430">                gmtsetdKsenSaymdInf.szcGkkCd(),</span>
+<span class="fc" id="L431">                gmtsetdKsenSaymdInf.szcCmazCd(),</span>
+<span class="fc" id="L432">                gmtsetdKsenSaymdInf.szcMchCd(),</span>
+<span class="fc" id="L433">                addressInfo.cbgSuj1(),</span>
+<span class="fc" id="L434">                addressInfo.cbgKn2(),</span>
+<span class="fc" id="L435">                addressInfo.cbgKn3(),</span>
+<span class="fc" id="L436">                addressInfo.cbgKn4(),</span>
+<span class="fc" id="L437">                gmtsetdKsenSaymdInf.bldNo(),</span>
+<span class="fc" id="L438">                addressInfo.tunoKn(),</span>
+<span class="fc" id="L439">                addressInfo.hynKn(),</span>
+<span class="fc" id="L440">                addressInfo.htuFlg(),</span>
+<span class="fc" id="L441">                resolveOhmKj(ksenYmdTskgmstUmFlg, gmtsetdKsenSaymdInf, ohmKj),</span>
+                kasgYmd,
+                null,
+                kasJysb,
+                null,
+<span class="fc" id="L446">                gmtsetdKsenSaymdInf.tkshGmsbShbt(),</span>
+<span class="fc" id="L447">                gmtsetdKsenSaymdInf.gtyMtscKbn(),</span>
+<span class="fc" id="L448">                gmtsetdKsenSaymdInf.tksuMtscCd(),</span>
+<span class="fc" id="L449">                gmtsetdKsenSaymdInf.kkyuGmtKbn(),</span>
+<span class="fc" id="L450">                gmtsetdKsenSaymdInf.ckrtGmscJtkb(),</span>
+<span class="fc" id="L451">                gmtsetdKsenSaymdInf.mtgMtstNo(),</span>
+<span class="fc" id="L452">                gmtsetdKsenSaymdInf.snstGkjYm(),</span>
+<span class="fc" id="L453">                gmtsetdKsenSaymdInf.snstGkjShbt(),</span>
+<span class="fc" id="L454">                gmtsetdKsenSaymdInf.tusoGmtkYmd(),</span>
+<span class="fc" id="L455">                gmtsetdKsenSaymdInf.gmtTkeYmd(),</span>
+<span class="fc" id="L456">                gmtsetdKsenSaymdInf.knckKbn(),</span>
+<span class="fc" id="L457">                gmtsetdKsenSaymdInf.bldKbn(),</span>
+<span class="fc" id="L458">                gmtsetdKsenSaymdInf.akySnstFlg(),</span>
+                kktGmtsetdGasYtCd,
+<span class="fc" id="L460">                gmtsetdKsenSaymdInf.lpgKbn(),</span>
+<span class="fc" id="L461">                gmtsetdKsenSaymdInf.ntryKbn(),</span>
+<span class="fc" id="L462">                gmtsetdKsenSaymdInf.gmtKykaShbt(),</span>
+<span class="fc" id="L463">                gmtsetdKsenSaymdInf.jkarSu(),</span>
+<span class="fc" id="L464">                gmtsetdKsenSaymdInf.gmicDbriShbt(),</span>
+<span class="fc" id="L465">                gmtsetdKsenSaymdInf.gmicSbriShbt(),</span>
+<span class="fc" id="L466">                gmtsetdKsenSaymdInf.knsKhFlg(),</span>
+<span class="fc" id="L467">                gmtsetdKsenSaymdInf.gmicTsjhMem(),</span>
+<span class="fc" id="L468">                gmtsetdKsenSaymdInf.kkysSgykKbn(),</span>
+<span class="fc" id="L469">                gmtsetdKsenSaymdInf.kktkYuhrShbt(),</span>
+<span class="fc" id="L470">                gmtsetdKsenSaymdInf.niknSdksShbt(),</span>
+<span class="fc" id="L471">                gmtsetdKsenSaymdInf.niknTkkyYmd(),</span>
+<span class="fc" id="L472">                gmtsetdKsenSaymdInf.chukThkgFlg(),</span>
+                null,
+<span class="fc" id="L474">                gmtsetdKsenSaymdInf.mcnTkfnJysb(),</span>
+<span class="fc" id="L475">                gmtsetdKsenSaymdInf.sdtgSchFlg(),</span>
+<span class="fc" id="L476">                gmtsetdKsenSaymdInf.sdtgTrkrShbt(),</span>
+<span class="fc" id="L477">                gmtsetdKsenSaymdInf.sdtgTtkYmd(),</span>
+<span class="fc" id="L478">                gmtsetdKsenSaymdInf.sdtgTkfnJysb(),</span>
+<span class="fc" id="L479">                gmtsetdKsenSaymdInf.smpCd(),</span>
+<span class="fc" id="L480">                gmtsetdKsenSaymdInf.ksjGhtbCd(),</span>
+<span class="fc" id="L481">                gmtsetdKsenSaymdInf.kusYmd(),</span>
+<span class="fc" id="L482">                gmtsetdKsenSaymdInf.kysfYmd(),</span>
+<span class="fc" id="L483">                gmtsetdKsenSaymdInf.kngmSbmsYmd());</span>
+    }
+
+    private MtsetkInsInf toMtsetkInsInf(
+            GmtsetdInsInf gmtsetdInsInf,
+            String jutKbn) {
+<span class="fc" id="L489">        return new MtsetkInsInf(</span>
+<span class="fc" id="L490">                gmtsetdInsInf.gasMtstNo(),</span>
+<span class="fc" id="L491">                gmtsetdInsInf.tkysYmd(),</span>
+<span class="fc" id="L492">                gmtsetdInsInf.tyenYmd(),</span>
+                gasMeterType,
+                tokyoGasOperatorCode,
+<span class="fc" id="L495">                gmtsetdInsInf.szcGkkCd(),</span>
+<span class="fc" id="L496">                gmtsetdInsInf.szcCmazCd(),</span>
+<span class="fc" id="L497">                gmtsetdInsInf.szcMchCd(),</span>
+<span class="fc" id="L498">                gmtsetdInsInf.cbgSuj1(),</span>
+<span class="fc" id="L499">                gmtsetdInsInf.cbgKn2(),</span>
+<span class="fc" id="L500">                gmtsetdInsInf.cbgKn3(),</span>
+<span class="fc" id="L501">                gmtsetdInsInf.cbgKn4(),</span>
+<span class="fc" id="L502">                gmtsetdInsInf.bldNo(),</span>
+<span class="fc" id="L503">                gmtsetdInsInf.tunoKn(),</span>
+<span class="fc" id="L504">                gmtsetdInsInf.hynKn(),</span>
+<span class="fc" id="L505">                gmtsetdInsInf.htuFlg(),</span>
+                jutKbn);
+    }
+
+    private String resolveCurrentJutKbn(
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            TatemonInf tatemonInf) {
+<span class="pc bpc" id="L512" title="2 of 6 branches missed.">        if (!hasText(gmtsetdSystemDateInf != null ? gmtsetdSystemDateInf.bldNo() : null) || tatemonInf == null) {</span>
+<span class="fc" id="L513">            return null;</span>
+        }
+<span class="fc" id="L515">        return tatemonInf.jyutakuKbnCd();</span>
+    }
+
+    private String resolveFutureJutKbn(OpeningProcessGmtsetdKsenSaymdInf source) {
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">        String bldNo = source != null ? source.bldNo() : null;</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">        if (!hasText(bldNo)) {</span>
+<span class="nc" id="L521">            return null;</span>
+        }
+<span class="fc" id="L523">        TatemonRecord tatemonRecord = tatemonDataAccess.findByBldNo(bldNo)</span>
+<span class="pc" id="L524">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="nc" id="L525">                        tatemonDataAccess.tableName(),</span>
+<span class="nc" id="L526">                        TatemonDataAccess.CallSpecs.FIND_BY_BLD_NO.identifier(),</span>
+<span class="nc" id="L527">                        new FlatJsonBuilder().put(&quot;bldNo&quot;, bldNo)));</span>
+<span class="fc" id="L528">        return tatemonRecord.jyutakuKbnCd();</span>
+    }
+
+    private boolean hasText(String value) {
+<span class="pc bpc" id="L532" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isEmpty();</span>
+    }
+
+    private AddressInfo resolveAddressInfo(
+            Boolean snyTkmtFlg,
+            Boolean digwrHntFlg,
+            Boolean suguHtkFlg,
+            OpeningProcessGmtsetdKsenSaymdInf openingSource,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf,
+            JusyoKktInf jusyoKktInf) {
+<span class="fc" id="L542">        AddressInfo openingAddressInfo = toAddressInfo(openingSource);</span>
+<span class="pc bpc" id="L543" title="1 of 4 branches missed.">        if (Boolean.TRUE.equals(suguHtkFlg) &amp;&amp; Boolean.FALSE.equals(digwrHntFlg)) {</span>
+<span class="fc" id="L544">            return openingAddressInfo;</span>
+        }
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        if (Boolean.TRUE.equals(snyTkmtFlg)) {</span>
+<span class="fc" id="L547">            return openingAddressInfo;</span>
+        }
+<span class="pc bpc" id="L549" title="1 of 4 branches missed.">        if (matchesSystemDateAddress(openingSource, gmtsetdSystemDateInf) &amp;&amp; jusyoKktInf != null) {</span>
+<span class="fc" id="L550">            return toAddressInfo(jusyoKktInf);</span>
+        }
+<span class="fc" id="L552">        return openingAddressInfo;</span>
+    }
+
+    private AddressInfo toAddressInfo(OpeningProcessGmtsetdKsenSaymdInf source) {
+<span class="fc" id="L556">        return new AddressInfo(</span>
+<span class="fc" id="L557">                source.cbgSuj1(),</span>
+<span class="fc" id="L558">                source.cbgKn2(),</span>
+<span class="fc" id="L559">                source.cbgKn3(),</span>
+<span class="fc" id="L560">                source.cbgKn4(),</span>
+<span class="fc" id="L561">                source.tunoKn(),</span>
+<span class="fc" id="L562">                source.hynKn(),</span>
+<span class="fc" id="L563">                source.htuFlg());</span>
+    }
+
+    private AddressInfo toAddressInfo(JusyoKktInf source) {
+<span class="fc" id="L567">        return new AddressInfo(</span>
+<span class="fc" id="L568">                source.kktCbgSuj1(),</span>
+<span class="fc" id="L569">                source.kktCbgKn2(),</span>
+<span class="fc" id="L570">                source.kktCbgKn3(),</span>
+<span class="fc" id="L571">                source.kktCbgKn4(),</span>
+<span class="fc" id="L572">                source.kktTunoKn(),</span>
+<span class="fc" id="L573">                source.kktHynKn(),</span>
+<span class="fc" id="L574">                source.kktHynUmFlg());</span>
+    }
+
+    private boolean matchesSystemDateAddress(
+            OpeningProcessGmtsetdKsenSaymdInf openingSource,
+            OpeningProcessGmtsetdSystemDateInf gmtsetdSystemDateInf) {
+<span class="pc bpc" id="L580" title="2 of 4 branches missed.">        if (openingSource == null || gmtsetdSystemDateInf == null) {</span>
+<span class="nc" id="L581">            return false;</span>
+        }
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">        return Objects.equals(openingSource.szcGkkCd(), gmtsetdSystemDateInf.szcGkkCd())</span>
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(openingSource.szcMchCd(), gmtsetdSystemDateInf.szcMchCd())</span>
+<span class="pc bpc" id="L585" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(openingSource.szcCmazCd(), gmtsetdSystemDateInf.szcCmazCd())</span>
+<span class="fc bfc" id="L586" title="All 2 branches covered.">                &amp;&amp; Objects.equals(openingSource.cbgSuj1(), gmtsetdSystemDateInf.cbgSuj1())</span>
+<span class="pc bpc" id="L587" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(openingSource.cbgKn2(), gmtsetdSystemDateInf.cbgKn2())</span>
+<span class="pc bpc" id="L588" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(openingSource.cbgKn3(), gmtsetdSystemDateInf.cbgKn3());</span>
+    }
+
+    private String resolveOhmKj(
+            Boolean ksenYmdTskgmstUmFlg,
+            OpeningProcessGmtsetdKsenSaymdInf source,
+            String ohmKj) {
+<span class="fc bfc" id="L595" title="All 2 branches covered.">        if (Boolean.FALSE.equals(ksenYmdTskgmstUmFlg)) {</span>
+<span class="fc" id="L596">            return null;</span>
+        }
+<span class="pc bpc" id="L598" title="1 of 4 branches missed.">        if (ohmKj == null || ohmKj.isEmpty()) {</span>
+<span class="pc bpc" id="L599" title="1 of 2 branches missed.">            return source != null ? source.ohmKj() : null;</span>
+        }
+<span class="fc" id="L601">        return ohmKj;</span>
+    }
+
+    private OpeningProcessGmtsetdKsenSaymdInf toOpeningSource(GmtsetdRecord source) {
+<span class="fc" id="L605">        return new OpeningProcessGmtsetdKsenSaymdInf(</span>
+<span class="fc" id="L606">                source.gasMtstNo(),</span>
+<span class="fc" id="L607">                source.tkysYmd(),</span>
+<span class="fc" id="L608">                source.tyenYmd(),</span>
+<span class="fc" id="L609">                source.kngmStbJtkb(),</span>
+<span class="fc" id="L610">                source.gmtKhsJtkb(),</span>
+<span class="fc" id="L611">                source.szcGkkCd(),</span>
+<span class="fc" id="L612">                source.szcMchCd(),</span>
+<span class="fc" id="L613">                source.szcCmazCd(),</span>
+<span class="fc" id="L614">                source.cbgSuj1(),</span>
+<span class="fc" id="L615">                source.cbgKn2(),</span>
+<span class="fc" id="L616">                source.cbgKn3(),</span>
+<span class="fc" id="L617">                source.cbgKn4(),</span>
+<span class="fc" id="L618">                source.bldNo(),</span>
+<span class="fc" id="L619">                source.tunoKn(),</span>
+<span class="fc" id="L620">                source.hynKn(),</span>
+<span class="fc" id="L621">                source.htuFlg(),</span>
+<span class="fc" id="L622">                source.ohmKj(),</span>
+<span class="fc" id="L623">                source.kasYmd(),</span>
+<span class="fc" id="L624">                source.hesnYmd(),</span>
+<span class="fc" id="L625">                source.kasJysb(),</span>
+<span class="fc" id="L626">                source.hesnJysb(),</span>
+<span class="fc" id="L627">                source.tkshGmsbShbt(),</span>
+<span class="fc" id="L628">                source.gtyMtscKbn(),</span>
+<span class="fc" id="L629">                source.tksuMtscCd(),</span>
+<span class="fc" id="L630">                source.kkyuGmtKbn(),</span>
+<span class="fc" id="L631">                source.ckrtGmscJtkb(),</span>
+<span class="fc" id="L632">                source.mtgMtstNo(),</span>
+<span class="fc" id="L633">                source.snstGkjYm(),</span>
+<span class="fc" id="L634">                source.snstGkjShbt(),</span>
+<span class="fc" id="L635">                source.tusoGmtkYmd(),</span>
+<span class="fc" id="L636">                source.gmtTkeYmd(),</span>
+<span class="fc" id="L637">                source.knckKbn(),</span>
+<span class="fc" id="L638">                source.bldKbn(),</span>
+<span class="fc" id="L639">                source.akySnstFlg(),</span>
+<span class="fc" id="L640">                source.gasYtCd(),</span>
+<span class="fc" id="L641">                source.lpgKbn(),</span>
+<span class="fc" id="L642">                source.ntryKbn(),</span>
+<span class="fc" id="L643">                source.gmtKykaShbt(),</span>
+<span class="fc" id="L644">                source.jkarSu(),</span>
+<span class="fc" id="L645">                source.gmicDbriShbt(),</span>
+<span class="fc" id="L646">                source.gmicSbriShbt(),</span>
+<span class="fc" id="L647">                source.knsKhFlg(),</span>
+<span class="fc" id="L648">                source.kkysSgykKbn(),</span>
+<span class="fc" id="L649">                source.kktkYuhrShbt(),</span>
+<span class="fc" id="L650">                source.niknSdksShbt(),</span>
+<span class="fc" id="L651">                source.niknTkkyYmd(),</span>
+<span class="fc" id="L652">                source.chukThkgFlg(),</span>
+<span class="fc" id="L653">                source.hesnSdnShbt(),</span>
+<span class="fc" id="L654">                source.mcnTkfnJysb(),</span>
+<span class="fc" id="L655">                source.sdtgSchFlg(),</span>
+<span class="fc" id="L656">                source.sdtgTrkrShbt(),</span>
+<span class="fc" id="L657">                source.sdtgTtkYmd(),</span>
+<span class="fc" id="L658">                source.sdtgTkfnJysb(),</span>
+<span class="fc" id="L659">                source.smpCd(),</span>
+<span class="fc" id="L660">                source.ksjGhtbCd(),</span>
+<span class="fc" id="L661">                source.kusYmd(),</span>
+<span class="fc" id="L662">                source.kysfYmd(),</span>
+<span class="fc" id="L663">                source.kngmSbmsYmd(),</span>
+<span class="fc" id="L664">                source.recUpdJnjNo(),</span>
+<span class="fc" id="L665">                source.gmicTsjhMem());</span>
+    }
+
+    private KnsytiInf toKnsytiInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.NextRegularMeterReadingScheduledDateUpdateOutput output) {
+<span class="pc bpc" id="L670" title="2 of 4 branches missed.">        if (output == null || output.knsytiInf() == null) {</span>
+<span class="nc" id="L671">            return null;</span>
+        }
+<span class="fc" id="L673">        return new KnsytiInf(</span>
+<span class="fc" id="L674">                output.knsytiInf().knsHuhuKbn(),</span>
+<span class="fc" id="L675">                output.knsytiInf().stkbKbn(),</span>
+<span class="fc" id="L676">                output.knsytiInf().shtiKskbNo());</span>
+    }
+
+<span class="fc" id="L679">    private record AddressInfo(</span>
+            String cbgSuj1,
+            String cbgKn2,
+            String cbgKn3,
+            String cbgKn4,
+            String tunoKn,
+            String hynKn,
+            Boolean htuFlg) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

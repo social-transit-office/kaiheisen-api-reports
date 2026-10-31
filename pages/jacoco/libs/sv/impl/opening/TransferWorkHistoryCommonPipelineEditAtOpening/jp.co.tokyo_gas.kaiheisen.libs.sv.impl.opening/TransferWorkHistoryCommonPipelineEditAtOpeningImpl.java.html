@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryCommonPipelineEditAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-transferworkhistorycommonpipelineeditatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">TransferWorkHistoryCommonPipelineEditAtOpeningImpl.java</span></div><h1>TransferWorkHistoryCommonPipelineEditAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryCommonPipelineEditAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryCommonPipelineEditAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.IsrkdInsInf;
+
+/**
+ * 概要: SV-246（開栓時異動・作業履歴（共通）＜導管＞共通編集）の実装。
+ * 主な仕様:
+ * - 入力値と RequestContext、定数ライブラリの値から異動・作業履歴登録項目を編集する。
+ * - お客さま情報取得可否フラグは常に true を設定する。
+ * 既知の制約:
+ * - public メソッド引数の null バリデーションは上位層責務とし、本クラスでは null ガードを行わない。
+ */
+public final class TransferWorkHistoryCommonPipelineEditAtOpeningImpl
+        implements TransferWorkHistoryCommonPipelineEditAtOpening {
+
+    private static final String TRANSFER_WORK_HISTORY_DETAIL_SCREEN_ID = &quot;CXXG0082&quot;;
+
+<span class="fc" id="L28">    private static final DateTimeFormatter HMS_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private final RequestContext requestContext;
+
+    private final String caseHistoryResultTransfer;
+
+    private final String itemHistoryRegistrationDestinationPlace;
+
+    private final String transferWorkHistoryInquiryCodeSubject;
+
+    /**
+     * 概要: 出力編集に必要な依存と定数を初期化する。
+     * 主な仕様:
+     * - RequestContext は必須依存として保持する。
+     * - 案件履歴区分、案件履歴登録先種別、異動・作業履歴照会対象コードを fail-fast に解決する。
+     * 既知の制約:
+     * - 必須定数不足時はコンストラクタ初期化時点で失敗する。
+     *
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public TransferWorkHistoryCommonPipelineEditAtOpeningImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L51">            RequestContext requestContext) {</span>
+<span class="fc" id="L52">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L53">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L54">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L55">        this.caseHistoryResultTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.CaseHistory.TYPE,
+                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER);
+<span class="fc" id="L59">        this.itemHistoryRegistrationDestinationPlace = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.PLACE);
+<span class="fc" id="L63">        this.transferWorkHistoryInquiryCodeSubject = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT);
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * 概要: 開栓時異動・作業履歴（共通）＜導管＞の登録項目を編集する。
+     * 主な仕様:
+     * - RequestContext からシステム日時を取得し、登録依頼年月日と時分秒を組み立てる。
+     * - お客さま情報取得可否フラグは常に true を設定する。
+     * 既知の制約:
+        * - RequestContext の値設定と妥当性確認は上位層責務とし、本メソッドでは補完しない。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kasgYmd 開栓作業年月日
+     * @param hukkUsrId 報告ユーザーＩＤ
+     * @param hukkUnmKj 報告ユーザー名漢字
+     * @return 異動・作業履歴（共通）＜導管＞編集結果
+     */
+    @Override
+    public TransferWorkHistoryCommonPipelineEditAtOpeningOutput execute(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            String hukkUsrId,
+            String hukkUnmKj) {
+<span class="fc" id="L89">        LocalDateTime requestSystemDatetime = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L90">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+
+<span class="fc" id="L92">        IsrkdInsInf output = new IsrkdInsInf(</span>
+                gasMtstNo,
+<span class="fc" id="L94">                requestSystemDatetime.toLocalDate(),</span>
+                caseHistoryResultTransfer,
+                itemHistoryRegistrationDestinationPlace,
+                transferWorkHistoryInquiryCodeSubject,
+<span class="fc" id="L98">                toHms(requestSystemDatetime),</span>
+                kasgYmd,
+                hukkUsrId,
+                hukkUnmKj,
+                TRANSFER_WORK_HISTORY_DETAIL_SCREEN_ID,
+                Boolean.TRUE);
+
+<span class="fc" id="L105">        return new TransferWorkHistoryCommonPipelineEditAtOpeningOutput(output);</span>
+    }
+
+    /**
+     * 概要: システム日時から HHmmss 形式の整数値を生成する。
+     * 主な仕様:
+     * - DateTimeFormatter(&quot;HHmmss&quot;) でゼロ埋めした 6 桁整数を返す。
+     * 既知の制約:
+     * - LocalDateTime は呼び出し前に null ではない前提で扱う。
+     *
+     * @param systemDatetime システム日時
+     * @return HHmmss 形式の時分秒整数
+     */
+    private int toHms(LocalDateTime systemDatetime) {
+<span class="fc" id="L119">        return Integer.parseInt(HMS_FORMATTER.format(systemDatetime));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

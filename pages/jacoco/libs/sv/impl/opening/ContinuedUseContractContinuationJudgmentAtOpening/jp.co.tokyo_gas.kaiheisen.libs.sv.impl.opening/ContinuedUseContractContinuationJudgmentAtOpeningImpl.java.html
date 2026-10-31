@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContinuedUseContractContinuationJudgmentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-continuedusecontractcontinuationjudgmentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContinuedUseContractContinuationJudgmentAtOpeningImpl.java</span></div><h1>ContinuedUseContractContinuationJudgmentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ssvsbhw.SsvsbhwDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ssvsbhw.SsvsbhwRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContinuedUseContractContinuationJudgmentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContinuedUseContractContinuationJudgmentAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContinuedUseContractSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContinuedUseContractSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TkssvkyInf;
+
+/**
+ * 概要: SV-172（開栓時継続使用契約継続判定）の実装クラス。
+ * 主な仕様:
+ * - 契約あり時は託送供給依頼事業者コード、TG他小売区分、継続使用扱いコードを評価して処理判定_4x/3x/2x を設定する。
+ * - 契約なし時は契約種別が一般契約であることを判定し、DA-157-R001 を呼び出して復活フラグと処理判定_4x/3x/2x を決定する。
+ * - systemDatetime は RequestContext から取得し、未設定時は fail-fast する。
+ * 既知の制約:
+ * - 一般契約（18200-01101）、J0600-0023、J0601-0023002 は必須定数として解決する。
+ * - 公開引数の null ガードや blank 補正は追加せず、上位層から渡された値をそのまま評価する。
+ */
+public final class ContinuedUseContractContinuationJudgmentAtOpeningImpl
+        implements ContinuedUseContractContinuationJudgmentAtOpening {
+
+    private final SsvsbhwDataAccess ssvsbhwDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String tokyoGasRetailerCode;
+
+    private final String otherRetailCategory;
+
+    private final String alternativeOpeningTarget;
+
+    private final String generalContractType;
+
+    private final String paymentContractContinuationDecisionType;
+
+    private final String paymentContractContinuedUseDecisionContent;
+
+    /**
+     * 概要: 依存と定数サービスを受け取ってインスタンスを初期化する。
+     * 主な仕様: SV-172 の判定で使用する CIRIUS / 開閉栓定数をコンストラクタ初期化時点で fail-fast 解決する。
+     * 既知の制約: 依存と定数サービスの null は許容しない。
+     *
+     * @param ssvsbhwDataAccess DA-157-R001 API
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public ContinuedUseContractContinuationJudgmentAtOpeningImpl(
+            SsvsbhwDataAccess ssvsbhwDataAccess,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="pc" id="L64">        this(</span>
+                ssvsbhwDataAccess,
+                requestContext,
+<span class="fc" id="L67">                resolveTokyoGasRetailerCode(ciriusConstantService),</span>
+<span class="fc" id="L68">                resolveOtherRetailCategory(kaiheisenConstantService),</span>
+<span class="fc" id="L69">                resolveAlternativeOpeningTarget(kaiheisenConstantService),</span>
+<span class="fc" id="L70">                resolveGeneralContractType(ciriusConstantService),</span>
+<span class="fc" id="L71">                resolvePaymentContractContinuationDecisionType(ciriusConstantService),</span>
+<span class="fc" id="L72">                resolvePaymentContractContinuedUseDecisionContent(ciriusConstantService));</span>
+<span class="nc" id="L73">    }</span>
+
+    /**
+     * 概要: テスト差し替え用に解決済み依存を受け取って初期化する。
+     * 主な仕様: 定数解決済みコード値と依存をそのまま保持し、execute で再利用する。
+     * 既知の制約: null の依存やコード値は許容しない。
+     */
+    ContinuedUseContractContinuationJudgmentAtOpeningImpl(
+            SsvsbhwDataAccess ssvsbhwDataAccess,
+            RequestContext requestContext,
+            String tokyoGasRetailerCode,
+            String otherRetailCategory,
+            String alternativeOpeningTarget,
+            String generalContractType,
+            String paymentContractContinuationDecisionType,
+<span class="fc" id="L88">            String paymentContractContinuedUseDecisionContent) {</span>
+<span class="fc" id="L89">        this.ssvsbhwDataAccess = Objects.requireNonNull(ssvsbhwDataAccess, &quot;ssvsbhwDataAccess&quot;);</span>
+<span class="fc" id="L90">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L91">        this.tokyoGasRetailerCode = Objects.requireNonNull(tokyoGasRetailerCode, &quot;tokyoGasRetailerCode&quot;);</span>
+<span class="fc" id="L92">        this.otherRetailCategory = Objects.requireNonNull(otherRetailCategory, &quot;otherRetailCategory&quot;);</span>
+<span class="fc" id="L93">        this.alternativeOpeningTarget = Objects.requireNonNull(</span>
+                alternativeOpeningTarget,
+                &quot;alternativeOpeningTarget&quot;);
+<span class="fc" id="L96">        this.generalContractType = Objects.requireNonNull(generalContractType, &quot;generalContractType&quot;);</span>
+<span class="fc" id="L97">        this.paymentContractContinuationDecisionType = Objects.requireNonNull(</span>
+                paymentContractContinuationDecisionType,
+                &quot;paymentContractContinuationDecisionType&quot;);
+<span class="fc" id="L100">        this.paymentContractContinuedUseDecisionContent = Objects.requireNonNull(</span>
+                paymentContractContinuedUseDecisionContent,
+                &quot;paymentContractContinuedUseDecisionContent&quot;);
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * 概要: 開栓時継続使用契約継続判定を行う。
+     * 主な仕様: systemDatetime を取得したうえで契約あり判定を優先し、不成立時は契約なし側の復活・継続判定へ進む。
+     * 既知の制約: 公開引数の null ガードは行わず、必要な箇所では NullPointerException がそのまま発生する。
+     */
+    @Override
+    public ContinuedUseContractContinuationJudgmentAtOpeningOutput execute(
+            String tgTkurKbn,
+            LocalDate kasgYmd,
+            Boolean kiyUmFlg,
+            String kzksyAtkCd,
+            TkssvkyInf tkssvkyInf,
+            ContinuedUseContractSvckyaInf svckyaInf,
+            GmtsetdInf gmtsetdInf,
+            ContinuedUseContractSihakyInf sihakyInf) {
+<span class="fc" id="L120">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+
+<span class="fc" id="L122">        String tksuKijsCd = tkssvkyInf.tksuKijsCd();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (shouldReturnContractContinuation(</span>
+                tksuKijsCd,
+                kiyUmFlg,
+                tgTkurKbn,
+                kzksyAtkCd)) {
+<span class="fc" id="L128">            return new ContinuedUseContractContinuationJudgmentAtOpeningOutput(</span>
+                    Boolean.TRUE,
+                    Boolean.TRUE,
+                    Boolean.TRUE,
+                    Boolean.FALSE,
+                    null);
+        }
+
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (!shouldEvaluateReactivation(</span>
+                tksuKijsCd,
+                kiyUmFlg,
+                tgTkurKbn)) {
+<span class="fc" id="L140">            return defaultOutput();</span>
+        }
+
+<span class="fc" id="L143">        return judgeReactivation(</span>
+                kasgYmd,
+                kzksyAtkCd,
+                svckyaInf,
+                gmtsetdInf,
+                sihakyInf,
+<span class="fc" id="L149">                systemDatetime.toLocalDate());</span>
+    }
+
+    /**
+     * 概要: 契約あり側の継続判定成立条件を評価する。
+     * 主な仕様: 東京ガス、契約あり、他小売以外、代替開栓対象以外の全条件が成立した場合に true を返す。
+     * 既知の制約: 契約有無フラグの null はアンボクシングにより NullPointerException となる。
+     */
+    private boolean shouldReturnContractContinuation(
+            String tksuKijsCd,
+            Boolean kiyUmFlg,
+            String tgTkurKbn,
+            String kzksyAtkCd) {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        return tksuKijsCd != null</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                &amp;&amp; !tksuKijsCd.isEmpty()</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                &amp;&amp; tokyoGasRetailerCode.equals(tksuKijsCd)</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                &amp;&amp; kiyUmFlg</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                &amp;&amp; !otherRetailCategory.equals(tgTkurKbn)</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                &amp;&amp; !alternativeOpeningTarget.equals(kzksyAtkCd);</span>
+    }
+
+    /**
+     * 概要: 契約なし側の復活判定に進む条件を評価する。
+     * 主な仕様: 東京ガス、契約なし、他小売以外のときに true を返す。
+     * 既知の制約: 契約有無フラグの null はアンボクシングにより NullPointerException となる。
+     */
+    private boolean shouldEvaluateReactivation(
+            String tksuKijsCd,
+            Boolean kiyUmFlg,
+            String tgTkurKbn) {
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        return tksuKijsCd != null</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                &amp;&amp; !tksuKijsCd.isEmpty()</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                &amp;&amp; tokyoGasRetailerCode.equals(tksuKijsCd)</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                &amp;&amp; !kiyUmFlg</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                &amp;&amp; !otherRetailCategory.equals(tgTkurKbn);</span>
+    }
+
+    /**
+     * 概要: 契約なし側の復活・継続判定を行う。
+     * 主な仕様: 一般契約判定、代替開栓対象判定、13ヶ月境界判定、DA-157 判定の順に評価して出力を組み立てる。
+     * 既知の制約: 13ヶ月境界を超える場合は DA-157 を呼び出さず、復活フラグのみ true にする。
+     */
+    private ContinuedUseContractContinuationJudgmentAtOpeningOutput judgeReactivation(
+            LocalDate kasgYmd,
+            String kzksyAtkCd,
+            ContinuedUseContractSvckyaInf svckyaInf,
+            GmtsetdInf gmtsetdInf,
+            ContinuedUseContractSihakyInf sihakyInf,
+            LocalDate systemDate) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (!generalContractType.equals(svckyaInf.kiyShbt())</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                || alternativeOpeningTarget.equals(kzksyAtkCd)) {</span>
+<span class="fc" id="L200">            return defaultOutput();</span>
+        }
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (!kasgYmd.isBefore(resolveThirteenMonthExceededDate(gmtsetdInf.hesnYmd()))) {</span>
+<span class="fc" id="L204">            return new ContinuedUseContractContinuationJudgmentAtOpeningOutput(</span>
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    Boolean.FALSE,
+                    Boolean.TRUE,
+                    null);
+        }
+
+<span class="fc" id="L212">        String sqsvsHnsb = findBillingServiceTypeDistributionContent(</span>
+<span class="fc" id="L213">                sihakyInf.sikSvcShbt(),</span>
+                systemDate);
+<span class="fc" id="L215">        return new ContinuedUseContractContinuationJudgmentAtOpeningOutput(</span>
+                Boolean.TRUE,
+                Boolean.TRUE,
+<span class="fc" id="L218">                paymentContractContinuedUseDecisionContent.equals(sqsvsHnsb),</span>
+                Boolean.TRUE,
+                sqsvsHnsb);
+    }
+
+    /**
+     * 概要: DA-157-R001 を呼び出して請求サービス種別振分内容種別を取得する。
+     * 主な仕様: J0600-0023 を種別として最新の SSVSBHW を 1 件取得し、内容種別を返す。
+     * 既知の制約: DA 結果が空の場合は null を返す。
+     */
+    private String findBillingServiceTypeDistributionContent(String sikSvcShbt, LocalDate systemDate) {
+<span class="fc" id="L229">        return ssvsbhwDataAccess</span>
+<span class="fc" id="L230">                .findBySqsvsHwsbAndSikSvcShbtAndKnskKjnYmdOrderByTkysYmdDesc(</span>
+                        paymentContractContinuationDecisionType,
+                        sikSvcShbt,
+                        systemDate)
+<span class="fc" id="L234">                .map(SsvsbhwRecord::sqsvsHnsb)</span>
+<span class="fc" id="L235">                .orElse(null);</span>
+    }
+
+    /**
+     * 概要: 13ヶ月超過となる境界日を算出する。
+     * 主な仕様: 閉栓年月日の13ヶ月後の月初日を返し、その日以降を13ヶ月超過として扱う。
+     * 既知の制約: 閉栓年月日が null の場合は NullPointerException となる。
+     */
+    private static LocalDate resolveThirteenMonthExceededDate(LocalDate hesnYmd) {
+<span class="fc" id="L244">        return hesnYmd.plusMonths(13).withDayOfMonth(1);</span>
+    }
+
+    /**
+     * 概要: 初期値出力を返す。
+     * 主な仕様: 4 種の処理判定フラグを false、請求サービス種別振分内容種別を null で返す。
+     * 既知の制約: 設計書の初期値設定ステップに対応する固定値を返す。
+     */
+    private static ContinuedUseContractContinuationJudgmentAtOpeningOutput defaultOutput() {
+<span class="fc" id="L253">        return new ContinuedUseContractContinuationJudgmentAtOpeningOutput(</span>
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                null);
+    }
+
+    /**
+     * 概要: RequestContext からシステム日時を取得する。
+     * 主な仕様: 未設定時は IllegalStateException で fail-fast する。
+     * 既知の制約: Optional の空値は許容しない。
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L267">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L268">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 東京ガス小売事業者コードを解決する。
+     * 主な仕様: J0580-A0020 を必須 CIRIUS 定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolveTokyoGasRetailerCode(CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L277">        return RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L278">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+    }
+
+    /**
+     * 概要: 他小売区分コードを解決する。
+     * 主な仕様: KH005-1 を必須開閉栓定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolveOtherRetailCategory(KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L289">        return RequiredConstantResolver.requireKaiheisenConstant(</span>
+<span class="fc" id="L290">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;),</span>
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+    }
+
+    /**
+     * 概要: 代替開栓対象コードを解決する。
+     * 主な仕様: KH007-2 を必須開閉栓定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolveAlternativeOpeningTarget(KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L301">        return RequiredConstantResolver.requireKaiheisenConstant(</span>
+<span class="fc" id="L302">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;),</span>
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.ALTERNATIVE_OPENING_TARGET);
+    }
+
+    /**
+     * 概要: 一般契約コードを解決する。
+     * 主な仕様: 18200-01101 を必須 CIRIUS 定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolveGeneralContractType(CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L313">        return RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L314">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.ContractType.TYPE,
+                ConstantLookupKeys.Cirius.ContractType.GENERAL_CONTRACT);
+    }
+
+    /**
+     * 概要: 支払契約継続使用判断の請求サービス種別振分種別を解決する。
+     * 主な仕様: J0600-0023 を必須 CIRIUS 定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolvePaymentContractContinuationDecisionType(
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L326">        return RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L327">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.BillingServiceTypeDistributionType.TYPE,
+                ConstantLookupKeys.Cirius.BillingServiceTypeDistributionType
+                        .DECISION_ON_CONTINUED_USE_OF_PAYMENT_CONTRACT);
+    }
+
+    /**
+     * 概要: 支払契約継続使用判断の継続使用内容種別を解決する。
+     * 主な仕様: J0601-0023002 を必須 CIRIUS 定数として解決する。
+     * 既知の制約: 定数サービスの null は許容しない。
+     */
+    private static String resolvePaymentContractContinuedUseDecisionContent(
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L340">        return RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L341">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.BillingServiceTypeDistributionContentType.TYPE,
+                ConstantLookupKeys.Cirius.BillingServiceTypeDistributionContentType
+                        .PAYMENT_CONTRACT_CONTINUED_USE_DECISION_CONTINUED_USE);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

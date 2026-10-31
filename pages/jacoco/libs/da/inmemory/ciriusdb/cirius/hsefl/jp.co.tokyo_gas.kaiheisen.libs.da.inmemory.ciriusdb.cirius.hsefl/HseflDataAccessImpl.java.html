@@ -1,0 +1,846 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HseflDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-hsefl</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.hsefl</a> &gt; <span class="el_source">HseflDataAccessImpl.java</span></div><h1>HseflDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.hsefl;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.write.HseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/**
+ * HSEFL の SQL 振る舞いを模したインメモリ実装.
+ */
+public class HseflDataAccessImpl extends DataAccessBase
+        implements HseflDataAccess {
+
+    /** 連絡先住種別の既定値. */
+    private static final String DEFAULT_CONTACT_RESIDENCE_TYPE = &quot; &quot;;
+
+    /** 閉開栓方式種別の既定値. */
+    private static final String DEFAULT_OPEN_CLOSE_METHOD_TYPE = &quot; &quot;;
+
+    /** 閉栓手段種別の既定値. */
+    private static final String DEFAULT_CLOSING_MEANS_TYPE = &quot; &quot;;
+
+    /** 特記事項メモの既定値. */
+    private static final String DEFAULT_SPECIAL_NOTES = &quot;&quot;;
+
+    /** null 相当の補完日付. */
+<span class="fc" id="L52">    private static final LocalDate COMPLEMENT_YMD = LocalDate.of(1, 1, 1);</span>
+
+    /** フォロー対応年月日の既定値. */
+<span class="fc" id="L55">    private static final LocalDate DEFAULT_FOLLOW_TARGET_DATE = COMPLEMENT_YMD;</span>
+
+    /** 訂正後閉栓作業年月日の既定値. */
+<span class="fc" id="L58">    private static final LocalDate DEFAULT_CORRECTED_CLOSING_WORK_DATE = COMPLEMENT_YMD;</span>
+
+    /** 訂正後ガスメーター社番の既定値. */
+    private static final String DEFAULT_CORRECTED_GAS_METER_SERIAL_NUMBER = &quot; &quot;;
+
+    /** 支払契約番号の既定値. */
+<span class="fc" id="L64">    private static final Long DEFAULT_PAYMENT_CONTRACT_NUMBER = 0L;</span>
+
+    /** サービス契約番号の既定値. */
+<span class="fc" id="L67">    private static final Long DEFAULT_SERVICE_CONTRACT_NUMBER = 0L;</span>
+
+    /** 地域統括コードの固定長. */
+    private static final int FLTT_CKTK_CD_LENGTH = 3;
+
+    /** 拠点コードの固定長. */
+    private static final int FLTT_KTN_CD_LENGTH = 1;
+
+    /** フォロー状態コードの固定長. */
+    private static final int FLW_ST_CD_LENGTH = 2;
+
+    /** 閉栓住種別の固定長. */
+    private static final int HESN_JYSB_LENGTH = 1;
+
+    /** レコード変換用 RowMapper. */
+    private static final ReflectiveInMemoryRowMapper&lt;HseflColumn, HseflRecord&gt;
+<span class="fc" id="L83">            ROW_MAPPER = ReflectiveInMemoryRowMapper.create(</span>
+                    HseflColumn.class,
+                    HseflRecord.class);
+
+    /** null 相当値補完用 Resolver. */
+    private static final AutoNeutralValueResolver&lt;HseflColumn&gt;
+<span class="fc" id="L89">            NEUTRAL_VALUE_RESOLVER = AutoNeutralValueResolver.create(</span>
+                    HseflColumn.class,
+                    HseflRecord.class);
+
+    /** R004 の並び順. */
+<span class="fc" id="L94">    private static final Comparator&lt;EnumMap&lt;HseflColumn, Object&gt;&gt; R004_ORDER =</span>
+            Comparator
+<span class="fc" id="L96">                    .&lt;EnumMap&lt;HseflColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L97">                            row -&gt; (LocalDate) row.get(HseflColumn.HSSG_YMD),</span>
+<span class="fc" id="L98">                            Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L99">                    .thenComparing(</span>
+                            row -&gt;
+<span class="fc" id="L101">                                    (LocalDate) row.get(</span>
+                                            HseflColumn.HESN_HUKK_YMD),
+<span class="fc" id="L103">                            Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L104">                    .thenComparing(</span>
+<span class="fc" id="L105">                            row -&gt; (Integer) row.get(HseflColumn.REG_TSNO),</span>
+<span class="fc" id="L106">                            Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L107">                    .thenComparing(</span>
+<span class="fc" id="L108">                            row -&gt; (String) row.get(HseflColumn.HSSG_NWK_CD),</span>
+<span class="fc" id="L109">                            Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L110">                    .thenComparing(</span>
+<span class="fc" id="L111">                            row -&gt; (Long) row.get(HseflColumn.GAS_MTST_NO),</span>
+<span class="fc" id="L112">                            Comparator.nullsLast(Comparator.naturalOrder()));</span>
+
+    /** D001 の識別子. */
+<span class="fc" id="L115">    private static final String D001_IDENTIFIER =</span>
+            HseflDataAccess.CallSpecs
+                    .DELETE_BY_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L118">                    .identifier();</span>
+
+    /** U001 の識別子. */
+<span class="fc" id="L121">    private static final String U001_IDENTIFIER =</span>
+            HseflDataAccess.CallSpecs
+                    .UPDATE_BY_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L124">                    .identifier();</span>
+
+    /** U002 の識別子. */
+<span class="fc" id="L127">    private static final String U002_IDENTIFIER =</span>
+            HseflDataAccess.CallSpecs
+                    .UPDATE_BY_FLTT_CKTK_CD_AND_GAS_MTST_NO_AND_HSSG_YMD_AND_HESN_HUKK_YMD_AND_REG_TSNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L130">                    .identifier();</span>
+
+    /** インメモリ保持行. */
+<span class="fc" id="L133">    private final List&lt;EnumMap&lt;HseflColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /** システム日時プロバイダ. */
+    private final SystemDateTimeProvider clock;
+
+    /** 監査列自動設定サポート. */
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    /** 登録処理サポート. */
+    private final InMemoryInsertSupport&lt;HseflWriteRecord, HseflColumn&gt;
+            insertSupport;
+
+    /** 更新処理サポート. */
+    private final InMemoryTargetColumnUpdateSupport&lt;
+            HseflWriteRecord,
+            HseflColumn&gt; updateSupport;
+
+    /**
+     * デフォルト依存で初期化する.
+     */
+    public HseflDataAccessImpl() {
+<span class="nc" id="L154">        this(</span>
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L157">    }</span>
+
+    /**
+     * 依存注入用に初期化する.
+     *
+     * @param systemDateTimeProvider システム日時プロバイダ
+     * @param ciriusAuditColumnAutoSetter 監査列自動設定サポート
+     */
+    HseflDataAccessImpl(
+            final SystemDateTimeProvider systemDateTimeProvider,
+<span class="fc" id="L167">            final CiriusAuditColumnAutoSetter ciriusAuditColumnAutoSetter) {</span>
+<span class="fc" id="L168">        this.clock = Objects.requireNonNull(</span>
+                systemDateTimeProvider,
+                &quot;systemDateTimeProvider&quot;);
+<span class="fc" id="L171">        this.auditColumnAutoSetter = Objects.requireNonNull(</span>
+                ciriusAuditColumnAutoSetter,
+                &quot;ciriusAuditColumnAutoSetter&quot;);
+<span class="fc" id="L174">        this.insertSupport = new InMemoryInsertSupport&lt;&gt;(</span>
+                HseflWriteDefinition.INSTANCE,
+                NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L177">        this.updateSupport = new InMemoryTargetColumnUpdateSupport&lt;&gt;(</span>
+                HseflWriteDefinition.INSTANCE,
+                NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * テスト用に 1 行追加する.
+     *
+     * @param row 追加レコード
+     * @return このインスタンス
+     */
+    public HseflDataAccessImpl addRow(final HseflRecord row) {
+<span class="fc" id="L189">        final EnumMap&lt;HseflColumn, Object&gt; values = ROW_MAPPER.toRawValueMap(</span>
+<span class="fc" id="L190">                Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L191">        NEUTRAL_VALUE_RESOLVER.complement(</span>
+                values,
+<span class="fc" id="L193">                HseflWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L194">        this.rows.add(values);</span>
+<span class="fc" id="L195">        return this;</span>
+    }
+
+    @Override
+    public int insert(
+            final HseflWriteRecord record,
+            final AuditContext context) {
+<span class="fc" id="L202">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L203">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L204">        this.rows.add(this.insertSupport.prepare(</span>
+<span class="fc" id="L205">                normalizeInsertRecord(record),</span>
+<span class="fc" id="L206">                values -&gt; this.auditColumnAutoSetter.applyForInsert(</span>
+                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                HseflColumn.class,
+                                values),
+                        context,
+                        this.clock)));
+<span class="fc" id="L212">        return 1;</span>
+    }
+
+    private static HseflWriteRecord normalizeInsertRecord(
+            final HseflWriteRecord record) {
+<span class="fc" id="L217">        return new HseflWriteRecord(</span>
+<span class="fc" id="L218">                record.gasMtstNo(),</span>
+<span class="fc" id="L219">                record.hssgYmd(),</span>
+<span class="fc" id="L220">                record.hesnHukkYmd(),</span>
+<span class="fc" id="L221">                record.regTsno(),</span>
+<span class="fc" id="L222">                record.hukkSysShbt(),</span>
+<span class="fc" id="L223">                record.sgyAnknNo(),</span>
+<span class="fc" id="L224">                record.flwStCd(),</span>
+<span class="fc" id="L225">                Objects.requireNonNullElse(record.fltkYmd(), DEFAULT_FOLLOW_TARGET_DATE),</span>
+<span class="fc" id="L226">                record.syoKyoTrno(),</span>
+<span class="fc" id="L227">                record.gmb(),</span>
+<span class="fc" id="L228">                record.hesnJysb(),</span>
+<span class="fc" id="L229">                record.hesnErryCd(),</span>
+<span class="fc" id="L230">                record.flttCktkCd(),</span>
+<span class="fc" id="L231">                record.flttKtnCd(),</span>
+<span class="fc" id="L232">                record.hssgNwkCd(),</span>
+<span class="fc" id="L233">                record.sgytSinNo(),</span>
+<span class="fc" id="L234">                record.sgytSinnKj(),</span>
+<span class="fc" id="L235">                record.hsnjGmsSu(),</span>
+<span class="fc" id="L236">                record.hsnjGasSyry(),</span>
+<span class="fc" id="L237">                record.sjskKbn(),</span>
+<span class="fc" id="L238">                Objects.requireNonNullElse(record.rshhSjsb(), DEFAULT_CONTACT_RESIDENCE_TYPE),</span>
+<span class="fc" id="L239">                Objects.requireNonNullElse(record.hkshHshhShbt(), DEFAULT_OPEN_CLOSE_METHOD_TYPE),</span>
+<span class="fc" id="L240">                Objects.requireNonNullElse(record.hesnSdnShbt(), DEFAULT_CLOSING_MEANS_TYPE),</span>
+<span class="fc" id="L241">                record.utidxNo(),</span>
+<span class="fc" id="L242">                record.ctnmKn1(),</span>
+<span class="fc" id="L243">                record.ctnmKj1(),</span>
+<span class="fc" id="L244">                record.ctnmKjhkFlg(),</span>
+<span class="fc" id="L245">                record.ctnm1HujnShbt(),</span>
+<span class="fc" id="L246">                record.ctnm1HshiShbt(),</span>
+<span class="fc" id="L247">                Objects.requireNonNullElse(record.tsigHesnSgyYmd(), DEFAULT_CORRECTED_CLOSING_WORK_DATE),</span>
+<span class="fc" id="L248">                Objects.requireNonNullElse(record.tsigGmb(), DEFAULT_CORRECTED_GAS_METER_SERIAL_NUMBER),</span>
+<span class="fc" id="L249">                Objects.requireNonNullElse(record.sihKiyNo(), DEFAULT_PAYMENT_CONTRACT_NUMBER),</span>
+<span class="fc" id="L250">                Objects.requireNonNullElse(record.svkyNo(), DEFAULT_SERVICE_CONTRACT_NUMBER),</span>
+<span class="fc" id="L251">                Objects.requireNonNullElse(record.tkjMem(), DEFAULT_SPECIAL_NOTES));</span>
+    }
+
+    @Override
+    public int deleteByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(
+            final Long gasMtstNo,
+            final LocalDate hssgYmd,
+            final LocalDate hesnHukkYmd,
+            final Integer regTsno,
+            final Integer recUpdJnjNo) {
+<span class="fc" id="L261">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L262">        final LocalDate safeHssgYmd = safeYmd(hssgYmd, &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L263">        final LocalDate safeHesnHukkYmd = safeYmd(hesnHukkYmd, &quot;hesnHukkYmd&quot;);</span>
+<span class="fc" id="L264">        final Integer safeRegTsno = safeInt(regTsno, &quot;regTsno&quot;);</span>
+<span class="fc" id="L265">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                this.rows,
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">                row -&gt; Objects.equals(</span>
+<span class="fc" id="L268">                        normalizeRowLong(</span>
+<span class="fc" id="L269">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo)
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L273">                                normalizeRowYmd(</span>
+<span class="fc" id="L274">                                        row.get(HseflColumn.HSSG_YMD),</span>
+                                        &quot;hssgYmd&quot;),
+                                safeHssgYmd)
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L278">                                normalizeRowYmd(</span>
+<span class="fc" id="L279">                                        row.get(HseflColumn.HESN_HUKK_YMD),</span>
+                                        &quot;hesnHukkYmd&quot;),
+                                safeHesnHukkYmd)
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L283">                                normalizeRowInt(</span>
+<span class="fc" id="L284">                                        row.get(HseflColumn.REG_TSNO),</span>
+                                        &quot;regTsno&quot;),
+                                safeRegTsno),
+                HseflColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                D001_IDENTIFIER,
+<span class="nc" id="L290">                () -&gt; new DataInconsistencyException(&quot;HSEFL&quot;, D001_IDENTIFIER, &quot;{}&quot;),</span>
+                safeGasMtstNo,
+                safeHssgYmd,
+                safeHesnHukkYmd,
+                safeRegTsno);
+    }
+
+    @Override
+    public Optional&lt;HseflRecord&gt;
+            findByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsno(
+            final Long gasMtstNo,
+            final LocalDate hssgYmd,
+            final LocalDate hesnHukkYmd,
+            final Integer regTsno) {
+<span class="fc" id="L304">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L305">        final LocalDate safeHssgYmd = safeYmd(hssgYmd, &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L306">        final LocalDate safeHesnHukkYmd = safeYmd(</span>
+                hesnHukkYmd,
+                &quot;hesnHukkYmd&quot;);
+<span class="fc" id="L309">        final Integer safeRegTsno = safeInt(regTsno, &quot;regTsno&quot;);</span>
+<span class="fc" id="L310">        return this.rows.stream()</span>
+<span class="fc" id="L311">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L312">                        normalizeRowLong(</span>
+<span class="fc" id="L313">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo))
+<span class="fc" id="L316">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L317">                        normalizeRowYmd(</span>
+<span class="fc" id="L318">                                row.get(HseflColumn.HSSG_YMD),</span>
+                                &quot;hssgYmd&quot;),
+                        safeHssgYmd))
+<span class="fc" id="L321">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L322">                        normalizeRowYmd(</span>
+<span class="fc" id="L323">                                row.get(HseflColumn.HESN_HUKK_YMD),</span>
+                                &quot;hesnHukkYmd&quot;),
+                        safeHesnHukkYmd))
+<span class="fc" id="L326">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L327">                        normalizeRowInt(</span>
+<span class="fc" id="L328">                                row.get(HseflColumn.REG_TSNO),</span>
+                                &quot;regTsno&quot;),
+                        safeRegTsno))
+<span class="fc" id="L331">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L332">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;HseflRecord&gt; findAllByGasMtstNoAndHssgYmdAndHesnHukkYmd(
+            final Long gasMtstNo,
+            final LocalDate hssgYmd,
+            final LocalDate hesnHukkYmd) {
+<span class="fc" id="L340">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L341">        final LocalDate safeHssgYmd = safeYmd(hssgYmd, &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L342">        final LocalDate safeHesnHukkYmd = safeYmd(</span>
+                hesnHukkYmd,
+                &quot;hesnHukkYmd&quot;);
+<span class="fc" id="L345">        return this.rows.stream()</span>
+<span class="fc" id="L346">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L347">                        normalizeRowLong(</span>
+<span class="fc" id="L348">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo))
+<span class="fc" id="L351">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L352">                        normalizeRowYmd(</span>
+<span class="fc" id="L353">                                row.get(HseflColumn.HSSG_YMD),</span>
+                                &quot;hssgYmd&quot;),
+                        safeHssgYmd))
+<span class="fc" id="L356">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L357">                        normalizeRowYmd(</span>
+<span class="fc" id="L358">                                row.get(HseflColumn.HESN_HUKK_YMD),</span>
+                                &quot;hesnHukkYmd&quot;),
+                        safeHesnHukkYmd))
+<span class="fc" id="L361">                .sorted(Comparator.comparing(</span>
+<span class="fc" id="L362">                        row -&gt; (Integer) row.get(HseflColumn.REG_TSNO),</span>
+<span class="fc" id="L363">                        Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L364">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L365">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;HseflRecord&gt; findAllByGasMtstNoAndFlwStCd(
+            final Long gasMtstNo,
+            final String flwStCd) {
+<span class="fc" id="L372">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L373">        final String safeFlwStCd = WhereParamGuard.fixedLengthNotNull(</span>
+                flwStCd,
+                &quot;flwStCd&quot;,
+                FLW_ST_CD_LENGTH);
+<span class="fc" id="L377">        return this.rows.stream()</span>
+<span class="fc" id="L378">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L379">                        normalizeRowLong(</span>
+<span class="fc" id="L380">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo))
+<span class="fc" id="L383">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L384">                        normalizeRowFixedLength(</span>
+<span class="fc" id="L385">                                (String) row.get(HseflColumn.FLW_ST_CD),</span>
+                                &quot;flwStCd&quot;,
+                                FLW_ST_CD_LENGTH),
+                        safeFlwStCd))
+<span class="fc" id="L389">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L390">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;HseflRecord&gt;
+            findAllByFlttCktkCdAndFlttKtnCdAndFlwStCd(
+                    final String flttCktkCd,
+                    final String flttKtnCd,
+                    final String flwStCd,
+                    final List&lt;String&gt; hesnJysbList) {
+<span class="fc" id="L400">        final String safeFlttCktkCd = WhereParamGuard.fixedLengthNotNull(</span>
+                flttCktkCd,
+                &quot;flttCktkCd&quot;,
+                FLTT_CKTK_CD_LENGTH);
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        final String safeFlttKtnCd = flttKtnCd == null</span>
+<span class="fc" id="L405">                ? null</span>
+<span class="fc" id="L406">                : WhereParamGuard.fixedLengthNotNull(</span>
+                        flttKtnCd,
+                        &quot;flttKtnCd&quot;,
+                        FLTT_KTN_CD_LENGTH);
+<span class="fc" id="L410">        final String safeFlwStCd = WhereParamGuard.fixedLengthNotNull(</span>
+                flwStCd,
+                &quot;flwStCd&quot;,
+                FLW_ST_CD_LENGTH);
+<span class="fc" id="L414">        final String blankFlttKtnCd = WhereParamGuard.fixedLengthNotNull(</span>
+                &quot;&quot;,
+                &quot;flttKtnCd&quot;,
+                FLTT_KTN_CD_LENGTH);
+<span class="fc" id="L418">        final List&lt;String&gt; safeHesnJysbList = safeHesnJysbList(hesnJysbList);</span>
+<span class="fc" id="L419">        return this.rows.stream()</span>
+<span class="fc" id="L420">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L421">                        normalizeRowFixedLength(</span>
+<span class="fc" id="L422">                                (String) row.get(HseflColumn.FLTT_CKTK_CD),</span>
+                                &quot;flttCktkCd&quot;,
+                                FLTT_CKTK_CD_LENGTH),
+                        safeFlttCktkCd))
+<span class="fc" id="L426">                .filter(row -&gt; {</span>
+<span class="fc" id="L427">                    final String normalizedFlttKtnCd = normalizeRowFixedLength(</span>
+<span class="fc" id="L428">                            (String) row.get(HseflColumn.FLTT_KTN_CD),</span>
+                            &quot;flttKtnCd&quot;,
+                            FLTT_KTN_CD_LENGTH);
+<span class="fc bfc" id="L431" title="All 2 branches covered.">                    return safeFlttKtnCd == null</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">                            || Objects.equals(</span>
+                                    normalizedFlttKtnCd,
+                                    safeFlttKtnCd)
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">                            || Objects.equals(</span>
+                                    normalizedFlttKtnCd,
+                                    blankFlttKtnCd);
+                })
+<span class="fc" id="L439">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L440">                        normalizeRowFixedLength(</span>
+<span class="fc" id="L441">                                (String) row.get(HseflColumn.FLW_ST_CD),</span>
+                                &quot;flwStCd&quot;,
+                                FLW_ST_CD_LENGTH),
+                        safeFlwStCd))
+<span class="fc bfc" id="L445" title="All 2 branches covered.">                .filter(row -&gt; safeHesnJysbList.isEmpty()</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">                        || safeHesnJysbList.contains(</span>
+<span class="fc" id="L447">                                normalizeRowFixedLength(</span>
+<span class="fc" id="L448">                                        (String) row.get(HseflColumn.HESN_JYSB),</span>
+                                        &quot;hesnJysb&quot;,
+                                        HESN_JYSB_LENGTH)))
+<span class="fc" id="L451">                .sorted(R004_ORDER)</span>
+<span class="fc" id="L452">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L453">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;HseflRecord&gt; findAllByGasMtstNoAndTsigHesnSgyYmd(
+            final Long gasMtstNo,
+            final LocalDate tsigHesnSgyYmd) {
+<span class="fc" id="L460">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L461">        final LocalDate safeTsigHesnSgyYmd = safeYmd(</span>
+                tsigHesnSgyYmd,
+                &quot;tsigHesnSgyYmd&quot;);
+<span class="fc" id="L464">        return this.rows.stream()</span>
+<span class="fc" id="L465">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L466">                        normalizeRowLong(</span>
+<span class="fc" id="L467">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo))
+<span class="fc" id="L470">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L471">                        normalizeRowYmd(</span>
+<span class="fc" id="L472">                                row.get(HseflColumn.TSIG_HESN_SGY_YMD),</span>
+                                &quot;tsigHesnSgyYmd&quot;),
+                        safeTsigHesnSgyYmd))
+<span class="fc" id="L475">                .sorted(Comparator</span>
+<span class="fc" id="L476">                        .&lt;EnumMap&lt;HseflColumn, Object&gt;, LocalDate&gt;comparing(</span>
+                                row -&gt;
+<span class="fc" id="L478">                                        (LocalDate) row.get(</span>
+                                                HseflColumn.HSSG_YMD),
+<span class="fc" id="L480">                                Comparator.nullsLast(Comparator.reverseOrder()))</span>
+<span class="fc" id="L481">                        .thenComparing(</span>
+                                row -&gt;
+<span class="nc" id="L483">                                        (Integer) row.get(</span>
+                                                HseflColumn.REG_TSNO),
+<span class="fc" id="L485">                                Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L486">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L487">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;HseflRecord&gt; findAllByGasMtstNoAndHssgYmd(
+            final Long gasMtstNo,
+            final LocalDate hssgYmd) {
+<span class="fc" id="L494">        final Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L495">        final LocalDate safeHssgYmd = safeYmd(hssgYmd, &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L496">        return this.rows.stream()</span>
+<span class="fc" id="L497">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L498">                        normalizeRowLong(</span>
+<span class="fc" id="L499">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo))
+<span class="fc" id="L502">                .filter(row -&gt; Objects.equals(</span>
+<span class="fc" id="L503">                        normalizeRowYmd(</span>
+<span class="fc" id="L504">                                row.get(HseflColumn.HSSG_YMD),</span>
+                                &quot;hssgYmd&quot;),
+                        safeHssgYmd))
+<span class="fc" id="L507">                .sorted(Comparator.comparing(</span>
+<span class="fc" id="L508">                        row -&gt; (Integer) row.get(HseflColumn.REG_TSNO),</span>
+<span class="fc" id="L509">                        Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L510">                .map(HseflDataAccessImpl::toReadRecord)</span>
+<span class="fc" id="L511">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;HseflRecord&gt; findByPK(
+            final Long gasMtstNo,
+            final LocalDate hssgYmd,
+            final LocalDate hesnHukkYmd,
+            final Integer regTsno) {
+<span class="fc" id="L520">        return this.findByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsno(</span>
+                gasMtstNo,
+                hssgYmd,
+                hesnHukkYmd,
+                regTsno);
+    }
+
+    private static HseflRecord toReadRecord(
+            final EnumMap&lt;HseflColumn, Object&gt; row) {
+<span class="fc" id="L529">        final HseflRecord actual = ROW_MAPPER.toRecord(row);</span>
+<span class="fc bfc" id="L530" title="All 2 branches covered.">        final LocalDate fltkYmd = COMPLEMENT_YMD.equals(actual.fltkYmd())</span>
+<span class="fc" id="L531">                ? null</span>
+<span class="fc" id="L532">                : actual.fltkYmd();</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        final LocalDate tsigHesnSgyYmd = COMPLEMENT_YMD.equals(actual.tsigHesnSgyYmd())</span>
+<span class="fc" id="L534">                ? null</span>
+<span class="fc" id="L535">                : actual.tsigHesnSgyYmd();</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">        if (Objects.equals(fltkYmd, actual.fltkYmd())</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">                &amp;&amp; Objects.equals(tsigHesnSgyYmd, actual.tsigHesnSgyYmd())) {</span>
+<span class="fc" id="L538">            return actual;</span>
+        }
+<span class="fc" id="L540">        return new HseflRecord(</span>
+<span class="fc" id="L541">                actual.gasMtstNo(),</span>
+<span class="fc" id="L542">                actual.hssgYmd(),</span>
+<span class="fc" id="L543">                actual.hesnHukkYmd(),</span>
+<span class="fc" id="L544">                actual.regTsno(),</span>
+<span class="fc" id="L545">                actual.hukkSysShbt(),</span>
+<span class="fc" id="L546">                actual.sgyAnknNo(),</span>
+<span class="fc" id="L547">                actual.flwStCd(),</span>
+                fltkYmd,
+<span class="fc" id="L549">                actual.syoKyoTrno(),</span>
+<span class="fc" id="L550">                actual.gmb(),</span>
+<span class="fc" id="L551">                actual.hesnJysb(),</span>
+<span class="fc" id="L552">                actual.hesnErryCd(),</span>
+<span class="fc" id="L553">                actual.flttCktkCd(),</span>
+<span class="fc" id="L554">                actual.flttKtnCd(),</span>
+<span class="fc" id="L555">                actual.hssgNwkCd(),</span>
+<span class="fc" id="L556">                actual.sgytSinNo(),</span>
+<span class="fc" id="L557">                actual.sgytSinnKj(),</span>
+<span class="fc" id="L558">                actual.hsnjGmsSu(),</span>
+<span class="fc" id="L559">                actual.hsnjGasSyry(),</span>
+<span class="fc" id="L560">                actual.sjskKbn(),</span>
+<span class="fc" id="L561">                actual.rshhSjsb(),</span>
+<span class="fc" id="L562">                actual.hkshHshhShbt(),</span>
+<span class="fc" id="L563">                actual.hesnSdnShbt(),</span>
+<span class="fc" id="L564">                actual.utidxNo(),</span>
+<span class="fc" id="L565">                actual.ctnmKn1(),</span>
+<span class="fc" id="L566">                actual.ctnmKj1(),</span>
+<span class="fc" id="L567">                actual.ctnmKjhkFlg(),</span>
+<span class="fc" id="L568">                actual.ctnm1HujnShbt(),</span>
+<span class="fc" id="L569">                actual.ctnm1HshiShbt(),</span>
+                tsigHesnSgyYmd,
+<span class="fc" id="L571">                actual.tsigGmb(),</span>
+<span class="fc" id="L572">                actual.sihKiyNo(),</span>
+<span class="fc" id="L573">                actual.svkyNo(),</span>
+<span class="fc" id="L574">                actual.tkjMem(),</span>
+<span class="fc" id="L575">                actual.regTsmp(),</span>
+<span class="fc" id="L576">                actual.regUsrId(),</span>
+<span class="fc" id="L577">                actual.updTsmp(),</span>
+<span class="fc" id="L578">                actual.updUsrId(),</span>
+<span class="fc" id="L579">                actual.updKtnKinoId(),</span>
+<span class="fc" id="L580">                actual.recUpdJnjNo());</span>
+    }
+
+    @Override
+    public int
+            updateByGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(
+            final HseflWriteRecord record,
+            final Set&lt;HseflColumn&gt; targetColumns,
+            final HseflU001UpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L590">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L591">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L592">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L593">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L594">        final Long safeGasMtstNo = safeLong(updateKey.gasMtstNo(), &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L595">        final LocalDate safeHssgYmd = safeYmd(updateKey.hssgYmd(), &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L596">        final LocalDate safeHesnHukkYmd = safeYmd(</span>
+<span class="fc" id="L597">                updateKey.hesnHukkYmd(),</span>
+                &quot;hesnHukkYmd&quot;);
+<span class="fc" id="L599">        final Integer safeRegTsno = safeInt(updateKey.regTsno(), &quot;regTsno&quot;);</span>
+<span class="fc" id="L600">        return InMemoryOptimisticUpdateSupport.update(</span>
+                this.rows,
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">                row -&gt; Objects.equals(</span>
+<span class="fc" id="L603">                        normalizeRowLong(</span>
+<span class="fc" id="L604">                                row.get(HseflColumn.GAS_MTST_NO),</span>
+                                &quot;gasMtstNo&quot;),
+                        safeGasMtstNo)
+<span class="pc bpc" id="L607" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L608">                                normalizeRowYmd(</span>
+<span class="fc" id="L609">                                        row.get(HseflColumn.HSSG_YMD),</span>
+                                        &quot;hssgYmd&quot;),
+                                safeHssgYmd)
+<span class="pc bpc" id="L612" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L613">                                normalizeRowYmd(</span>
+<span class="fc" id="L614">                                        row.get(HseflColumn.HESN_HUKK_YMD),</span>
+                                        &quot;hesnHukkYmd&quot;),
+                                safeHesnHukkYmd)
+<span class="pc bpc" id="L617" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L618">                                normalizeRowInt(</span>
+<span class="fc" id="L619">                                        row.get(HseflColumn.REG_TSNO),</span>
+                                        &quot;regTsno&quot;),
+                                safeRegTsno),
+<span class="fc" id="L622">                row -&gt; this.updateSupport.prepare(</span>
+                        record,
+                        targetColumns,
+<span class="fc" id="L625">                        values -&gt; this.auditColumnAutoSetter.applyForUpdate(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                        HseflColumn.class,
+                                        values),
+                                context,
+                                this.clock,
+<span class="fc bfc" id="L631" title="All 2 branches covered.">                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L632">                                        ? (Integer) row.get(</span>
+                                                HseflColumn.REC_UPD_JNJ_NO)
+<span class="fc" id="L634">                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L635">                this.updateSupport::apply,</span>
+                HseflColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L637">                updateKey.recUpdJnjNo(),</span>
+                U001_IDENTIFIER,
+<span class="fc" id="L639">                updateKey.gasMtstNo(),</span>
+<span class="fc" id="L640">                updateKey.hssgYmd(),</span>
+<span class="fc" id="L641">                updateKey.hesnHukkYmd(),</span>
+<span class="fc" id="L642">                updateKey.regTsno());</span>
+    }
+
+    @Override
+    public int
+            updateByFlttCktkCdAndGasMtstNoAndHssgYmdAndHesnHukkYmdAndRegTsnoAndRecUpdJnjNo(
+                    final HseflWriteRecord record,
+                    final Set&lt;HseflColumn&gt; targetColumns,
+                    final HseflU002UpdateKey updateKey,
+                    final AuditContext context) {
+<span class="fc" id="L652">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L653">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L654">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L655">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L656">        final String safeFlttCktkCd = WhereParamGuard.fixedLengthNotNull(</span>
+<span class="fc" id="L657">                updateKey.flttCktkCd(),</span>
+                &quot;flttCktkCd&quot;,
+                FLTT_CKTK_CD_LENGTH);
+<span class="fc" id="L660">        final Long safeGasMtstNo = safeLong(updateKey.gasMtstNo(), &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L661">        final LocalDate safeHssgYmd = safeYmd(updateKey.hssgYmd(), &quot;hssgYmd&quot;);</span>
+<span class="fc" id="L662">        final LocalDate safeHesnHukkYmd = safeYmd(</span>
+<span class="fc" id="L663">                updateKey.hesnHukkYmd(),</span>
+                &quot;hesnHukkYmd&quot;);
+<span class="fc" id="L665">        final Integer safeRegTsno = safeInt(updateKey.regTsno(), &quot;regTsno&quot;);</span>
+<span class="fc" id="L666">        return InMemoryOptimisticUpdateSupport.update(</span>
+                this.rows,
+<span class="pc bpc" id="L668" title="1 of 2 branches missed.">                row -&gt; Objects.equals(</span>
+<span class="fc" id="L669">                        normalizeRowFixedLength(</span>
+<span class="fc" id="L670">                                (String) row.get(HseflColumn.FLTT_CKTK_CD),</span>
+                                &quot;flttCktkCd&quot;,
+                                FLTT_CKTK_CD_LENGTH),
+                        safeFlttCktkCd)
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L675">                                normalizeRowLong(</span>
+<span class="fc" id="L676">                                        row.get(HseflColumn.GAS_MTST_NO),</span>
+                                        &quot;gasMtstNo&quot;),
+                                safeGasMtstNo)
+<span class="pc bpc" id="L679" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L680">                                normalizeRowYmd(</span>
+<span class="fc" id="L681">                                        row.get(HseflColumn.HSSG_YMD),</span>
+                                        &quot;hssgYmd&quot;),
+                                safeHssgYmd)
+<span class="pc bpc" id="L684" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L685">                                normalizeRowYmd(</span>
+<span class="fc" id="L686">                                        row.get(HseflColumn.HESN_HUKK_YMD),</span>
+                                        &quot;hesnHukkYmd&quot;),
+                                safeHesnHukkYmd)
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L690">                                normalizeRowInt(</span>
+<span class="fc" id="L691">                                        row.get(HseflColumn.REG_TSNO),</span>
+                                        &quot;regTsno&quot;),
+                                safeRegTsno),
+<span class="fc" id="L694">                row -&gt; this.updateSupport.prepare(</span>
+                        record,
+                        targetColumns,
+<span class="fc" id="L697">                        values -&gt; this.auditColumnAutoSetter.applyForUpdate(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                        HseflColumn.class,
+                                        values),
+                                context,
+                                this.clock,
+<span class="fc bfc" id="L703" title="All 2 branches covered.">                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L704">                                        ? (Integer) row.get(</span>
+                                                HseflColumn.REC_UPD_JNJ_NO)
+<span class="fc" id="L706">                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L707">                this.updateSupport::apply,</span>
+                HseflColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L709">                updateKey.recUpdJnjNo(),</span>
+                U002_IDENTIFIER,
+<span class="fc" id="L711">                updateKey.flttCktkCd(),</span>
+<span class="fc" id="L712">                updateKey.gasMtstNo(),</span>
+<span class="fc" id="L713">                updateKey.hssgYmd(),</span>
+<span class="fc" id="L714">                updateKey.hesnHukkYmd(),</span>
+<span class="fc" id="L715">                updateKey.regTsno());</span>
+    }
+
+    /**
+     * 固定長文字列を正規化する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @param length 固定長
+     * @return 正規化値
+     */
+    private static String normalizeRowFixedLength(
+            final String value,
+            final String paramName,
+            final int length) {
+<span class="fc" id="L730">        return WhereParamGuard.fixedLengthNotNull(value, paramName, length);</span>
+    }
+
+    /**
+     * Long 値を正規化する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 正規化値
+     */
+    private static Long normalizeRowLong(
+            final Object value,
+            final String paramName) {
+<span class="fc" id="L743">        return WhereParamGuard.complement((Long) value, paramName, 0L);</span>
+    }
+
+    /**
+     * Integer 値を正規化する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 正規化値
+     */
+    private static Integer normalizeRowInt(
+            final Object value,
+            final String paramName) {
+<span class="fc" id="L756">        return WhereParamGuard.complement((Integer) value, paramName, 0);</span>
+    }
+
+    /**
+     * 日付値を正規化する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 正規化値
+     */
+    private static LocalDate normalizeRowYmd(
+            final Object value,
+            final String paramName) {
+<span class="fc" id="L769">        return WhereParamGuard.complement(</span>
+                (LocalDate) value,
+                paramName,
+                COMPLEMENT_YMD);
+    }
+
+    /**
+     * Long 引数を安全補完する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 補完値
+     */
+    private static Long safeLong(
+            final Long value,
+            final String paramName) {
+<span class="fc" id="L785">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    /**
+     * Integer 引数を安全補完する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 補完値
+     */
+    private static Integer safeInt(
+            final Integer value,
+            final String paramName) {
+<span class="fc" id="L798">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+
+    /**
+     * 日付引数を安全補完する.
+     *
+     * @param value 値
+     * @param paramName パラメータ名
+     * @return 補完値
+     */
+    private static LocalDate safeYmd(
+            final LocalDate value,
+            final String paramName) {
+<span class="fc" id="L811">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    /**
+     * 閉栓住種別一覧を安全補完する.
+     *
+     * @param hesnJysbList 閉栓住種別一覧
+     * @return 補完後一覧
+     */
+    private static List&lt;String&gt; safeHesnJysbList(
+            final List&lt;String&gt; hesnJysbList) {
+<span class="fc bfc" id="L822" title="All 4 branches covered.">        if (hesnJysbList == null || hesnJysbList.isEmpty()) {</span>
+<span class="fc" id="L823">            return List.of();</span>
+        }
+<span class="fc" id="L825">        return hesnJysbList.stream()</span>
+<span class="fc" id="L826">                .filter(Objects::nonNull)</span>
+<span class="fc bfc" id="L827" title="All 2 branches covered.">                .filter(value -&gt; !value.isBlank())</span>
+<span class="fc" id="L828">                .map(HseflDataAccessImpl::validateAndFormatHesnJysb)</span>
+<span class="fc" id="L829">                .toList();</span>
+    }
+
+    /**
+     * 閉栓住種別の入力値を検証し固定長整形する.
+     *
+     * @param value 閉栓住種別
+     * @return 固定長整形後の値
+     */
+    private static String validateAndFormatHesnJysb(
+            final String value) {
+<span class="fc" id="L840">        return WhereParamGuard.fixedLengthNotNull(</span>
+                value,
+                &quot;hesnJysbList&quot;,
+                HESN_JYSB_LENGTH);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

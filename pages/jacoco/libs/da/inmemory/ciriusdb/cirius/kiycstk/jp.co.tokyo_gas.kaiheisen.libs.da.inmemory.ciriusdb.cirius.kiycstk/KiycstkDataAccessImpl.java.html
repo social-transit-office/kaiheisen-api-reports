@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KiycstkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-kiycstk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kiycstk</a> &gt; <span class="el_source">KiycstkDataAccessImpl.java</span></div><h1>KiycstkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kiycstk;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.write.KiycstkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.write.KiycstkUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.write.KiycstkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.write.KiycstkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-060（C001/R001/U001）の SQL 振る舞いを模した KIYCSTK インメモリ実装。 */
+public class KiycstkDataAccessImpl extends DataAccessBase implements KiycstkDataAccess {
+
+<span class="fc" id="L31">    private static final ReflectiveInMemoryRowMapper&lt;KiycstkColumn, KiycstkRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L32">            ReflectiveInMemoryRowMapper.create(KiycstkColumn.class, KiycstkRecord.class);</span>
+
+<span class="fc" id="L34">    private static final AutoNeutralValueResolver&lt;KiycstkColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L35">            AutoNeutralValueResolver.create(KiycstkColumn.class, KiycstkRecord.class);</span>
+
+<span class="fc" id="L37">    private final List&lt;EnumMap&lt;KiycstkColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;KiycstkWriteRecord, KiycstkColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KiycstkWriteRecord, KiycstkColumn&gt;
+            updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public KiycstkDataAccessImpl() {
+<span class="fc" id="L50">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L51">    }</span>
+
+    KiycstkDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L54">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L55">    }</span>
+
+    KiycstkDataAccessImpl(
+<span class="fc" id="L58">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L59">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L60">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L61">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L62">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(
+                        KiycstkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L65">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KiycstkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L68">    }</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param record 追加する行
+     * @return このインスタンス
+     */
+    public KiycstkDataAccessImpl addRow(KiycstkRecord record) {
+<span class="fc" id="L77">        EnumMap&lt;KiycstkColumn, Object&gt; values =</span>
+<span class="fc" id="L78">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L79">        NEUTRAL_VALUE_RESOLVER.complement(values, KiycstkWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L80">        rows.add(values);</span>
+<span class="fc" id="L81">        return this;</span>
+    }
+
+    @Override
+    public int insert(KiycstkWriteRecord record, AuditContext context) {
+<span class="nc" id="L86">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L87">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="nc" id="L89">        rows.add(</span>
+<span class="nc" id="L90">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="nc" id="L93">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                KiycstkColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="nc" id="L98">        return 1;</span>
+    }
+
+    @Override
+    public Optional&lt;KiycstkRecord&gt; findByKyoTrkNo(Long kyoTrkNo) {
+<span class="fc" id="L103">        return rows.stream()</span>
+<span class="fc" id="L104">                .filter(r -&gt; Objects.equals(r.get(KiycstkColumn.KYO_TRK_NO), kyoTrkNo))</span>
+<span class="fc" id="L105">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L106">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByKyoTrkNo(
+            KiycstkWriteRecord record,
+            Set&lt;KiycstkColumn&gt; targetColumns,
+            KiycstkUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L115">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L116">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L117">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L119">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L121">                row -&gt; Objects.equals(row.get(KiycstkColumn.KYO_TRK_NO), updateKey.kyoTrkNo()),</span>
+                row -&gt;
+<span class="nc" id="L123">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="nc" id="L127">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        KiycstkColumn.class, values),
+                                                context,
+                                                clock,
+<span class="nc" id="L132">                                                (Integer) row.get(KiycstkColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L133">                updateSupport::apply,</span>
+                KiycstkColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L135">                updateKey.recUpdJnjNo(),</span>
+                KiycstkDataAccess.Identifiers.UPDATE_BY_KYO_TRK_NO,
+<span class="fc" id="L137">                updateKey.kyoTrkNo());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
