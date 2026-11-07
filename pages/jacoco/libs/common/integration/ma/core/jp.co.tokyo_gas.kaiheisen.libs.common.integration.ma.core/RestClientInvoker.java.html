@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RestClientInvoker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-integration-ma-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.core</a> &gt; <span class="el_source">RestClientInvoker.java</span></div><h1>RestClientInvoker.java</h1><pre class="source lang-java linenums">/**
+ * @file RestClientInvoker.java
+ * 概要: RestClient interface のメソッドと Request record を自動マッピングするユーティリティ。
+ * 主な仕様:
+ * - コンストラクタ時に RestClient interface の非 default 単一メソッドを特定し、マッピングを構築する。
+ * - @BeanParam 1引数パターン: Request record をそのまま渡す（推奨）。
+ * - @QueryParam 複数引数パターン: Request record の @QueryParam コンポーネントを各引数へ自動マッピングする（レガシー互換）。
+ * - invoke 時にキャッシュ済みマッピングで Request record → RestClient メソッド引数を自動変換する。
+ * - findRestClientInterface で CDI proxy / テストスタブから @RegisterRestClient 付き interface を探索する。
+ * 既知の制限事項:
+ * - RestClient interface に非 default メソッドが複数ある場合は IllegalStateException をスローする。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.core;
+
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.QueryParam;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+/**
+ * RestClient interface のメソッドと Request record を自動マッピングするユーティリティ。
+ *
+ * &lt;p&gt;2つのパターンをサポートする:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code @BeanParam} 1引数パターン（推奨）: Request record をそのまま渡す&lt;/li&gt;
+ *   &lt;li&gt;{@code @QueryParam} 複数引数パターン（レガシー互換）: Request record の
+ *       {@code @QueryParam} コンポーネントを各引数へ名前マッチで自動マッピングする&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;コンストラクタ時にマッピングを解決し、{@link #invoke} 時に
+ * キャッシュ済みマッピングで Request record から RestClient メソッド引数を自動構築する。&lt;/p&gt;
+ *
+ * &lt;p&gt;package-private: {@link AbstractMaAdapter} 内部でのみ使用する。&lt;/p&gt;
+ */
+final class RestClientInvoker {
+
+    /**
+     * 解決済みマッピング。
+     *
+ * &lt;p&gt;{@code accessors} が {@code null} の場合は {@code @BeanParam} 1引数パターンを示し、
+     * request をそのまま渡す。{@code null} でない場合は {@code @QueryParam} 複数引数パターンを示し、
+     * method のパラメータ順に並んだアクセサで引数を構築する。&lt;/p&gt;
+     *
+     * @param method RestClient interface のメソッド
+     * @param accessors Request record のアクセサメソッド（@BeanParam パターンでは null）
+     */
+<span class="fc" id="L54">    private record Mapping(Method method, Method[] accessors) {</span>
+    }
+
+    /**
+     * キャッシュ済みマッピング。
+     */
+    private final Mapping mapping;
+
+    /**
+     * コンストラクタ。
+     *
+     * &lt;p&gt;RestClient interface から非 default 単一メソッドを特定し、
+     * パラメータが単一 {@link BeanParam} の場合は request をそのまま渡すマッピングを、
+     * それ以外の場合は Request record の {@link QueryParam} コンポーネントとパラメータ名で
+     * マッピングを構築する。
+     * 不一致がある場合は {@link IllegalStateException} をスローする（フェイルファスト）。&lt;/p&gt;
+     *
+     * @param restClientInterface RestClient interface の {@link Class}。型: Class
+     * @param requestType Request record の {@link Class}。型: Class
+     */
+<span class="fc" id="L74">    RestClientInvoker(Class&lt;?&gt; restClientInterface, Class&lt;? extends Record&gt; requestType) {</span>
+<span class="fc" id="L75">        this.mapping = resolve(restClientInterface, requestType);</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * キャッシュ済みマッピングで RestClient メソッドを呼び出す。
+     *
+     * @param &lt;RES&gt; レスポンス型
+     * @param restClient RestClient インスタンス。型: Object
+     * @param request Request record インスタンス。型: Record
+     * @return RestClient メソッドの戻り値。型: RES
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    &lt;RES&gt; RES invoke(Object restClient, Record request) {
+        // @BeanParam 1引数パターン: request をそのまま渡す
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (mapping.accessors == null) {</span>
+            try {
+<span class="fc" id="L91">                return (RES) mapping.method.invoke(restClient, request);</span>
+<span class="fc" id="L92">            } catch (ReflectiveOperationException e) {</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                Throwable cause = e.getCause() != null ? e.getCause() : e;</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                if (cause instanceof RuntimeException re) {</span>
+<span class="fc" id="L95">                    throw re;</span>
+                }
+<span class="nc" id="L97">                throw new IllegalStateException(&quot;RestClient メソッド呼び出しに失敗&quot;, cause);</span>
+            }
+        }
+        // @QueryParam 複数引数パターン: accessor で引数を構築
+<span class="fc" id="L101">        Object[] args = new Object[mapping.accessors.length];</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (int i = 0; i &lt; args.length; i++) {</span>
+            try {
+<span class="fc" id="L104">                args[i] = mapping.accessors[i].invoke(request);</span>
+<span class="nc" id="L105">            } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L106">                throw new IllegalStateException(</span>
+<span class="nc" id="L107">                        &quot;Request record コンポーネントのアクセスに失敗: &quot; + mapping.accessors[i].getName(), e);</span>
+<span class="fc" id="L108">            }</span>
+        }
+        try {
+<span class="fc" id="L111">            return (RES) mapping.method.invoke(restClient, args);</span>
+<span class="fc" id="L112">        } catch (ReflectiveOperationException e) {</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            Throwable cause = e.getCause() != null ? e.getCause() : e;</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (cause instanceof RuntimeException re) {</span>
+<span class="fc" id="L115">                throw re;</span>
+            }
+<span class="nc" id="L117">            throw new IllegalStateException(&quot;RestClient メソッド呼び出しに失敗&quot;, cause);</span>
+        }
+    }
+
+    /**
+     * RestClient proxy / テストスタブから {@link RegisterRestClient} 付き interface を探索する。
+     *
+     * &lt;p&gt;CDI proxy / MicroProfile REST Client proxy の場合は {@code getInterfaces()} に
+     * {@link RegisterRestClient} 付き interface が含まれる。
+     * テスト時の直接実装の場合も同様に探索する。&lt;/p&gt;
+     *
+     * @param restClient RestClient インスタンス。型: Object
+     * @return {@link RegisterRestClient} 付き interface の {@link Class}。型: Class
+     */
+    static Class&lt;?&gt; findRestClientInterface(Object restClient) {
+<span class="fc" id="L132">        Class&lt;?&gt; clazz = restClient.getClass();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        while (clazz != null) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            for (Class&lt;?&gt; iface : clazz.getInterfaces()) {</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (iface.isAnnotationPresent(RegisterRestClient.class)) {</span>
+<span class="fc" id="L136">                    return iface;</span>
+                }
+            }
+<span class="fc" id="L139">            clazz = clazz.getSuperclass();</span>
+        }
+<span class="fc" id="L141">        throw new IllegalStateException(</span>
+<span class="fc" id="L142">                &quot;@RegisterRestClient 付き interface が見つかりません: &quot; + restClient.getClass().getName());</span>
+    }
+
+    /**
+     * RestClient interface のメソッドと Request record のマッピングを解決する。
+     *
+     * @param restClientInterface RestClient interface の {@link Class}。型: Class
+     * @param requestType Request record の {@link Class}。型: Class
+     * @return 解決済みマッピング。型: Mapping
+     */
+    private static Mapping resolve(Class&lt;?&gt; restClientInterface, Class&lt;? extends Record&gt; requestType) {
+<span class="fc" id="L153">        Method targetMethod = findSingleEndpointMethod(restClientInterface);</span>
+
+        // 単一引数パターン: JSON body / @BeanParam ともに request をそのまま渡す
+<span class="fc" id="L156">        Parameter[] params = targetMethod.getParameters();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (params.length == 1) {</span>
+<span class="fc" id="L158">            return new Mapping(targetMethod, null);</span>
+        }
+
+        // @QueryParam 複数引数パターン: Request record の RecordComponent から @QueryParam の value → accessor の Map を構築
+<span class="fc" id="L162">        Map&lt;String, Method&gt; queryParamAccessors = buildQueryParamAccessorMap(requestType);</span>
+
+        // RestClient メソッドのパラメータ順に accessor を並べる
+<span class="fc" id="L165">        Method[] accessors = new Method[params.length];</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (int i = 0; i &lt; params.length; i++) {</span>
+<span class="fc" id="L167">            QueryParam qp = params[i].getAnnotation(QueryParam.class);</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">            if (qp == null) {</span>
+<span class="nc" id="L169">                throw new IllegalStateException(</span>
+                        &quot;RestClient メソッドのパラメータに @QueryParam がありません: &quot;
+<span class="nc" id="L171">                                + restClientInterface.getSimpleName() + &quot;#&quot;</span>
+<span class="nc" id="L172">                                + targetMethod.getName() + &quot; パラメータ[&quot; + i + &quot;]&quot;);</span>
+            }
+<span class="fc" id="L174">            String queryParamName = qp.value();</span>
+<span class="fc" id="L175">            Method accessor = queryParamAccessors.get(queryParamName);</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (accessor == null) {</span>
+<span class="fc" id="L177">                throw new IllegalStateException(</span>
+                        &quot;Request record に @QueryParam(\&quot;&quot; + queryParamName + &quot;\&quot;) が見つかりません: &quot;
+<span class="fc" id="L179">                                + requestType.getSimpleName()</span>
+<span class="fc" id="L180">                                + &quot; (RestClient: &quot; + restClientInterface.getSimpleName() + &quot;#&quot;</span>
+<span class="fc" id="L181">                                + targetMethod.getName() + &quot;)&quot;);</span>
+            }
+<span class="fc" id="L183">            accessors[i] = accessor;</span>
+        }
+
+<span class="fc" id="L186">        return new Mapping(targetMethod, accessors);</span>
+    }
+
+    /**
+     * RestClient interface から非 default・非 static な単一メソッドを特定する。
+     *
+     * @param restClientInterface RestClient interface の {@link Class}。型: Class
+     * @return 対象メソッド。型: Method
+     */
+    private static Method findSingleEndpointMethod(Class&lt;?&gt; restClientInterface) {
+<span class="fc" id="L196">        Method[] candidates = Arrays.stream(restClientInterface.getMethods())</span>
+<span class="pc bpc" id="L197" title="2 of 4 branches missed.">                .filter(m -&gt; !m.isDefault() &amp;&amp; !java.lang.reflect.Modifier.isStatic(m.getModifiers()))</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                .filter(m -&gt; m.getDeclaringClass() == restClientInterface)</span>
+<span class="fc" id="L199">                .toArray(Method[]::new);</span>
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (candidates.length == 0) {</span>
+<span class="fc" id="L202">            throw new IllegalStateException(</span>
+                    &quot;RestClient interface にエンドポイントメソッドがありません: &quot;
+<span class="fc" id="L204">                            + restClientInterface.getSimpleName());</span>
+        }
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (candidates.length &gt; 1) {</span>
+<span class="fc" id="L207">            throw new IllegalStateException(</span>
+                    &quot;RestClient interface に複数のエンドポイントメソッドがあります（自動マッピングは単一メソッドのみ対応）: &quot;
+<span class="fc" id="L209">                            + restClientInterface.getSimpleName());</span>
+        }
+<span class="fc" id="L211">        return candidates[0];</span>
+    }
+
+    /**
+     * Request record の {@link RecordComponent} から {@link QueryParam} の value → accessor メソッド の Map を構築する。
+     *
+     * @param requestType Request record の {@link Class}。型: Class
+     * @return {@link QueryParam} value → accessor の Map。型: Map
+     */
+    private static Map&lt;String, Method&gt; buildQueryParamAccessorMap(Class&lt;? extends Record&gt; requestType) {
+<span class="fc" id="L221">        return Arrays.stream(requestType.getRecordComponents())</span>
+<span class="fc" id="L222">                .filter(rc -&gt; rc.getAccessor().isAnnotationPresent(QueryParam.class))</span>
+<span class="fc" id="L223">                .collect(Collectors.toMap(</span>
+<span class="fc" id="L224">                        rc -&gt; rc.getAccessor().getAnnotation(QueryParam.class).value(),</span>
+                        RecordComponent::getAccessor));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

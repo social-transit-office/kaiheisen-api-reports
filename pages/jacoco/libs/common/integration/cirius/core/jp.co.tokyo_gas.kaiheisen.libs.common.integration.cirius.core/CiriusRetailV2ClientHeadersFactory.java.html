@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CiriusRetailV2ClientHeadersFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-integration-cirius-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.core</a> &gt; <span class="el_source">CiriusRetailV2ClientHeadersFactory.java</span></div><h1>CiriusRetailV2ClientHeadersFactory.java</h1><pre class="source lang-java linenums">/**
+ * @file CiriusRetailV2ClientHeadersFactory.java
+ * 概要: CIRIUS 小売 API v2 呼び出しに必要な共通ヘッダを付与する。
+ * 主な仕様:
+ * - RequestContext から correlationId を取得し X-Correlation-Id ヘッダへ設定する。
+ * - 設定値から Version と Ocp-Apim-Subscription-Key ヘッダを設定する。
+ * 既知の制限事項:
+ * - 必須設定が未設定の場合は呼び出し時に例外を送出する。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.core;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.rest.client.ext.ClientHeadersFactory;
+
+/**
+ * CIRIUS 小売 API v2 呼び出しに必要な共通ヘッダを付与するファクトリ。
+ *
+ * &lt;p&gt;相関IDに加えて、CIRIUS/APIM で必須となる {@code Version} と
+ * {@code Ocp-Apim-Subscription-Key} を送信ヘッダへ設定する。&lt;/p&gt;
+ */
+@ApplicationScoped
+public class CiriusRetailV2ClientHeadersFactory implements ClientHeadersFactory {
+
+    static final String CORRELATION_ID_HEADER_NAME = &quot;X-Correlation-Id&quot;;
+
+    static final String VERSION_HEADER_NAME = &quot;Version&quot;;
+
+    static final String SUBSCRIPTION_KEY_HEADER_NAME = &quot;Ocp-Apim-Subscription-Key&quot;;
+
+    static final String VERSION_PROPERTY_NAME = &quot;kaiheisen.cirius.retail-v2.version&quot;;
+
+    static final String SUBSCRIPTION_KEY_PROPERTY_NAME = &quot;kaiheisen.cirius.retail-v2.subscription-key&quot;;
+
+    private final RequestContext requestContext;
+
+    private final String version;
+
+    private final String subscriptionKey;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト。型: RequestContext
+     * @param version CIRIUS 小売 API v2 の Version ヘッダ値。型: String
+     * @param subscriptionKey CIRIUS 小売 API v2 のサブスクリプションキー。型: String
+     */
+    @Inject
+    public CiriusRetailV2ClientHeadersFactory(
+            RequestContext requestContext,
+            @ConfigProperty(name = VERSION_PROPERTY_NAME, defaultValue = &quot;&quot;) String version,
+<span class="fc" id="L57">            @ConfigProperty(name = SUBSCRIPTION_KEY_PROPERTY_NAME, defaultValue = &quot;&quot;) String subscriptionKey) {</span>
+<span class="fc" id="L58">        this.requestContext = requestContext;</span>
+<span class="fc" id="L59">        this.version = version;</span>
+<span class="fc" id="L60">        this.subscriptionKey = subscriptionKey;</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * 送信ヘッダを更新し、CIRIUS 小売 API v2 に必要なヘッダを付与する。
+     *
+     * @param incomingHeaders 受信ヘッダ。型: MultivaluedMap
+     * @param clientOutgoingHeaders 送信ヘッダ。型: MultivaluedMap
+     * @return 更新後の送信ヘッダ。型: MultivaluedMap
+     */
+    @Override
+    public MultivaluedMap&lt;String, String&gt; update(
+            MultivaluedMap&lt;String, String&gt; incomingHeaders,
+            MultivaluedMap&lt;String, String&gt; clientOutgoingHeaders) {
+<span class="fc" id="L74">        requestContext.getCorrelationId().ifPresent(correlationId -&gt;</span>
+<span class="fc" id="L75">                clientOutgoingHeaders.putSingle(CORRELATION_ID_HEADER_NAME, correlationId));</span>
+<span class="fc" id="L76">        clientOutgoingHeaders.putSingle(</span>
+<span class="fc" id="L77">                VERSION_HEADER_NAME, requireConfigured(VERSION_PROPERTY_NAME, version));</span>
+<span class="fc" id="L78">        clientOutgoingHeaders.putSingle(</span>
+                SUBSCRIPTION_KEY_HEADER_NAME,
+<span class="fc" id="L80">                requireConfigured(SUBSCRIPTION_KEY_PROPERTY_NAME, subscriptionKey));</span>
+<span class="fc" id="L81">        return clientOutgoingHeaders;</span>
+    }
+
+    private static String requireConfigured(String propertyName, String value) {
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L86">            throw new IllegalStateException(</span>
+                    &quot;Required CIRIUS retail v2 header property is not configured: &quot; + propertyName);
+        }
+<span class="fc" id="L89">        return value.trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

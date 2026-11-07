@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OneYearAgoMeterReadingResultAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-oneyearagometerreadingresultacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">OneYearAgoMeterReadingResultAcquisitionImpl.java</span></div><h1>OneYearAgoMeterReadingResultAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrk.GasmtrkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.OneYearAgoMeterReadingResultAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.OneYearAgoMeterReadingResultAcquisitionOutput;
+
+/** 検針結果情報取得（１年前）サービス実装。 */
+public class OneYearAgoMeterReadingResultAcquisitionImpl
+        implements OneYearAgoMeterReadingResultAcquisition {
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final GasmtrkDataAccess gasmtrkDataAccess;
+
+    private final GasUsageForBillingDerivation gasUsageForBillingDerivation;
+
+    private final RequestContext requestContext;
+
+    private final String regularReasonType;
+
+    private final String temporaryReasonType;
+
+    private final String closedStatusCode;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param gmkskkdDataAccess ガスメーター検針結果データアクセス
+     * @param gasmtrkDataAccess ガスメーター小売データアクセス
+     * @param gasUsageForBillingDerivation TG導管ガス使用量（料金計算用）取得サービス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public OneYearAgoMeterReadingResultAcquisitionImpl(
+            GmkskkdDataAccess gmkskkdDataAccess,
+            GasmtrkDataAccess gasmtrkDataAccess,
+            GasUsageForBillingDerivation gasUsageForBillingDerivation,
+            RequestContext requestContext,
+<span class="fc" id="L61">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.gasmtrkDataAccess = Objects.requireNonNull(gasmtrkDataAccess, &quot;gasmtrkDataAccess&quot;);</span>
+<span class="fc" id="L64">        this.gasUsageForBillingDerivation =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(gasUsageForBillingDerivation, &quot;gasUsageForBillingDerivation&quot;);</span>
+<span class="fc" id="L66">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L67">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L68">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L69">        this.regularReasonType =</span>
+<span class="fc" id="L70">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR);
+<span class="fc" id="L74">        this.temporaryReasonType =</span>
+<span class="fc" id="L75">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY);
+<span class="fc" id="L79">        this.closedStatusCode =</span>
+<span class="fc" id="L80">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * 概要: 指定された条件で1年前同回の検針結果情報を取得する。
+     * 主な仕様:
+     * - 検針年月日が未指定の場合は RequestContext のシステム日時を基準日に使用する。
+     * - 基準日の前年同月の月初と月末を算出し、GMKSKKD を期間検索する。
+     * - 対象レコードのうち、託送サービス契約番号一致かつ対象事由種別のものだけを処理し、
+     *   GASMTRK 存在確認後に SV-312 を呼び出す。
+     * - 条件に合致しない場合は初期値を返却する。
+     * 既知の制約:
+     * - GMKSKKD の走査は取得順に依存し、先頭レコードの託送サービス契約番号が不一致なら
+     *   即座に初期値を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @return 1年前同回の検針結果情報
+     */
+    @Override
+    public OneYearAgoMeterReadingResultAcquisitionOutput execute(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long tksuSvkyNo) {
+<span class="fc" id="L108">        LocalDate baseDate = resolveBaseDate(knsYmd);</span>
+<span class="fc" id="L109">        LocalDate previousYearDate = baseDate.minusYears(1);</span>
+<span class="fc" id="L110">        LocalDate knsYmdFrom = previousYearDate.withDayOfMonth(1);</span>
+<span class="fc" id="L111">        LocalDate knsYmdTo = previousYearDate.withDayOfMonth(previousYearDate.lengthOfMonth());</span>
+
+<span class="fc" id="L113">        List&lt;GmkskkdRecord&gt; records =</span>
+<span class="fc" id="L114">                gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmd(gasMtstNo, knsYmdFrom, knsYmdTo);</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        for (GmkskkdRecord record : records) {</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">            if (!Objects.equals(record.tksuSvkyNo(), tksuSvkyNo)) {</span>
+<span class="fc" id="L118">                return defaultOutput();</span>
+            }
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            if (!isTargetReasonType(record.knkkSksiJysb())) {</span>
+<span class="fc" id="L121">                continue;</span>
+            }
+
+<span class="fc" id="L124">            requireGasmtrk(record, gasMtstNo);</span>
+
+<span class="fc" id="L126">            GasUsageForBillingDerivationOutput sv312Output =</span>
+<span class="fc" id="L127">                    gasUsageForBillingDerivation.execute(</span>
+                            gasMtstNo,
+<span class="fc" id="L129">                            record.knsYmd(),</span>
+<span class="fc" id="L130">                            record.gmtShjSu(),</span>
+<span class="fc" id="L131">                            record.knkkSksiJysb(),</span>
+<span class="fc" id="L132">                            record.sjskKbn(),</span>
+                            closedStatusCode,
+                            BigDecimal.ZERO,
+                            new KnsKkaTseiMaeJh(
+<span class="fc" id="L136">                                    record.knsYmd(),</span>
+<span class="fc" id="L137">                                    record.knsKkaTsno(),</span>
+                                    Boolean.FALSE));
+<span class="fc" id="L139">            return toOutput(sv312Output, record);</span>
+        }
+
+<span class="fc" id="L142">        return defaultOutput();</span>
+    }
+
+    /**
+     * 概要: 基準日を解決する。
+        * 主な仕様: - 引数の検針年月日が指定されていればその値を返却する。 - 未指定時は RequestContext の systemDatetime を参照し、日付部分を返却する。
+        * 既知の制約: - RequestContext に systemDatetime がない場合は IllegalStateException を送出する。
+     *
+     * @param knsYmd 検針年月日
+     * @return 基準日
+     */
+    private LocalDate resolveBaseDate(LocalDate knsYmd) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (knsYmd != null) {</span>
+<span class="fc" id="L155">            return knsYmd;</span>
+        }
+<span class="fc" id="L157">        LocalDateTime systemDatetime =</span>
+                requestContext
+<span class="fc" id="L159">                        .getSystemDatetime()</span>
+<span class="fc" id="L160">                        .orElseThrow(</span>
+                                () -&gt;
+<span class="fc" id="L162">                                        new IllegalStateException(</span>
+                                                &quot;RequestContext.systemDatetime is required&quot;));
+<span class="fc" id="L164">        return systemDatetime.toLocalDate();</span>
+    }
+
+    /**
+     * 概要: 検針結果作成事由種別が SV-006 の対象か判定する。
+     * 主な仕様: - 定例または臨時の事由種別コードのみを true とする。 - 対象外コードは false とする。
+     * 既知の制約: - 判定に使う事由種別コードはコンストラクタで解決した定数値に依存する。
+     *
+     * @param reasonType 検針結果作成事由種別
+     * @return 対象の場合 true
+     */
+    private boolean isTargetReasonType(String reasonType) {
+<span class="fc bfc" id="L176" title="All 4 branches covered.">        return regularReasonType.equals(reasonType) || temporaryReasonType.equals(reasonType);</span>
+    }
+
+    /**
+     * 概要: SV-312 呼出し前に GASMTRK の存在を確認する。
+     * 主な仕様: - 指定した設置場所番号と検針年月日を基準に DA-026-R002 を検索する。 - 取得結果が1件以上なら何もせず処理を継続する。
+     * - 0件の場合は DataInconsistencyException を送出する。
+     * 既知の制約: - 返却件数の妥当性は1件以上かどうかだけを確認し、複数件時の内容精査は行わない。
+     *
+     * @param record GMKSKKD の取得結果
+     * @param gasMtstNo ガスメーター設置場所番号
+     */
+    private void requireGasmtrk(GmkskkdRecord record, Long gasMtstNo) {
+<span class="fc" id="L189">        List&lt;GasmtrkRecord&gt; gasmtrkRecords =</span>
+<span class="fc" id="L190">                gasmtrkDataAccess.findAllByTtkGmsbNoAndGmtkYmdAndGmtThkgYmd(gasMtstNo, record.knsYmd());</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (!gasmtrkRecords.isEmpty()) {</span>
+<span class="fc" id="L192">            return;</span>
+        }
+<span class="fc" id="L194">        throw dataInconsistency(</span>
+                GasmtrkDataAccess.CallSpecs.FIND_ALL_BY_TTK_GMSB_NO_AND_GMTK_YMD_AND_GMT_THKG_YMD,
+                gasMtstNo,
+<span class="fc" id="L197">                record.knsYmd());</span>
+    }
+
+    /**
+     * 概要: SV-312 と GMKSKKD の結果から SV-006 の出力DTOを構築する。
+     * 主な仕様: - 使用日数は SV-312 の戻り値をそのまま返す。 - ガス使用量は SV-312 の実供給圧力数換算前ガス使用量を BigDecimal へ変換して返す。
+     * - 検針実施状況コードは GMKSKKD の値を返す。
+     * 既知の制約: - SV-312 の戻り値が null の場合は使用日数とガス使用量に null を設定する。
+     *
+     * @param sv312Output SV-312 の戻り値
+     * @param record GMKSKKD の取得結果
+     * @return SV-006 の出力DTO
+     */
+    private OneYearAgoMeterReadingResultAcquisitionOutput toOutput(
+            GasUsageForBillingDerivationOutput sv312Output,
+            GmkskkdRecord record) {
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        GasRknKsnInf gasRknKsnInf = sv312Output == null ? null : sv312Output.gasRknKsnInf();</span>
+<span class="fc" id="L214">        return new OneYearAgoMeterReadingResultAcquisitionOutput(</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">                gasRknKsnInf == null ? null : gasRknKsnInf.shyDdsu(),</span>
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">                gasRknKsnInf == null || gasRknKsnInf.jkarSuKnzmGasSyry() == null</span>
+<span class="nc" id="L217">                        ? null</span>
+<span class="fc" id="L218">                        : gasRknKsnInf.jkarSuKnzmGasSyry(),</span>
+<span class="fc" id="L219">                record.knsJsjkCd());</span>
+    }
+
+    /**
+     * 概要: GASMTRK の返却件数不整合を表す DataInconsistencyException を生成する。
+     * 主な仕様: - DA の CallSpec から識別子を取得する。 - テーブル名は GasmtrkDataAccess から、キー情報は JSON 文字列へ詰めて例外に保持する。
+     * 既知の制約: - 受け取った引数値の妥当性検証は行わず、そのまま例外情報へ埋め込む。
+     *
+     * @param callSpec 不整合判定元の DA CallSpec
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準日
+     * @return DataInconsistencyException
+     */
+    private DataInconsistencyException dataInconsistency(
+            DataAccessCallSpec callSpec, Long gasMtstNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L234">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L235">                gasmtrkDataAccess.tableName(),</span>
+<span class="fc" id="L236">                callSpec.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L238">                        .put(&quot;ttkGmsbNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L239">                        .put(&quot;knskKjnYmd&quot;, knskKjnYmd));</span>
+    }
+
+    /**
+     * 概要: 対象データなしを表す初期値を返却する。
+     * 主な仕様: - 使用日数に 0、使用量に 0、検針実施状況コードに空文字を設定する。
+     * 既知の制約: - 初期値の内容は SV-006 の業務仕様に固定されている。
+     *
+     * @return 初期値の出力DTO
+     */
+    private static OneYearAgoMeterReadingResultAcquisitionOutput defaultOutput() {
+<span class="fc" id="L250">        return new OneYearAgoMeterReadingResultAcquisitionOutput(0, BigDecimal.ZERO, &quot;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

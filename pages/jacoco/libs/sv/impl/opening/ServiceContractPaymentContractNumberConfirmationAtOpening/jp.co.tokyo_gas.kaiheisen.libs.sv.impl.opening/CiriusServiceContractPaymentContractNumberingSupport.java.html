@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CiriusServiceContractPaymentContractNumberingSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-servicecontractpaymentcontractnumberconfirmationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">CiriusServiceContractPaymentContractNumberingSupport.java</span></div><h1>CiriusServiceContractPaymentContractNumberingSupport.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.customer_numbering.CustomerNumberingCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.customer_numbering.CustomerNumberingRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.customer_numbering.CustomerNumberingResponse;
+
+/**
+ * 概要: SV-218 用の他-048 採番サポート実装。
+ * 主な仕様:
+ * - `param_他-048_*.tsv` に対応する 3 パターンの採番条件を固定で組み立てる。
+ * - 応答に必要項目が存在しない場合は即座に失敗させる。
+ * 既知の制約: 他-048 の既存 adapter `CustomerNumberingCiriusAdapter#number` を流用し、SV-218 専用 endpoint は追加しない。
+ */
+@ApplicationScoped
+public final class CiriusServiceContractPaymentContractNumberingSupport
+        implements ServiceContractPaymentContractNumberingSupport {
+
+    private final CustomerNumberingCiriusAdapter customerNumberingCiriusAdapter;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param customerNumberingCiriusAdapter 他-048 adapter
+     */
+    @Inject
+    public CiriusServiceContractPaymentContractNumberingSupport(
+<span class="nc" id="L31">            CustomerNumberingCiriusAdapter customerNumberingCiriusAdapter) {</span>
+<span class="nc" id="L32">        this.customerNumberingCiriusAdapter =</span>
+<span class="nc" id="L33">                Objects.requireNonNull(customerNumberingCiriusAdapter, &quot;customerNumberingCiriusAdapter&quot;);</span>
+<span class="nc" id="L34">    }</span>
+
+    /** {@inheritDoc} */
+    @Override
+    public NumberingResult issue2xSx9x() {
+<span class="nc" id="L39">        CustomerNumberingResponse response = number(</span>
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ONE,
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO);
+<span class="nc" id="L47">        return new NumberingResult(</span>
+                null,
+<span class="nc" id="L49">                requirePaymentContractNumber(response),</span>
+<span class="nc" id="L50">                requireBillingTargetContractNumber(response),</span>
+<span class="nc" id="L51">                requireBillingManagementNumber(response));</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public NumberingResult issue4x2xSx9x() {
+<span class="nc" id="L57">        CustomerNumberingResponse response = number(</span>
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ONE,
+                BigDecimal.ONE,
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO);
+<span class="nc" id="L65">        return new NumberingResult(</span>
+<span class="nc" id="L66">                requireServiceContractNumber(response),</span>
+<span class="nc" id="L67">                requirePaymentContractNumber(response),</span>
+<span class="nc" id="L68">                requireBillingTargetContractNumber(response),</span>
+<span class="nc" id="L69">                requireBillingManagementNumber(response));</span>
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public NumberingResult issue2x9x() {
+<span class="nc" id="L75">        CustomerNumberingResponse response = number(</span>
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO);
+<span class="nc" id="L83">        return new NumberingResult(</span>
+                null,
+<span class="nc" id="L85">                requirePaymentContractNumber(response),</span>
+                null,
+<span class="nc" id="L87">                requireBillingManagementNumber(response));</span>
+    }
+
+    /**
+     * 概要: 指定された発番回数で他-048 を呼び出す。
+        * 主な仕様: 既存 `CustomerNumberingCiriusAdapter#number` に `CustomerNumberingRequest` を組み立てて委譲する。
+        * 既知の制約: 他-048 の RequestInfo には既存 adapter 実装どおり一部発番回数のみが出力される。
+     *
+     * @param sihKiyNoHbks 支払契約番号発番回数
+     * @param kyoTrnoKurHbks 契約お客さま登録番号_小売発番回数
+     * @param svkyNoHbks サービス契約番号発番回数
+     * @param sikKrnoHbks 請求管理番号発番回数
+     * @param sqtiKiyNoHbks 請求対象契約番号発番回数
+     * @param kyoTrnoDuknHbks 契約お客さま登録番号_導管発番回数
+     * @param tksuSvkyNoHbks 託送サービス契約番号発番回数
+     * @return 他-048 レスポンス
+     */
+    private CustomerNumberingResponse number(
+            BigDecimal sihKiyNoHbks,
+            BigDecimal kyoTrnoKurHbks,
+            BigDecimal svkyNoHbks,
+            BigDecimal sikKrnoHbks,
+            BigDecimal sqtiKiyNoHbks,
+            BigDecimal kyoTrnoDuknHbks,
+            BigDecimal tksuSvkyNoHbks) {
+<span class="nc" id="L112">        return customerNumberingCiriusAdapter.number(</span>
+                new CustomerNumberingRequest(
+                        new CustomerNumberingRequest.NumberingCondition(
+                                sihKiyNoHbks,
+                                kyoTrnoKurHbks,
+                                svkyNoHbks,
+                                sikKrnoHbks,
+                                sqtiKiyNoHbks,
+                                kyoTrnoDuknHbks,
+                                tksuSvkyNoHbks)));
+    }
+
+    /**
+     * 概要: サービス契約番号を必須取得する。
+        * 主な仕様: 他-048 応答から `svkyNo` を取り出し、欠落時は fail-fast で例外化する。
+        * 既知の制約: 応答項目名は `svky_no` または `svkyNo` のいずれかを前提とする。
+     *
+     * @param response 他-048 レスポンス
+     * @return サービス契約番号
+     */
+    private Long requireServiceContractNumber(CustomerNumberingResponse response) {
+<span class="nc bnc" id="L133" title="All 2 branches missed.">        Long numberedValue = response == null ? null : response.serviceContractNumber();</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (numberedValue == null) {</span>
+<span class="nc" id="L135">            throw new IllegalStateException(</span>
+                    &quot;他-048 response did not contain svkyNo&quot;
+                            + &quot; (サービス契約番号)&quot;);
+        }
+<span class="nc" id="L139">        return numberedValue;</span>
+    }
+
+    /**
+     * 概要: 支払契約番号を必須取得する。
+        * 主な仕様: 他-048 応答から `sihKiyNo` を取り出し、欠落時は fail-fast で例外化する。
+        * 既知の制約: 応答項目名は `sih_kiy_no` または `sihKiyNo` のいずれかを前提とする。
+     *
+     * @param response 他-048 レスポンス
+     * @return 支払契約番号
+     */
+    private Long requirePaymentContractNumber(CustomerNumberingResponse response) {
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        Long numberedValue = response == null ? null : response.paymentContractNumber();</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (numberedValue == null) {</span>
+<span class="nc" id="L153">            throw new IllegalStateException(</span>
+                    &quot;他-048 response did not contain sihKiyNo&quot;
+                            + &quot; (支払契約番号)&quot;);
+        }
+<span class="nc" id="L157">        return numberedValue;</span>
+    }
+
+    /**
+     * 概要: 請求対象契約番号を必須取得する。
+        * 主な仕様: 他-048 応答から `sqtiKiyNo` を取り出し、欠落時は fail-fast で例外化する。
+        * 既知の制約: 応答項目名は `sqti_kiy_no` または `sqtiKiyNo` のいずれかを前提とする。
+     *
+     * @param response 他-048 レスポンス
+     * @return 請求対象契約番号
+     */
+    private String requireBillingTargetContractNumber(CustomerNumberingResponse response) {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        String numberedValue = response == null ? null : response.billingTargetContractNumber();</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">        if (numberedValue == null) {</span>
+<span class="nc" id="L171">            throw new IllegalStateException(</span>
+                    &quot;他-048 response did not contain sqtiKiyNo&quot;
+                            + &quot; (請求対象契約番号)&quot;);
+        }
+<span class="nc" id="L175">        return numberedValue;</span>
+    }
+
+    /**
+     * 概要: 請求管理番号を必須取得する。
+        * 主な仕様: 他-048 応答から `sikKrno` を取り出し、欠落時は fail-fast で例外化する。
+        * 既知の制約: 応答項目名は `sik_krno` または `sikKrno` のいずれかを前提とする。
+     *
+     * @param response 他-048 レスポンス
+     * @return 請求管理番号
+     */
+    private Long requireBillingManagementNumber(CustomerNumberingResponse response) {
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        Long numberedValue = response == null ? null : response.billingManagementNumber();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (numberedValue == null) {</span>
+<span class="nc" id="L189">            throw new IllegalStateException(</span>
+                    &quot;他-048 response did not contain sikKrno&quot;
+                            + &quot; (請求管理番号)&quot;);
+        }
+<span class="nc" id="L193">        return numberedValue;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

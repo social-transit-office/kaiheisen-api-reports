@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasMeterLocationInfoTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-gasmeterlocationinfotermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">GasMeterLocationInfoTerminationImpl.java</span></div><h1>GasMeterLocationInfoTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdTkysUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkTkysJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.write.GmtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.MtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtsetk.write.MtsetkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdTerminationInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkTerminationInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkTerminationInf;
+
+/**
+ * SV-120（ガスメーター設置場所情報終了）のサービス実装。
+ * 主な仕様:
+ * - 排他区分に応じて楽観排他あり/なしの更新経路を切り替える。
+ * - GMTSETD、GMTSETK、MTSETK を順に更新し、いずれかの更新件数が 0 件ならデータ不整合例外を送出する。
+ * - 監査情報には固定更新ユーザー ID と RequestContext 由来の報告元機能 ID を設定する。
+ */
+public class GasMeterLocationInfoTerminationImpl implements GasMeterLocationInfoTermination {
+
+    static final String SERVICE_USER_ID = &quot;KHSS120&quot;;
+
+<span class="fc" id="L40">    private static final Set&lt;GmtsetdColumn&gt; GMTSETD_TARGET_COLUMNS = Set.of(GmtsetdColumn.TYEN_YMD);</span>
+
+<span class="fc" id="L42">    private static final Set&lt;GmtsetkColumn&gt; GMTSETK_TARGET_COLUMNS = Set.of(GmtsetkColumn.TYEN_YMD);</span>
+
+<span class="fc" id="L44">    private static final Set&lt;MtsetkColumn&gt; MTSETK_TARGET_COLUMNS = Set.of(MtsetkColumn.TYEN_YMD);</span>
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final MtsetkDataAccess mtsetkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String withExclusionDivision;
+
+    /**
+     * 必要な依存オブジェクトと定数を初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞データアクセス
+     * @param mtsetkDataAccess メーター設置場所＜小売＞データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public GasMeterLocationInfoTerminationImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GmtsetkDataAccess gmtsetkDataAccess,
+            MtsetkDataAccess mtsetkDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L72">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L73">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.gmtsetkDataAccess = Objects.requireNonNull(gmtsetkDataAccess, &quot;gmtsetkDataAccess&quot;);</span>
+<span class="fc" id="L75">        this.mtsetkDataAccess = Objects.requireNonNull(mtsetkDataAccess, &quot;mtsetkDataAccess&quot;);</span>
+<span class="fc" id="L76">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L77">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L78">        this.withExclusionDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.Exclusive.TYPE,
+                ConstantLookupKeys.Kaiheisen.Exclusive.WITH_EXCLUSION);
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * ガスメーター設置場所関連情報の適用終了日を更新する。
+     *
+     * @param haitaKbn 排他区分
+     * @param gmtsetdInf ガスメーター設置場所＜導管＞情報
+     * @param gmtsetkInf ガスメーター設置場所＜小売＞情報
+     * @param mtsetkInf メーター設置場所＜小売＞情報
+     */
+    @Override
+    public void execute(
+            String haitaKbn,
+            GmtsetdTerminationInf gmtsetdInf,
+            GmtsetkTerminationInf gmtsetkInf,
+            MtsetkTerminationInf mtsetkInf) {
+<span class="fc" id="L98">        boolean withExclusion = isWithExclusion(haitaKbn);</span>
+<span class="fc" id="L99">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L100">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L102">        int gmtsetdUpdatedCount = gmtsetdDataAccess.updateByGasMtstNoAndTkysYmd(</span>
+<span class="fc" id="L103">                buildGmtsetdWriteRecord(gmtsetdInf),</span>
+                GMTSETD_TARGET_COLUMNS,
+                new GmtsetdTkysUpdateKey(
+<span class="fc" id="L106">                        gmtsetdInf.gasMtstNo(),</span>
+<span class="fc" id="L107">                        gmtsetdInf.tkysYmd(),</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                        withExclusion ? gmtsetdInf.recUpdJnjNo() : null),</span>
+                auditContext);
+<span class="fc" id="L110">        ensureUpdatedCount(</span>
+                gmtsetdUpdatedCount,
+<span class="fc" id="L112">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L113">                GmtsetdDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+<span class="fc" id="L114">                buildGmtsetdParameterJson(gmtsetdInf, decodedOriginFunctionId, withExclusion));</span>
+
+<span class="fc" id="L116">        int gmtsetkUpdatedCount = gmtsetkDataAccess.updateByGasMtstNoAndTkysYmdAndRecUpdJnjNo(</span>
+<span class="fc" id="L117">                buildGmtsetkWriteRecord(gmtsetkInf),</span>
+                GMTSETK_TARGET_COLUMNS,
+                new GmtsetkTkysJnjUpdateKey(
+<span class="fc" id="L120">                        gmtsetkInf.gasMtstNo(),</span>
+<span class="fc" id="L121">                        gmtsetkInf.tkysYmd(),</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                        withExclusion ? gmtsetkInf.recUpdJnjNo() : null),</span>
+                auditContext);
+<span class="fc" id="L124">        ensureUpdatedCount(</span>
+                gmtsetkUpdatedCount,
+<span class="fc" id="L126">                gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L127">                GmtsetkDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+<span class="fc" id="L128">                buildGmtsetkParameterJson(gmtsetkInf, decodedOriginFunctionId, withExclusion));</span>
+
+<span class="fc" id="L130">        int mtsetkUpdatedCount = mtsetkDataAccess.updateByMtstNoAndTkysYmdAndRecUpdJnjNo(</span>
+<span class="fc" id="L131">                buildMtsetkWriteRecord(mtsetkInf),</span>
+                MTSETK_TARGET_COLUMNS,
+                new MtsetkUpdateKey(
+<span class="fc" id="L134">                        mtsetkInf.mtstNo(),</span>
+<span class="fc" id="L135">                        mtsetkInf.tkysYmd(),</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                        withExclusion ? mtsetkInf.recUpdJnjNo() : null),</span>
+                auditContext);
+<span class="fc" id="L138">        ensureUpdatedCount(</span>
+                mtsetkUpdatedCount,
+<span class="fc" id="L140">                mtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L141">                MtsetkDataAccess.CallSpecs.UPDATE_BY_MTST_NO_AND_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+<span class="fc" id="L142">                buildMtsetkParameterJson(mtsetkInf, decodedOriginFunctionId, withExclusion));</span>
+<span class="fc" id="L143">    }</span>
+
+        /**
+         * 排他制御ありの更新経路を利用するかを判定する。
+         * 主な仕様:
+         * - 開閉栓定数から解決した排他あり区分と入力の排他区分を比較する。
+         * - 一致した場合のみ各 DA 更新キーへレコード更新排他制御順序番号を含める。
+         * 既知の制約:
+         * - 入力値の妥当性検証や正規化は行わず、完全一致のみを排他ありとして扱う。
+         *
+         * @param haitaKbn 排他区分
+         * @return 排他制御ありで更新する場合は true
+         */
+    private boolean isWithExclusion(String haitaKbn) {
+<span class="fc" id="L157">        return withExclusionDivision.equals(haitaKbn);</span>
+    }
+
+        /**
+         * GMTSETD 更新用の WriteRecord を組み立てる。
+         * 主な仕様:
+         * - SV-120 で更新対象となる適用終了年月日と排他制御順序番号を設定する。
+         * - それ以外の項目は null を設定し、対象カラム集合で指定した列のみ更新させる。
+         * 既知の制約:
+         * - WriteRecord のコンストラクタ引数順に依存しており、DA 定義変更時は追従修正が必要である。
+         *
+         * @param gmtsetdInf ガスメーター設置場所＜導管＞情報
+         * @return GMTSETD 更新用レコード
+         */
+    private GmtsetdWriteRecord buildGmtsetdWriteRecord(GmtsetdTerminationInf gmtsetdInf) {
+<span class="fc" id="L172">        return new GmtsetdWriteRecord(</span>
+<span class="fc" id="L173">                gmtsetdInf.gasMtstNo(),</span>
+<span class="fc" id="L174">                gmtsetdInf.tkysYmd(),</span>
+<span class="fc" id="L175">                gmtsetdInf.tyenYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L231">                gmtsetdInf.recUpdJnjNo(),</span>
+                null);
+    }
+
+        /**
+         * GMTSETK 更新用の WriteRecord を組み立てる。
+         * 主な仕様:
+         * - SV-120 で更新対象となる適用終了年月日と排他制御順序番号を設定する。
+         * - それ以外の項目は null を設定し、対象カラム集合で指定した列のみ更新させる。
+         * 既知の制約:
+         * - WriteRecord のコンストラクタ引数順に依存しており、DA 定義変更時は追従修正が必要である。
+         *
+         * @param gmtsetkInf ガスメーター設置場所＜小売＞情報
+         * @return GMTSETK 更新用レコード
+         */
+    private GmtsetkWriteRecord buildGmtsetkWriteRecord(
+            GmtsetkTerminationInf gmtsetkInf) {
+<span class="fc" id="L248">        return new GmtsetkWriteRecord(</span>
+<span class="fc" id="L249">                gmtsetkInf.gasMtstNo(),</span>
+<span class="fc" id="L250">                gmtsetkInf.tkysYmd(),</span>
+<span class="fc" id="L251">                gmtsetkInf.tyenYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L297">                gmtsetkInf.recUpdJnjNo(),</span>
+                null);
+    }
+
+        /**
+         * MTSETK 更新用の WriteRecord を組み立てる。
+         * 主な仕様:
+         * - SV-120 で更新対象となる適用終了年月日と排他制御順序番号を設定する。
+         * - それ以外の項目は null を設定し、対象カラム集合で指定した列のみ更新させる。
+         * 既知の制約:
+         * - WriteRecord のコンストラクタ引数順に依存しており、DA 定義変更時は追従修正が必要である。
+         *
+         * @param mtsetkInf メーター設置場所＜小売＞情報
+         * @return MTSETK 更新用レコード
+         */
+    private MtsetkWriteRecord buildMtsetkWriteRecord(
+            MtsetkTerminationInf mtsetkInf) {
+<span class="fc" id="L314">        return new MtsetkWriteRecord(</span>
+<span class="fc" id="L315">                mtsetkInf.mtstNo(),</span>
+<span class="fc" id="L316">                mtsetkInf.tkysYmd(),</span>
+<span class="fc" id="L317">                mtsetkInf.tyenYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L332">                mtsetkInf.recUpdJnjNo());</span>
+    }
+
+        /**
+         * 更新件数が 0 件の場合にデータ不整合例外を送出する。
+         * 主な仕様:
+         * - 各 DA 更新結果を確認し、0 件時のみ DataInconsistencySupport 経由で例外化する。
+         * - 例外にはテーブル名、DA identifier、入力 JSON をそのまま引き継ぐ。
+         * 既知の制約:
+         * - 0 件以外の異常値は検知せず、下位 DA が返した件数を前提に判定する。
+         *
+         * @param updatedCount 更新件数
+         * @param tableName 対象テーブル名
+         * @param daIdentifier DA 呼び出し識別子
+         * @param parameterJsonBuilder 例外へ設定する入力 JSON
+         */
+    private void ensureUpdatedCount(
+            int updatedCount,
+            String tableName,
+            String daIdentifier,
+            FlatJsonBuilder parameterJsonBuilder) {
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L354">            throw DataInconsistencySupport.create(tableName, daIdentifier, parameterJsonBuilder);</span>
+        }
+<span class="fc" id="L356">    }</span>
+
+        /**
+         * GMTSETD 更新失敗時の例外用入力 JSON を組み立てる。
+         * 主な仕様:
+         * - 更新キー、更新項目、監査項目を FlatJsonBuilder へ定義順に格納する。
+         * - 排他なし経路ではレコード更新排他制御順序番号を JSON へ出力しない。
+         * 既知の制約:
+         * - JSON キー名は障害解析前提で固定しており、設計変更時は呼び出し側の期待値も合わせて更新が必要である。
+         *
+         * @param gmtsetdInf ガスメーター設置場所＜導管＞情報
+         * @param decodedOriginFunctionId デコード後の報告元機能 ID
+         * @param withExclusion 排他制御ありの場合は true
+         * @return 例外用入力 JSON ビルダー
+         */
+    private FlatJsonBuilder buildGmtsetdParameterJson(
+            GmtsetdTerminationInf gmtsetdInf,
+            String decodedOriginFunctionId,
+            boolean withExclusion) {
+<span class="fc" id="L375">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L376">                .put(&quot;gasMtstNo&quot;, gmtsetdInf.gasMtstNo())</span>
+<span class="fc" id="L377">                .put(&quot;tkysYmd&quot;, gmtsetdInf.tkysYmd())</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">                .putIfNonNull(&quot;recUpdJnjNo&quot;, withExclusion ? gmtsetdInf.recUpdJnjNo() : null)</span>
+<span class="fc" id="L379">                .put(&quot;tyenYmd&quot;, gmtsetdInf.tyenYmd())</span>
+<span class="fc" id="L380">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L381">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId);</span>
+    }
+
+        /**
+         * GMTSETK 更新失敗時の例外用入力 JSON を組み立てる。
+         * 主な仕様:
+         * - 更新キー、更新項目、監査項目を FlatJsonBuilder へ定義順に格納する。
+         * - 排他なし経路ではレコード更新排他制御順序番号を JSON へ出力しない。
+         * 既知の制約:
+         * - JSON キー名は障害解析前提で固定しており、設計変更時は呼び出し側の期待値も合わせて更新が必要である。
+         *
+         * @param gmtsetkInf ガスメーター設置場所＜小売＞情報
+         * @param decodedOriginFunctionId デコード後の報告元機能 ID
+         * @param withExclusion 排他制御ありの場合は true
+         * @return 例外用入力 JSON ビルダー
+         */
+    private FlatJsonBuilder buildGmtsetkParameterJson(
+            GmtsetkTerminationInf gmtsetkInf,
+            String decodedOriginFunctionId,
+            boolean withExclusion) {
+<span class="fc" id="L401">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L402">                .put(&quot;gasMtstNo&quot;, gmtsetkInf.gasMtstNo())</span>
+<span class="fc" id="L403">                .put(&quot;tkysYmd&quot;, gmtsetkInf.tkysYmd())</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">                .putIfNonNull(&quot;recUpdJnjNo&quot;, withExclusion ? gmtsetkInf.recUpdJnjNo() : null)</span>
+<span class="fc" id="L405">                .put(&quot;tyenYmd&quot;, gmtsetkInf.tyenYmd())</span>
+<span class="fc" id="L406">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L407">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId);</span>
+    }
+
+        /**
+         * MTSETK 更新失敗時の例外用入力 JSON を組み立てる。
+         * 主な仕様:
+         * - 更新キー、更新項目、監査項目を FlatJsonBuilder へ定義順に格納する。
+         * - 排他なし経路ではレコード更新排他制御順序番号を JSON へ出力しない。
+         * 既知の制約:
+         * - JSON キー名は障害解析前提で固定しており、設計変更時は呼び出し側の期待値も合わせて更新が必要である。
+         *
+         * @param mtsetkInf メーター設置場所＜小売＞情報
+         * @param decodedOriginFunctionId デコード後の報告元機能 ID
+         * @param withExclusion 排他制御ありの場合は true
+         * @return 例外用入力 JSON ビルダー
+         */
+    private FlatJsonBuilder buildMtsetkParameterJson(
+            MtsetkTerminationInf mtsetkInf,
+            String decodedOriginFunctionId,
+            boolean withExclusion) {
+<span class="fc" id="L427">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L428">                .put(&quot;mtstNo&quot;, mtsetkInf.mtstNo())</span>
+<span class="fc" id="L429">                .put(&quot;tkysYmd&quot;, mtsetkInf.tkysYmd())</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">                .putIfNonNull(&quot;recUpdJnjNo&quot;, withExclusion ? mtsetkInf.recUpdJnjNo() : null)</span>
+<span class="fc" id="L431">                .put(&quot;tyenYmd&quot;, mtsetkInf.tyenYmd())</span>
+<span class="fc" id="L432">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L433">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId);</span>
+    }
+
+        /**
+         * RequestContext に保持された報告システム種別を報告元機能 ID へデコードする。
+         * 主な仕様:
+         * - RequestContext から hukkSysShbt を取得し、開閉栓定数サービスで名称へ変換する。
+         * - 値が存在しない場合は IllegalStateException を送出して処理を中断する。
+         * 既知の制約:
+         * - 報告システム種別に対応する定数名称が未定義の場合の例外は、定数サービスの挙動に委譲する。
+         *
+         * @return 報告元機能 ID
+         */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L447">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L448">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L449">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

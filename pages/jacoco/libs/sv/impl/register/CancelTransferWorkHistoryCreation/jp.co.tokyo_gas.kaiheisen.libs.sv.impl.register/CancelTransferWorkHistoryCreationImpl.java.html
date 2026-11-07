@@ -1,0 +1,620 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CancelTransferWorkHistoryCreationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-canceltransferworkhistorycreation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">CancelTransferWorkHistoryCreationImpl.java</span></div><h1>CancelTransferWorkHistoryCreationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancelTransferWorkHistoryCreation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TransferWorkHistoryIntegrationManagementSameDayCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.IsrrkrUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SuguGmtInf;
+
+/**
+ * 概要: SV-061（取消時異動・作業履歴作成処理）の実装クラス。
+ * 主な仕様:
+ * - 開栓取消と閉栓取消の 2 ルートを切り替え、導管登録・小売登録・SV-256 を順序どおりに実行する。
+ * - CIRIUS request 組立は補助資料を正とし、(2) 付き資料を通常版の代用にしない。
+ * - RequestContext の `systemDatetime` と `hukkSysShbt` を必須値として fail-fast する。
+ */
+public final class CancelTransferWorkHistoryCreationImpl implements CancelTransferWorkHistoryCreation {
+
+<span class="fc" id="L32">    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L34">    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private static final String PIPELINE_SCREEN_ID = &quot;CXXG0082&quot;;
+
+    private static final String RETAIL_SCREEN_ID = &quot;CXXG0014&quot;;
+
+    private static final String HISTORY_MEMO_LABEL = &quot;履歴メモ&quot;;
+
+    private final TransferWorkHistoryIntegrationManagementSameDayCancel sameDayCancel;
+
+    private final IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter;
+
+    private final IdousagyourirekiKouriJouhouCiriusAdapter kouriAdapter;
+
+    private final RequestContext requestContext;
+
+    private final String openingProcessingDivision;
+
+    private final String caseHistoryResultTransfer;
+
+    private final String itemHistoryRegistrationDestinationPlace;
+
+    private final String itemHistoryRegistrationDestinationCustomer;
+
+    private final String transferWorkHistoryInquiryCodeSubject;
+
+    private final String transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable;
+
+    private final String customerInfoAcquisitionPossible;
+
+    private final String customerInfoAcquisitionNo;
+
+    private final String tokyoGasRetailerCode;
+
+    private final String generalContractApplicable;
+
+    private final String endOfContract;
+
+    private final String cancelCcbg5104;
+
+    private final String cancelCcbg4604;
+
+    /**
+     * SV-061 の実装を構築する。
+     *
+     * @param sameDayCancel SV-256
+     * @param doukanAdapter 導管向け CIRIUS adapter
+     * @param kouriAdapter 小売向け CIRIUS adapter
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓基盤定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public CancelTransferWorkHistoryCreationImpl(
+            TransferWorkHistoryIntegrationManagementSameDayCancel sameDayCancel,
+            IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter,
+            IdousagyourirekiKouriJouhouCiriusAdapter kouriAdapter,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L92">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L93">        this.sameDayCancel = Objects.requireNonNull(sameDayCancel, &quot;sameDayCancel&quot;);</span>
+<span class="fc" id="L94">        this.doukanAdapter = Objects.requireNonNull(doukanAdapter, &quot;doukanAdapter&quot;);</span>
+<span class="fc" id="L95">        this.kouriAdapter = Objects.requireNonNull(kouriAdapter, &quot;kouriAdapter&quot;);</span>
+<span class="fc" id="L96">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L97">        KaiheisenConstantService nonNullKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L100">        CiriusConstantService nonNullCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L103">        this.openingProcessingDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.CancelTransferWorkHistoryCreationProcessingDivision.TYPE,
+                ConstantLookupKeys.Kaiheisen.CancelTransferWorkHistoryCreationProcessingDivision.OPENING_PROCESS);
+<span class="fc" id="L107">        this.caseHistoryResultTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.CaseHistory.TYPE,
+                ConstantLookupKeys.Cirius.CaseHistory.RESULT_TRANSFER);
+<span class="fc" id="L111">        this.itemHistoryRegistrationDestinationPlace = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.PLACE);
+<span class="fc" id="L115">        this.itemHistoryRegistrationDestinationCustomer = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.TYPE,
+                ConstantLookupKeys.Cirius.ItemHistoryRegistrationDestinationType.CUSTOMER);
+<span class="fc" id="L119">        this.transferWorkHistoryInquiryCodeSubject = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.SUBJECT);
+<span class="fc" id="L123">        this.transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.NOT_APPLICABLE_TO_DETAILS_ONLY);
+<span class="fc" id="L127">        this.customerInfoAcquisitionPossible = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L131">        this.customerInfoAcquisitionNo = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.NO);
+<span class="fc" id="L135">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L139">        this.generalContractApplicable = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.GENERAL_CONTRACT_APPLICABLE);
+<span class="fc" id="L143">        this.endOfContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.END_OF_CONTRACT);
+<span class="fc" id="L147">        this.cancelCcbg5104 = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CANCEL_CCBG5104);
+<span class="fc" id="L151">        this.cancelCcbg4604 = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CANCEL_CCBG4604);
+<span class="fc" id="L155">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void execute(
+            String tksjIsrrSksiShrKbn,
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            String tksuKijsCd,
+            Boolean svkyUpdFlg,
+            Boolean suguDelFlg,
+            Boolean svkyFkktFlg,
+            List&lt;SuguGmtInf&gt; suguGmtInfList,
+            IsrrkrUpdInf isrrkrUpdInf) {
+<span class="fc" id="L179">        Objects.requireNonNull(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L180">        Objects.requireNonNull(trkKnsYmd, &quot;trkKnsYmd&quot;);</span>
+<span class="fc" id="L181">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L182">        requireHukkSysShbt();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (openingProcessingDivision.equals(tksjIsrrSksiShrKbn)) {</span>
+<span class="fc" id="L184">            IsrrkrUpdInf requiredIsrrkrUpdInf = Objects.requireNonNull(isrrkrUpdInf, &quot;isrrkrUpdInf&quot;);</span>
+<span class="fc" id="L185">            executeOpening(</span>
+                    gasMtstNo,
+                    duknIsrgCd,
+                    duknIsrsCd,
+                    isrrGymCd,
+                    isrrGmssCd,
+                    isrrHkkrKbn,
+                    trkKnsYmd,
+                    isrrHusrId,
+                    isrrHkunKj,
+                    rirekiMemo,
+                    tksuKijsCd,
+                    svkyUpdFlg,
+                    suguDelFlg,
+                    requiredIsrrkrUpdInf,
+                    systemDatetime);
+<span class="fc" id="L201">            return;</span>
+        }
+<span class="fc" id="L203">        executeClosing(</span>
+                gasMtstNo,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrGymCd,
+                isrrGmssCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                tksuKijsCd,
+                svkyFkktFlg,
+                suguGmtInfList,
+                isrrkrUpdInf,
+                systemDatetime);
+<span class="fc" id="L219">    }</span>
+
+    private void executeOpening(
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            String tksuKijsCd,
+            Boolean svkyUpdFlg,
+            Boolean suguDelFlg,
+            IsrrkrUpdInf isrrkrUpdInf,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L237">        doukanAdapter.register(buildOpeningDoukanRequest(</span>
+                gasMtstNo,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime));
+<span class="fc" id="L247">        sameDayCancel.execute(</span>
+                gasMtstNo,
+<span class="fc" id="L249">                systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L250">                isrrkrUpdInf.duknIsrgCd(),</span>
+<span class="fc" id="L251">                isrrkrUpdInf.duknIsrsCd());</span>
+<span class="fc" id="L252">        kouriAdapter.register(buildOpeningRetailRequest(</span>
+                gasMtstNo,
+                isrrGymCd,
+                isrrGmssCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime));
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (isTokyoGasRetailer(tksuKijsCd)) {</span>
+<span class="fc" id="L263">            sameDayCancel.execute(</span>
+                    gasMtstNo,
+<span class="fc" id="L265">                    systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L266">                    isrrkrUpdInf.isrrGymCd(),</span>
+<span class="fc" id="L267">                    isrrkrUpdInf.isrrGmssCd());</span>
+        }
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (shouldRegisterOpeningAdditional(svkyUpdFlg, suguDelFlg)) {</span>
+<span class="fc" id="L270">            kouriAdapter.register(buildOpeningAdditionalRetailRequest(</span>
+                    gasMtstNo,
+                    isrrHkkrKbn,
+                    trkKnsYmd,
+                    isrrHusrId,
+                    isrrHkunKj,
+                    systemDatetime));
+        }
+<span class="fc" id="L278">    }</span>
+
+    private void executeClosing(
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            String tksuKijsCd,
+            Boolean svkyFkktFlg,
+            List&lt;SuguGmtInf&gt; suguGmtInfList,
+            IsrrkrUpdInf isrrkrUpdInf,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L296">        doukanAdapter.register(buildClosingDoukanRequest(</span>
+                gasMtstNo,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime));
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (isrrkrUpdInf != null) {</span>
+<span class="fc" id="L307">            sameDayCancel.execute(</span>
+                    gasMtstNo,
+<span class="fc" id="L309">                    systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L310">                    isrrkrUpdInf.duknIsrgCd(),</span>
+<span class="fc" id="L311">                    isrrkrUpdInf.duknIsrsCd());</span>
+        }
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        String customerInfoFlag = isTokyoGasRetailer(tksuKijsCd)</span>
+<span class="fc" id="L315">                ? customerInfoAcquisitionPossible</span>
+<span class="fc" id="L316">                : customerInfoAcquisitionNo;</span>
+<span class="fc" id="L317">        kouriAdapter.register(buildClosingRetailRequest(</span>
+                gasMtstNo,
+                isrrGymCd,
+                isrrGmssCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime,
+                customerInfoFlag));
+
+<span class="pc bpc" id="L329" title="1 of 4 branches missed.">        if (isTokyoGasRetailer(tksuKijsCd) &amp;&amp; isrrkrUpdInf != null) {</span>
+<span class="fc" id="L330">            sameDayCancel.execute(</span>
+                    gasMtstNo,
+<span class="fc" id="L332">                    systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L333">                    isrrkrUpdInf.isrrGymCd(),</span>
+<span class="fc" id="L334">                    isrrkrUpdInf.isrrGmssCd());</span>
+        }
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (Boolean.TRUE.equals(svkyFkktFlg)) {</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            for (SuguGmtInf suguGmtInf : normalizeSuguGmtInfList(suguGmtInfList)) {</span>
+<span class="fc" id="L338">                kouriAdapter.register(buildClosingAdditionalRetailRequest(</span>
+<span class="fc" id="L339">                        requireSuguGasMtstNo(suguGmtInf),</span>
+                        isrrHkkrKbn,
+                        trkKnsYmd,
+                        isrrHusrId,
+                        isrrHkunKj,
+                        systemDatetime));
+<span class="fc" id="L345">            }</span>
+        }
+<span class="fc" id="L347">    }</span>
+
+    private boolean shouldRegisterOpeningAdditional(Boolean svkyUpdFlg, Boolean suguDelFlg) {
+<span class="fc bfc" id="L350" title="All 4 branches covered.">        return Boolean.TRUE.equals(svkyUpdFlg) || Boolean.TRUE.equals(suguDelFlg);</span>
+    }
+
+    private boolean isTokyoGasRetailer(String tksuKijsCd) {
+<span class="fc" id="L354">        return tokyoGasRetailerCode.equals(tksuKijsCd);</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest buildOpeningDoukanRequest(
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L367">        return buildDoukanRequest(</span>
+                gasMtstNo,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime,
+                customerInfoAcquisitionNo);
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest buildClosingDoukanRequest(
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L390">        return buildDoukanRequest(</span>
+                gasMtstNo,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrHkkrKbn,
+                trkKnsYmd,
+                isrrHusrId,
+                isrrHkunKj,
+                rirekiMemo,
+                systemDatetime,
+                customerInfoAcquisitionPossible);
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest buildDoukanRequest(
+            Long gasMtstNo,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            LocalDateTime systemDatetime,
+            String customerInfoFlag) {
+<span class="fc" id="L414">        return new IdousagyourirekiDoukanJouhouRequest(</span>
+                new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiDoukanJouhouRenkei(
+                        new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekigyoumuKyoutsuuDoukan(
+<span class="fc" id="L417">                                toCustomerNumber(gasMtstNo),</span>
+                                caseHistoryResultTransfer,
+                                itemHistoryRegistrationDestinationPlace,
+                                duknIsrgCd,
+                                duknIsrsCd,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeSubject,
+<span class="fc" id="L424">                                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L425">                                toTimeText(systemDatetime),</span>
+<span class="fc" id="L426">                                toDateText(trkKnsYmd),</span>
+<span class="fc" id="L427">                                normalizeText(isrrHusrId),</span>
+<span class="fc" id="L428">                                normalizeText(isrrHkunKj),</span>
+                                PIPELINE_SCREEN_ID),
+<span class="fc" id="L430">                        List.of(new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan(</span>
+                                BigDecimal.ONE,
+                                HISTORY_MEMO_LABEL,
+                                &quot;&quot;,
+<span class="fc" id="L434">                                normalizeText(rirekiMemo))),</span>
+                        customerInfoFlag,
+<span class="fc" id="L436">                        toDateText(systemDatetime.toLocalDate())));</span>
+    }
+
+    private IdousagyourirekiKouriJouhouRequest buildOpeningRetailRequest(
+            Long gasMtstNo,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L449">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+<span class="fc" id="L451">                        buildRetailCommon(</span>
+                                gasMtstNo,
+                                isrrGymCd,
+                                isrrGmssCd,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeSubject,
+                                trkKnsYmd,
+                                isrrHusrId,
+                                isrrHkunKj,
+                                RETAIL_SCREEN_ID,
+                                systemDatetime),
+<span class="fc" id="L462">                        List.of(new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiShousaiKouri(</span>
+                                BigDecimal.ONE,
+                                HISTORY_MEMO_LABEL,
+                                &quot;&quot;,
+<span class="fc" id="L466">                                normalizeText(rirekiMemo))),</span>
+                        customerInfoAcquisitionNo,
+                        null,
+<span class="fc" id="L469">                        toDateText(systemDatetime.toLocalDate())));</span>
+    }
+
+    private IdousagyourirekiKouriJouhouRequest buildOpeningAdditionalRetailRequest(
+            Long gasMtstNo,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L479">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+<span class="fc" id="L481">                        buildRetailCommon(</span>
+                                gasMtstNo,
+                                generalContractApplicable,
+                                cancelCcbg5104,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable,
+                                trkKnsYmd,
+                                isrrHusrId,
+                                isrrHkunKj,
+                                &quot;&quot;,
+                                systemDatetime),
+<span class="fc" id="L492">                        List.of(),</span>
+                        customerInfoAcquisitionNo,
+                        &quot;&quot;,
+                        &quot;&quot;));
+    }
+
+    private IdousagyourirekiKouriJouhouRequest buildClosingRetailRequest(
+            Long gasMtstNo,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String rirekiMemo,
+            LocalDateTime systemDatetime,
+            String customerInfoFlag) {
+<span class="fc" id="L509">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+<span class="fc" id="L511">                        buildRetailCommon(</span>
+                                gasMtstNo,
+                                isrrGymCd,
+                                isrrGmssCd,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeSubject,
+                                trkKnsYmd,
+                                isrrHusrId,
+                                isrrHkunKj,
+                                RETAIL_SCREEN_ID,
+                                systemDatetime),
+<span class="fc" id="L522">                        List.of(new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiShousaiKouri(</span>
+                                BigDecimal.ONE,
+                                HISTORY_MEMO_LABEL,
+                                &quot;&quot;,
+<span class="fc" id="L526">                                normalizeText(rirekiMemo))),</span>
+                        customerInfoFlag,
+                        &quot;&quot;,
+<span class="fc" id="L529">                        toDateText(systemDatetime.toLocalDate())));</span>
+    }
+
+    private IdousagyourirekiKouriJouhouRequest buildClosingAdditionalRetailRequest(
+            Long gasMtstNo,
+            String isrrHkkrKbn,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L539">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+<span class="fc" id="L541">                        buildRetailCommon(</span>
+                                gasMtstNo,
+                                endOfContract,
+                                cancelCcbg4604,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable,
+                                trkKnsYmd,
+                                isrrHusrId,
+                                isrrHkunKj,
+                                &quot;&quot;,
+                                systemDatetime),
+<span class="fc" id="L552">                        List.of(),</span>
+                        customerInfoAcquisitionPossible,
+                        &quot;&quot;,
+                        &quot;&quot;));
+    }
+
+    private IdousagyourirekiKouriJouhouRequest.IdousagyourirekigyoumuKyoutsuuKouri buildRetailCommon(
+            Long gasMtstNo,
+            String isrrGymCd,
+            String isrrGmssCd,
+            String isrrHkkrKbn,
+            String isrrSktCd,
+            LocalDate trkKnsYmd,
+            String isrrHusrId,
+            String isrrHkunKj,
+            String screenId,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L569">        return new IdousagyourirekiKouriJouhouRequest.IdousagyourirekigyoumuKyoutsuuKouri(</span>
+<span class="fc" id="L570">                toCustomerNumber(gasMtstNo),</span>
+                caseHistoryResultTransfer,
+                itemHistoryRegistrationDestinationCustomer,
+                isrrGymCd,
+                isrrGmssCd,
+                isrrHkkrKbn,
+                isrrSktCd,
+<span class="fc" id="L577">                toDateText(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L578">                toTimeText(systemDatetime),</span>
+<span class="fc" id="L579">                toDateText(trkKnsYmd),</span>
+<span class="fc" id="L580">                normalizeText(isrrHusrId),</span>
+<span class="fc" id="L581">                normalizeText(isrrHkunKj),</span>
+                screenId);
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L586">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L587">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private void requireHukkSysShbt() {
+<span class="fc" id="L591">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L592">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L593">    }</span>
+
+    private List&lt;SuguGmtInf&gt; normalizeSuguGmtInfList(List&lt;SuguGmtInf&gt; suguGmtInfList) {
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        return suguGmtInfList == null ? List.of() : suguGmtInfList;</span>
+    }
+
+    private Long requireSuguGasMtstNo(SuguGmtInf suguGmtInf) {
+<span class="fc" id="L600">        SuguGmtInf nonNullSuguGmtInf = Objects.requireNonNull(suguGmtInf, &quot;suguGmtInf&quot;);</span>
+<span class="fc" id="L601">        return Objects.requireNonNull(nonNullSuguGmtInf.gasMtstNo(), &quot;suguGmtInf.gasMtstNo&quot;);</span>
+    }
+
+    private String normalizeText(String value) {
+<span class="fc bfc" id="L605" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private String toCustomerNumber(Long gasMtstNo) {
+<span class="fc" id="L609">        return String.format(&quot;%011d&quot;, gasMtstNo);</span>
+    }
+
+    private String toDateText(LocalDate date) {
+<span class="fc" id="L613">        return DATE_FORMATTER.format(date);</span>
+    }
+
+    private String toTimeText(LocalDateTime datetime) {
+<span class="fc" id="L617">        return TIME_FORMATTER.format(datetime);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

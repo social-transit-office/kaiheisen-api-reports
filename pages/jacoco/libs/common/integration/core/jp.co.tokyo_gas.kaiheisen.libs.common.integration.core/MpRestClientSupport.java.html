@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MpRestClientSupport.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-integration-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.integration.core</a> &gt; <span class="el_source">MpRestClientSupport.java</span></div><h1>MpRestClientSupport.java</h1><pre class="source lang-java linenums">/**
+ * @file MpRestClientSupport.java
+ * 概要: MicroProfile Rest Client 呼び出しの汎用例外変換ヘルパーを定義する。
+ * 主な仕様:
+ * - WebApplicationException をリクエスト情報・レスポンス情報付きで変換する。
+ * - ProcessingException をリクエスト情報付きで通信失敗として変換する。
+ * - 例外ファクトリを受け取り、任意の例外型への変換を可能にする。
+ * - 既存の失敗ログに例外捕捉時刻 failedAt を付与する。
+ * 既知の制限事項:
+ * - レスポンスボディが既に消費済みの場合は取得できない。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.integration.core;
+
+import jakarta.enterprise.context.ContextNotActiveException;
+import jakarta.enterprise.inject.spi.CDI;
+import jakarta.ws.rs.ProcessingException;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+
+/**
+ * MicroProfile Rest Client 呼び出しの汎用例外変換ヘルパー。
+ *
+ * &lt;p&gt;MP Rest Client 呼び出しを {@link #invoke} でラップすることで、
+ * {@link WebApplicationException} や {@link ProcessingException} を
+ * 任意のドメイン例外に変換する。&lt;/p&gt;
+ */
+public final class MpRestClientSupport {
+
+    private static final String EXTERNAL_API_STARTED_EVENT = &quot;externalapi.started&quot;;
+
+    private static final String EXTERNAL_API_STARTED_SUMMARY = &quot;External API execution started&quot;;
+
+    private static final String EXTERNAL_API_COMPLETED_EVENT = &quot;externalapi.completed&quot;;
+
+    private static final String EXTERNAL_API_COMPLETED_SUMMARY = &quot;External API execution completed&quot;;
+
+    private static final String EXTERNAL_API_FAILED_EVENT = &quot;externalapi.failed&quot;;
+
+    private static final String EXTERNAL_API_FAILED_SUMMARY = &quot;External API execution failed&quot;;
+
+    private static final String FUNCTION_ID_ATTRIBUTE = &quot;functionId&quot;;
+
+    private static final String REQUEST_INFO_ATTRIBUTE = &quot;requestInfo&quot;;
+
+    private static final String REQUEST_PARAMS_ATTRIBUTE = &quot;requestParams&quot;;
+
+    private static final String RESPONSE_INFO_ATTRIBUTE = &quot;responseInfo&quot;;
+
+    private static final String RESPONSE_BODY_ATTRIBUTE = &quot;responseBody&quot;;
+
+<span class="fc" id="L65">    private static final StructuredLogger LOGGER =</span>
+            new JbossStructuredLogger(MpRestClientSupport.class);
+
+<span class="fc" id="L68">    private record ResponseLogInfo(String text, String body) {</span>
+    }
+
+    /**
+     * 例外変換ファクトリ。
+     */
+    @FunctionalInterface
+    public interface ExceptionFactory {
+
+        /**
+         * ドメイン例外を生成する。
+         *
+         * @param requestInfo リクエスト情報。型: String
+         * @param responseInfo レスポンス情報（通信失敗時は null）。型: String
+         * @param cause 原因例外。型: Throwable
+         * @return ドメイン例外。型: RuntimeException
+         */
+        RuntimeException create(String requestInfo, String responseInfo, Throwable cause);
+    }
+
+    private MpRestClientSupport() {
+    }
+
+    /**
+     * MP Rest Client 呼び出しを実行し、例外を変換する。
+     *
+     * @param &lt;T&gt; レスポンス型
+     * @param call 呼び出し処理。型: Supplier
+     * @param requestInfo リクエスト情報（ログ／例外メッセージ用）。型: String
+     * @param exceptionFactory 例外変換ファクトリ。型: ExceptionFactory
+     * @return 呼び出し結果。型: T
+     */
+    public static &lt;T&gt; T invoke(
+            Supplier&lt;T&gt; call,
+            String requestInfo,
+            ExceptionFactory exceptionFactory) {
+<span class="fc" id="L104">        return invoke(call, null, requestInfo, exceptionFactory);</span>
+    }
+
+    /**
+     * MP Rest Client 呼び出しを実行し、例外を変換する。
+     *
+     * @param &lt;T&gt; レスポンス型
+     * @param call 呼び出し処理。型: Supplier
+     * @param externalApiId 外部 API 識別子。型: String
+     * @param requestInfo リクエスト情報（ログ／例外メッセージ用）。型: String
+     * @param exceptionFactory 例外変換ファクトリ。型: ExceptionFactory
+     * @return 呼び出し結果。型: T
+     */
+    public static &lt;T&gt; T invoke(
+            Supplier&lt;T&gt; call,
+            String externalApiId,
+            String requestInfo,
+            ExceptionFactory exceptionFactory) {
+<span class="fc" id="L122">        return invoke(call, externalApiId, requestInfo, exceptionFactory, resolveRequestContext(), LOGGER);</span>
+    }
+
+    static &lt;T&gt; T invoke(
+            final Supplier&lt;T&gt; call,
+            final String externalApiId,
+            final String requestInfo,
+            final ExceptionFactory exceptionFactory,
+            final RequestContext requestContext,
+            final StructuredLogger logger) {
+<span class="fc" id="L132">        return invoke(call, externalApiId, requestInfo, exceptionFactory,</span>
+<span class="fc" id="L133">                requestContext, logger, Clock.systemUTC());</span>
+    }
+
+    static &lt;T&gt; T invoke(
+            final Supplier&lt;T&gt; call,
+            final String externalApiId,
+            final String requestInfo,
+            final ExceptionFactory exceptionFactory,
+            final RequestContext requestContext,
+            final StructuredLogger logger,
+            final Clock clock) {
+<span class="fc" id="L144">        boolean terminalMeasurementEnabled = PerformanceObservabilitySettings.isTerminalEnabled();</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        Long invocationSequence = terminalMeasurementEnabled</span>
+<span class="fc" id="L146">                ? safeNextExternalApiInvocationSequence(requestContext) : null;</span>
+<span class="fc" id="L147">        long startedAtNanos = System.nanoTime();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L149">            safeInfo(logger, () -&gt; buildStartedEvent(</span>
+                    externalApiId, requestInfo, invocationSequence, requestContext));
+        } else {
+<span class="fc" id="L152">            logger.info(buildStartedEvent(</span>
+                    externalApiId, requestInfo, invocationSequence, requestContext));
+        }
+<span class="fc" id="L155">        ExternalApiCallLogContext previousContext = ExternalApiCallLogContext.push(</span>
+                externalApiId, requestInfo, invocationSequence);
+        try {
+<span class="fc" id="L158">            T result = call.get();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L160">                safeInfo(logger, () -&gt; buildCompletedEvent(</span>
+                        externalApiId,
+                        invocationSequence,
+<span class="fc" id="L163">                        elapsedMillis(startedAtNanos),</span>
+                        requestContext));
+            }
+<span class="fc" id="L166">            return result;</span>
+<span class="fc" id="L167">        } catch (WebApplicationException e) {</span>
+<span class="fc" id="L168">            Instant failedAt = clock.instant();</span>
+<span class="fc" id="L169">            ResponseLogInfo responseInfo = extractResponseInfo(e);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L171">                safeError(</span>
+                        logger,
+<span class="fc" id="L173">                        () -&gt; buildFailedEvent(</span>
+                                externalApiId,
+                                requestInfo,
+<span class="fc" id="L176">                                responseInfo.text(),</span>
+<span class="fc" id="L177">                                extractHttpStatus(e),</span>
+<span class="fc" id="L178">                                responseInfo.body(),</span>
+                                invocationSequence,
+<span class="fc" id="L180">                                elapsedMillis(startedAtNanos),</span>
+                                requestContext, failedAt),
+                        e);
+            } else {
+<span class="fc" id="L184">                logger.error(</span>
+<span class="fc" id="L185">                        buildFailedEvent(</span>
+                                externalApiId,
+                                requestInfo,
+<span class="fc" id="L188">                                responseInfo.text(),</span>
+<span class="fc" id="L189">                                extractHttpStatus(e),</span>
+<span class="fc" id="L190">                                responseInfo.body(),</span>
+                                invocationSequence,
+                                null,
+                                requestContext, failedAt),
+                        e);
+            }
+<span class="fc" id="L196">            throw exceptionFactory.create(requestInfo, responseInfo.text(), e);</span>
+<span class="fc" id="L197">        } catch (ProcessingException e) {</span>
+<span class="fc" id="L198">            Instant failedAt = clock.instant();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L200">                safeError(logger, () -&gt; buildFailedEvent(</span>
+                        externalApiId,
+                        requestInfo,
+                        null,
+                        invocationSequence,
+<span class="fc" id="L205">                        elapsedMillis(startedAtNanos),</span>
+                        requestContext, failedAt), e);
+            } else {
+<span class="fc" id="L208">                logger.error(buildFailedEvent(</span>
+                        externalApiId,
+                        requestInfo,
+                        null,
+                        invocationSequence,
+                        null,
+                        requestContext, failedAt), e);
+            }
+<span class="fc" id="L216">            throw exceptionFactory.create(requestInfo, null, e);</span>
+<span class="fc" id="L217">        } catch (RuntimeException | Error e) {</span>
+<span class="fc" id="L218">            Instant failedAt = clock.instant();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            if (terminalMeasurementEnabled) {</span>
+<span class="fc" id="L220">                safeError(logger, () -&gt; buildFailedEvent(</span>
+                        externalApiId,
+                        null,
+                        null,
+                        invocationSequence,
+<span class="fc" id="L225">                        elapsedMillis(startedAtNanos),</span>
+                        requestContext, failedAt), e);
+            }
+<span class="fc" id="L228">            throw e;</span>
+        } finally {
+<span class="fc" id="L230">            ExternalApiCallLogContext.restore(previousContext);</span>
+        }
+    }
+
+    private static LogEvent buildStartedEvent(
+            final String externalApiId,
+            final String requestInfo,
+            final Long invocationSequence,
+            final RequestContext requestContext) {
+<span class="fc" id="L239">        return new LogEvent(</span>
+                EXTERNAL_API_STARTED_EVENT,
+                EXTERNAL_API_STARTED_SUMMARY,
+                LogLayer.EXTERNAL,
+                null,
+                null,
+<span class="fc" id="L245">                buildAttributes(</span>
+                        externalApiId, requestInfo, null, null,
+                        invocationSequence, null, requestContext));
+    }
+
+    private static LogEvent buildCompletedEvent(
+            final String externalApiId,
+            final Long invocationSequence,
+            final long latencyMs,
+            final RequestContext requestContext) {
+<span class="fc" id="L255">        return new LogEvent(</span>
+                EXTERNAL_API_COMPLETED_EVENT,
+                EXTERNAL_API_COMPLETED_SUMMARY,
+                LogLayer.EXTERNAL,
+                null,
+                null,
+<span class="fc" id="L261">                buildAttributes(</span>
+                        externalApiId, null, null, null,
+<span class="fc" id="L263">                        invocationSequence, latencyMs, requestContext));</span>
+    }
+
+    private static LogEvent buildFailedEvent(
+            final String externalApiId,
+            final String requestInfo,
+            final String responseInfo,
+            final Long invocationSequence,
+            final Long latencyMs,
+            final RequestContext requestContext,
+            final Instant failedAt) {
+<span class="fc" id="L274">        return buildFailedEvent(</span>
+                externalApiId, requestInfo, responseInfo, null, null,
+                invocationSequence, latencyMs, requestContext, failedAt);
+    }
+
+    private static LogEvent buildFailedEvent(
+            final String externalApiId,
+            final String requestInfo,
+            final String responseInfo,
+            final Integer httpStatus,
+            final String responseBody,
+            final Long invocationSequence,
+            final Long latencyMs,
+            final RequestContext requestContext,
+            final Instant failedAt) {
+<span class="fc" id="L289">        Map&lt;String, Object&gt; attributes = buildAttributes(</span>
+                externalApiId, requestInfo, responseInfo, responseBody,
+                invocationSequence, latencyMs, requestContext);
+<span class="fc" id="L292">        attributes.put(LogField.FAILED_AT.key(), ExternalApiLogTimestamp.format(failedAt));</span>
+<span class="fc" id="L293">        return new LogEvent(</span>
+                EXTERNAL_API_FAILED_EVENT,
+                EXTERNAL_API_FAILED_SUMMARY,
+                LogLayer.EXTERNAL,
+                httpStatus,
+                null,
+                attributes);
+    }
+
+    private static Map&lt;String, Object&gt; buildAttributes(
+            final String externalApiId,
+            final String requestInfo,
+            final String responseInfo,
+            final RequestContext requestContext) {
+<span class="nc" id="L307">        return buildAttributes(externalApiId, requestInfo, responseInfo, null, requestContext);</span>
+    }
+
+    private static Map&lt;String, Object&gt; buildAttributes(
+            final String externalApiId,
+            final String requestInfo,
+            final String responseInfo,
+            final String responseBody,
+            final RequestContext requestContext) {
+<span class="nc" id="L316">        return buildAttributes(</span>
+                externalApiId, requestInfo, responseInfo, responseBody,
+                null, null, requestContext);
+    }
+
+    private static Map&lt;String, Object&gt; buildAttributes(
+            final String externalApiId,
+            final String requestInfo,
+            final String responseInfo,
+            final String responseBody,
+            final Long invocationSequence,
+            final Long latencyMs,
+            final RequestContext requestContext) {
+<span class="fc" id="L329">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L330" title="1 of 4 branches missed.">        if (externalApiId != null &amp;&amp; !externalApiId.isBlank()) {</span>
+<span class="fc" id="L331">            attributes.put(FUNCTION_ID_ATTRIBUTE, externalApiId);</span>
+        }
+<span class="fc" id="L333">        String correlationId = safeGetCorrelationId(requestContext);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        if (correlationId != null) {</span>
+<span class="fc" id="L335">            attributes.put(LogField.CORRELATION_ID.key(), correlationId);</span>
+        }
+<span class="fc bfc" id="L337" title="All 2 branches covered.">        if (requestInfo != null) {</span>
+<span class="fc" id="L338">            attributes.put(REQUEST_INFO_ATTRIBUTE, requestInfo);</span>
+<span class="fc" id="L339">            String requestParams = extractRequestParams(requestInfo);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">            if (requestParams != null) {</span>
+<span class="fc" id="L341">                attributes.put(REQUEST_PARAMS_ATTRIBUTE, requestParams);</span>
+            }
+        }
+<span class="fc" id="L344">        String callPath = safeBuildCallPath(requestContext, externalApiId);</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        if (callPath != null) {</span>
+<span class="fc" id="L346">            attributes.put(LogField.CALL_PATH.key(), callPath);</span>
+        }
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (responseInfo != null) {</span>
+<span class="fc" id="L349">            attributes.put(RESPONSE_INFO_ATTRIBUTE, responseInfo);</span>
+        }
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (responseBody != null) {</span>
+<span class="fc" id="L352">            attributes.put(RESPONSE_BODY_ATTRIBUTE, responseBody);</span>
+        }
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        if (invocationSequence != null) {</span>
+<span class="fc" id="L355">            attributes.put(LogField.EXTERNAL_API_INVOCATION_SEQUENCE.key(), invocationSequence);</span>
+        }
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (latencyMs != null) {</span>
+<span class="fc" id="L358">            attributes.put(LogField.LATENCY_MS.key(), latencyMs);</span>
+        }
+<span class="fc" id="L360">        return attributes;</span>
+    }
+
+    private static Long safeNextExternalApiInvocationSequence(
+            final RequestContext requestContext) {
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L366">            return null;</span>
+        }
+        try {
+<span class="fc" id="L369">            return requestContext.nextExternalApiInvocationSequence();</span>
+<span class="nc" id="L370">        } catch (RuntimeException ex) {</span>
+<span class="nc" id="L371">            return null;</span>
+        }
+    }
+
+    private static long elapsedMillis(final long startedAtNanos) {
+<span class="fc" id="L376">        return Math.max(0L, System.nanoTime() - startedAtNanos) / 1_000_000L;</span>
+    }
+
+    private static void safeInfo(
+            final StructuredLogger logger,
+            final Supplier&lt;LogEvent&gt; eventSupplier) {
+        try {
+<span class="fc" id="L383">            logger.info(eventSupplier.get());</span>
+<span class="nc" id="L384">        } catch (RuntimeException ignored) {</span>
+            // Observability must not alter the external API result.
+<span class="fc" id="L386">        }</span>
+<span class="fc" id="L387">    }</span>
+
+    private static void safeError(
+            final StructuredLogger logger,
+            final Supplier&lt;LogEvent&gt; eventSupplier,
+            final Throwable throwable) {
+        try {
+<span class="fc" id="L394">            logger.error(eventSupplier.get(), throwable);</span>
+<span class="nc" id="L395">        } catch (RuntimeException ignored) {</span>
+            // Observability must not replace the original failure.
+<span class="fc" id="L397">        }</span>
+<span class="fc" id="L398">    }</span>
+
+    private static RequestContext resolveRequestContext() {
+        try {
+<span class="nc" id="L402">            return CDI.current().select(RequestContext.class).get();</span>
+<span class="fc" id="L403">        } catch (IllegalStateException | ContextNotActiveException ex) {</span>
+<span class="fc" id="L404">            return null;</span>
+        }
+    }
+
+    private static String safeGetCorrelationId(final RequestContext requestContext) {
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L410">            return null;</span>
+        }
+        try {
+<span class="fc" id="L413">            return requestContext.getCorrelationId().orElse(null);</span>
+<span class="fc" id="L414">        } catch (ContextNotActiveException ex) {</span>
+<span class="fc" id="L415">            return null;</span>
+        }
+    }
+
+    private static String safeBuildCallPath(
+            final RequestContext requestContext,
+            final String externalApiId) {
+<span class="fc bfc" id="L422" title="All 2 branches covered.">        if (requestContext == null) {</span>
+<span class="fc" id="L423">            return null;</span>
+        }
+        try {
+<span class="fc" id="L426">            return requestContext.buildCallPath(externalApiId);</span>
+<span class="fc" id="L427">        } catch (ContextNotActiveException ex) {</span>
+<span class="fc" id="L428">            return null;</span>
+        }
+    }
+
+    private static Integer extractHttpStatus(final WebApplicationException exception) {
+<span class="fc" id="L433">        Response response = exception.getResponse();</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        return response == null ? null : response.getStatus();</span>
+    }
+
+    private static String extractRequestParams(final String requestInfo) {
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">        if (requestInfo == null || requestInfo.isBlank()) {</span>
+<span class="nc" id="L439">            return null;</span>
+        }
+<span class="fc" id="L441">        int pathIndex = requestInfo.indexOf(&quot;path=&quot;);</span>
+<span class="fc bfc" id="L442" title="All 2 branches covered.">        if (pathIndex &lt; 0) {</span>
+<span class="fc" id="L443">            return null;</span>
+        }
+<span class="fc" id="L445">        int firstSeparatorIndex = requestInfo.indexOf(&quot;, &quot;, pathIndex);</span>
+<span class="pc bpc" id="L446" title="2 of 4 branches missed.">        if (firstSeparatorIndex &lt; 0 || firstSeparatorIndex + 2 &gt;= requestInfo.length()) {</span>
+<span class="nc" id="L447">            return null;</span>
+        }
+<span class="fc" id="L449">        return requestInfo.substring(firstSeparatorIndex + 2);</span>
+    }
+
+    /**
+     * WebApplicationException からレスポンス情報を抽出する。
+     *
+     * @param e 対象例外。型: WebApplicationException
+     * @return レスポンス情報文字列。型: String
+     */
+    private static ResponseLogInfo extractResponseInfo(final WebApplicationException e) {
+<span class="fc" id="L459">        Response response = e.getResponse();</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">        if (response == null) {</span>
+<span class="fc" id="L461">            return new ResponseLogInfo(&quot;status=unknown&quot;, null);</span>
+        }
+<span class="fc" id="L463">        int status = response.getStatus();</span>
+        String body;
+        try {
+<span class="fc bfc" id="L466" title="All 2 branches covered.">            if (response.hasEntity()) {</span>
+<span class="fc" id="L467">                response.bufferEntity();</span>
+<span class="fc" id="L468">                body = response.readEntity(String.class);</span>
+            } else {
+<span class="fc" id="L470">                body = null;</span>
+            }
+<span class="nc" id="L472">        } catch (RuntimeException suppressed) {</span>
+<span class="nc" id="L473">            body = null;</span>
+<span class="fc" id="L474">        }</span>
+<span class="fc" id="L475">        return new ResponseLogInfo(&quot;status=&quot; + status + &quot;, body=&quot; + body, body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

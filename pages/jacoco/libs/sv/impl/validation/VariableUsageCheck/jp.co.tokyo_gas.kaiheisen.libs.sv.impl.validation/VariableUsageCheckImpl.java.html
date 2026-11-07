@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VariableUsageCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-variableusagecheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">VariableUsageCheckImpl.java</span></div><h1>VariableUsageCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ThirtyDayConvertedUsageCalculation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ThirtyDayConvertedUsageCalculationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.UnitNumberExceededErrorJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.UnitNumberExceededErrorJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageJudgmentOutput;
+
+/**
+ * 概要: SV-304（変動使用量チェック）の実装クラス。
+ * 主な仕様:
+ * - 入力ガード、開栓中判定、３０日換算、号数超過エラー判定、変動使用量判定の順で処理する。
+ * - 途中でエラー条件が成立した場合は、変動使用量エラー有無フラグを true に設定して早期終了する。
+ * 既知の制約:
+ * - RequestContext 項目は下位 SV 側で参照する前提とし、本クラスの public メソッド引数へは露出しない。
+ */
+public final class VariableUsageCheckImpl implements VariableUsageCheck {
+
+<span class="fc" id="L30">    private static final BigDecimal ZERO = BigDecimal.ZERO;</span>
+
+    private final ThirtyDayConvertedUsageCalculation thirtyDayConvertedUsageCalculation;
+
+    private final UnitNumberExceededErrorJudgment unitNumberExceededErrorJudgment;
+
+    private final VariableUsageJudgment variableUsageJudgment;
+
+    private final RequestContext requestContext;
+
+    private final String openingStatus;
+
+    private final String initialMeterReadingRequiredCode;
+
+    /**
+     * 概要: 必須依存と定数を注入するコンストラクタ。
+     * 主な仕様:
+     * - ガスメーター開閉栓状態区分の「開栓中」と初回検針適用コードの「初回検針適用要」を定数ライブラリから解決する。
+     * - DI 依存はインスタンス生成時に fail-fast する。
+     *
+     * @param thirtyDayConvertedUsageCalculation SV-130
+     * @param unitNumberExceededErrorJudgment SV-265
+     * @param variableUsageJudgment SV-134
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public VariableUsageCheckImpl(
+            ThirtyDayConvertedUsageCalculation thirtyDayConvertedUsageCalculation,
+            UnitNumberExceededErrorJudgment unitNumberExceededErrorJudgment,
+            VariableUsageJudgment variableUsageJudgment,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L63">        this(</span>
+                thirtyDayConvertedUsageCalculation,
+                unitNumberExceededErrorJudgment,
+                variableUsageJudgment,
+            requestContext,
+<span class="fc" id="L68">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING),
+<span class="fc" id="L72">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        ciriusConstantService,
+                        ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.TYPE,
+                        ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode
+                                .INITIAL_METER_READING_REQUIRED));
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * 概要: テスト用に依存と定数を直接受け取るコンストラクタ。
+     * 主な仕様:
+     * - 条件判定に使用する定数値を直接与える。
+     * - DI 依存と定数文字列の null を fail-fast する。
+     *
+     * @param thirtyDayConvertedUsageCalculation SV-130
+     * @param unitNumberExceededErrorJudgment SV-265
+     * @param variableUsageJudgment SV-134
+     * @param requestContext リクエストコンテキスト
+     * @param openingStatus 開栓中状態コード
+     * @param initialMeterReadingRequiredCode 初回検針適用要コード
+     */
+    VariableUsageCheckImpl(
+            ThirtyDayConvertedUsageCalculation thirtyDayConvertedUsageCalculation,
+            UnitNumberExceededErrorJudgment unitNumberExceededErrorJudgment,
+            VariableUsageJudgment variableUsageJudgment,
+            RequestContext requestContext,
+            String openingStatus,
+<span class="fc" id="L98">            String initialMeterReadingRequiredCode) {</span>
+<span class="fc" id="L99">        this.thirtyDayConvertedUsageCalculation =</span>
+<span class="fc" id="L100">                Objects.requireNonNull(</span>
+                        thirtyDayConvertedUsageCalculation, &quot;thirtyDayConvertedUsageCalculation&quot;);
+<span class="fc" id="L102">        this.unitNumberExceededErrorJudgment =</span>
+<span class="fc" id="L103">                Objects.requireNonNull(</span>
+                        unitNumberExceededErrorJudgment, &quot;unitNumberExceededErrorJudgment&quot;);
+<span class="fc" id="L105">        this.variableUsageJudgment =</span>
+<span class="fc" id="L106">                Objects.requireNonNull(variableUsageJudgment, &quot;variableUsageJudgment&quot;);</span>
+<span class="fc" id="L107">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L108">        this.openingStatus = Objects.requireNonNull(openingStatus, &quot;openingStatus&quot;);</span>
+<span class="fc" id="L109">        this.initialMeterReadingRequiredCode =</span>
+<span class="fc" id="L110">                Objects.requireNonNull(</span>
+                        initialMeterReadingRequiredCode, &quot;initialMeterReadingRequiredCode&quot;);
+<span class="fc" id="L112">    }</span>
+
+    @Override
+    public VariableUsageCheckOutput execute(
+            String gmtKhsJtkb,
+            BigDecimal gmtGusu,
+            Integer kokiShyDdsu,
+            BigDecimal konSyry,
+            Integer znkiShyDdsu,
+            BigDecimal znkiSyry,
+            Integer zndmShyDdsu,
+            BigDecimal zndmSyry,
+            String skknTkyCd,
+            LocalDate knsYmd) {
+<span class="fc" id="L126">        requireRequestContext();</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">        if (isBlank(gmtKhsJtkb) || isBlank(skknTkyCd)) {</span>
+<span class="fc" id="L128">            return errorOutput();</span>
+        }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (isInvalidNumericInput(gmtGusu, kokiShyDdsu, znkiShyDdsu, zndmShyDdsu)) {</span>
+<span class="fc" id="L131">            return errorOutput();</span>
+        }
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!openingStatus.equals(gmtKhsJtkb)) {</span>
+<span class="fc" id="L134">            return normalOutput();</span>
+        }
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (konSyry.compareTo(ZERO) &lt; 0) {</span>
+<span class="fc" id="L137">            return errorOutput();</span>
+        }
+
+<span class="fc" id="L140">        BigDecimal currentUsage = convertUsage(konSyry, kokiShyDdsu);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (isUnitNumberExceeded(currentUsage, gmtGusu)) {</span>
+<span class="fc" id="L142">            return errorOutput();</span>
+        }
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (initialMeterReadingRequiredCode.equals(skknTkyCd)) {</span>
+<span class="fc" id="L145">            return normalOutput();</span>
+        }
+
+<span class="fc" id="L148">        BigDecimal previousUsage = convertUsage(znkiSyry, znkiShyDdsu);</span>
+<span class="fc" id="L149">        BigDecimal yearAgoUsage = convertUsage(zndmSyry, zndmShyDdsu);</span>
+<span class="fc" id="L150">        VariableUsageJudgmentOutput variableUsageJudgmentOutput =</span>
+<span class="fc" id="L151">                variableUsageJudgment.execute(</span>
+                        currentUsage,
+                        previousUsage,
+                        yearAgoUsage,
+                        znkiShyDdsu,
+                        zndmShyDdsu,
+                        knsYmd);
+<span class="fc" id="L158">        return new VariableUsageCheckOutput(variableUsageJudgmentOutput.hdsrErrUmFlg());</span>
+    }
+
+    /**
+     * 概要: 使用量を３０日換算する。
+     * 主な仕様:
+     * - SV-130 を呼び出し、戻り値の３０日換算後使用量を返す。
+     * - 下位例外は変換せず上位へ伝播する。
+     *
+     * @param usage 使用量
+     * @param usageDays 使用日数
+     * @return ３０日換算後使用量
+     */
+    private BigDecimal convertUsage(BigDecimal usage, Integer usageDays) {
+<span class="fc" id="L172">        ThirtyDayConvertedUsageCalculationOutput output =</span>
+<span class="fc" id="L173">                thirtyDayConvertedUsageCalculation.execute(usage, usageDays);</span>
+<span class="fc" id="L174">        return output.d30KnsnSyryZndm();</span>
+    }
+
+    /**
+     * 概要: 号数超過エラー判定を行う。
+     * 主な仕様:
+     * - SV-265 の戻り値に含まれる変動使用量エラー有無フラグをそのまま採用する。
+     * - true の場合は後続の SV-134 判定へ進まない。
+     *
+     * @param usage 今回使用量
+     * @param gmtGusu ガスメーター号数
+     * @return 号数超過エラーに該当する場合 true
+     */
+    private boolean isUnitNumberExceeded(BigDecimal usage, BigDecimal gmtGusu) {
+<span class="fc" id="L188">        UnitNumberExceededErrorJudgmentOutput output =</span>
+<span class="fc" id="L189">                unitNumberExceededErrorJudgment.execute(usage, gmtGusu);</span>
+<span class="fc" id="L190">        return Boolean.TRUE.equals(output.hdsrErrUmFlg());</span>
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+     * 主な仕様:
+     * - correlationId、hukkSysShbt、systemDatetime の存在を確認する。
+     * - 欠落がある場合は最初に検出した項目で処理を中断する。
+     */
+    private void requireRequestContext() {
+<span class="fc" id="L200">        requestContext.getCorrelationId()</span>
+<span class="fc" id="L201">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L202">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L203">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L204">        requestContext.getSystemDatetime()</span>
+<span class="fc" id="L205">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L206">    }</span>
+
+    /**
+     * 概要: 文字列入力が null または空文字かを判定する。
+     * 主な仕様:
+     * - trim は行わず、空文字のみを不正値とみなす。
+     * - null も不正値として扱う。
+     *
+     * @param value 判定対象
+     * @return null または空文字の場合 true
+     */
+    private boolean isBlank(String value) {
+<span class="fc bfc" id="L218" title="All 4 branches covered.">        return value == null || value.isEmpty();</span>
+    }
+
+    /**
+     * 概要: 数値入力の事前ガード条件を判定する。
+     * 主な仕様:
+     * - ガスメーター号数が 0 以下、またはいずれかの使用日数が負値の場合をエラーとする。
+     * - BigDecimal / Integer の null は呼び出し元前提のため compare 時にそのまま例外化される。
+     *
+     * @param gmtGusu ガスメーター号数
+     * @param kokiShyDdsu 今回使用日数
+     * @param znkiShyDdsu 前回使用日数
+     * @param zndmShyDdsu 前年同月使用日数
+     * @return 事前ガード条件に該当する場合 true
+     */
+    private boolean isInvalidNumericInput(
+            BigDecimal gmtGusu,
+            Integer kokiShyDdsu,
+            Integer znkiShyDdsu,
+            Integer zndmShyDdsu) {
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        return gmtGusu.compareTo(ZERO) &lt;= 0</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                || kokiShyDdsu &lt; 0</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                || znkiShyDdsu &lt; 0</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                || zndmShyDdsu &lt; 0;</span>
+    }
+
+    /**
+     * 概要: エラー結果を返却する。
+     * 主な仕様:
+     * - 変動使用量エラー有無フラグに true を設定する。
+     * - 早期終了分岐の共通返却値として使用する。
+     *
+     * @return エラー結果
+     */
+    private VariableUsageCheckOutput errorOutput() {
+<span class="fc" id="L253">        return new VariableUsageCheckOutput(Boolean.TRUE);</span>
+    }
+
+    /**
+     * 概要: 正常結果を返却する。
+     * 主な仕様:
+     * - 変動使用量エラー有無フラグに false を設定する。
+     * - フォールスルー終了分岐の共通返却値として使用する。
+     *
+     * @return 正常結果
+     */
+    private VariableUsageCheckOutput normalOutput() {
+<span class="fc" id="L265">        return new VariableUsageCheckOutput(Boolean.FALSE);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

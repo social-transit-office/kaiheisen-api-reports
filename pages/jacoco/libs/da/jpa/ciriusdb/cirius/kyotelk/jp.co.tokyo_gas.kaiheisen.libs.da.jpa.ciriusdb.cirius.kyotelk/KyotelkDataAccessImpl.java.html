@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KyotelkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-kyotelk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.kyotelk</a> &gt; <span class="el_source">KyotelkDataAccessImpl.java</span></div><h1>KyotelkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.kyotelk;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.write.KyotelkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.write.KyotelkUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.write.KyotelkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.write.KyotelkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** KYOTELK データアクセスの JPA 実装。 */
+public class KyotelkDataAccessImpl extends DataAccessBase implements KyotelkDataAccess {
+
+    private static final String TABLE_NAME = &quot;KYOTELK&quot;;
+
+    private static final String PK_WHERE_CLAUSE = &quot;KYO_TRK_NO = ? AND KYO_TEL_NO = ?&quot;;
+
+<span class="fc" id="L39">    private static final ReflectiveRecordEntityMapper&lt;KyotelkRecord, KyotelkEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L40">            ReflectiveRecordEntityMapper.create(KyotelkRecord.class, KyotelkEntity.class);</span>
+
+    private static final ReflectiveRecordEntityMapper&lt;KyotelkWriteRecord, KyotelkEntity&gt;
+<span class="fc" id="L43">            WRITE_MAPPER =</span>
+<span class="fc" id="L44">                    ReflectiveRecordEntityMapper.create(</span>
+                            KyotelkWriteRecord.class, KyotelkEntity.class);
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;KyotelkEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;KyotelkWriteRecord, KyotelkEntity, KyotelkColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;KyotelkWriteRecord, KyotelkEntity, KyotelkColumn&gt;
+            updateSupport;
+
+    /**
+     * JPA 実装を生成する。
+     *
+     * @param entityManager EntityManager
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public KyotelkDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="nc" id="L70">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="nc" id="L75">    }</span>
+
+    /**
+     * テスト用に時刻プロバイダを差し替えて生成する。
+     *
+     * @param entityManager EntityManager
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     * @param clock 時刻プロバイダ
+     */
+    KyotelkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock) {
+<span class="fc" id="L88">        this(entityManager, criteriaBuilderFactory, clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L89">    }</span>
+
+    /**
+     * テスト用に依存を差し替えて生成する。
+     *
+     * @param entityManager EntityManager
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     * @param clock 時刻プロバイダ
+     * @param auditColumnAutoSetter 監査列自動設定
+     */
+    KyotelkDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L103">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L104">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L105">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L106">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L107">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L108">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(KyotelkEntity.class);</span>
+<span class="fc" id="L109">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L110">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L111">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KyotelkWriteDefinition.INSTANCE,
+                        KyotelkEntity.class,
+<span class="fc" id="L117">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L118">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        KyotelkWriteDefinition.INSTANCE,
+                        KyotelkEntity.class,
+<span class="fc" id="L124">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L125">    }</span>
+
+    @Override
+    public int insert(KyotelkWriteRecord record, AuditContext context) {
+<span class="fc" id="L129">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L130">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L131">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L134">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L135">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public int deleteByKyoTrkNoAndKyoTelNoAndRecUpdJnjNo(
+            Long kyoTrkNo, String kyoTelNo, Integer recUpdJnjNo) {
+<span class="fc" id="L141">        BigDecimal safeKyoTrkNo = safeLong(kyoTrkNo, &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L142">        String safeKyoTelNo = safeKyoTelNo(kyoTelNo);</span>
+<span class="fc" id="L143">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L144">                .delete(</span>
+<span class="fc" id="L145">                        PreparedWhere.of(</span>
+                                PK_WHERE_CLAUSE,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L148">                                    int nextIndex = JpaBind.set(query, startIndex, safeKyoTrkNo);</span>
+<span class="fc" id="L149">                                    return JpaBind.set(query, nextIndex, safeKyoTelNo);</span>
+                                },
+                                safeKyoTrkNo,
+                                safeKyoTelNo),
+                        recUpdJnjNo,
+                        KyotelkDataAccess.Identifiers.DELETE_BY_KYO_TRK_NO_AND_KYO_TEL_NO_AND_REC_UPD_JNJ_NO);
+    }
+
+    @Override
+    public List&lt;KyotelkRecord&gt; findAllByKyoTrkNo(Long kyoTrkNo) {
+<span class="fc" id="L159">        BigDecimal safeKyoTrkNo = safeLong(kyoTrkNo, &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L160">        var builder = criteriaBuilderFactory.create(entityManager, KyotelkEntity.class);</span>
+<span class="fc" id="L161">        builder.where(&quot;kyoTrkNo&quot;)</span>
+<span class="fc" id="L162">                .eq(safeKyoTrkNo)</span>
+<span class="fc" id="L163">                .orderByDesc(&quot;telKnzShbt&quot;)</span>
+<span class="fc" id="L164">                .orderByAsc(&quot;telRrskShbt&quot;)</span>
+<span class="fc" id="L165">                .orderByAsc(&quot;telShbt&quot;)</span>
+<span class="fc" id="L166">                .orderByDesc(&quot;telShtkYmd&quot;)</span>
+<span class="fc" id="L167">                .orderByAsc(&quot;kyoTelNo&quot;);</span>
+<span class="fc" id="L168">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public Optional&lt;KyotelkRecord&gt; findByKyoTrkNo(Long kyoTrkNo) {
+<span class="fc" id="L173">        BigDecimal safeKyoTrkNo = safeLong(kyoTrkNo, &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L174">        var builder = criteriaBuilderFactory.create(entityManager, KyotelkEntity.class);</span>
+<span class="fc" id="L175">        builder.where(&quot;kyoTrkNo&quot;)</span>
+<span class="fc" id="L176">                .eq(safeKyoTrkNo)</span>
+<span class="fc" id="L177">                .orderByDesc(&quot;telKnzShbt&quot;)</span>
+<span class="fc" id="L178">                .orderByAsc(&quot;telRrskShbt&quot;)</span>
+<span class="fc" id="L179">                .orderByAsc(&quot;telShbt&quot;)</span>
+<span class="fc" id="L180">                .orderByDesc(&quot;telShtkYmd&quot;)</span>
+<span class="fc" id="L181">                .orderByAsc(&quot;kyoTelNo&quot;);</span>
+<span class="fc" id="L182">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public long countByKyoTrkNo(Long kyoTrkNo) {
+<span class="fc" id="L187">        BigDecimal safeKyoTrkNo = safeLong(kyoTrkNo, &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L188">        var query =</span>
+<span class="fc" id="L189">                entityManager.createNativeQuery(</span>
+                        &quot;SELECT COUNT(*) AS count FROM &quot; + TABLE_NAME + &quot; WHERE KYO_TRK_NO = :kyoTrkNo&quot;);
+<span class="fc" id="L191">        query.setParameter(&quot;kyoTrkNo&quot;, safeKyoTrkNo);</span>
+<span class="fc" id="L192">        return ((Number) query.getSingleResult()).longValue();</span>
+    }
+
+    @Override
+    public Optional&lt;KyotelkRecord&gt; findByKyoTrkNoAndKyoTelNo(Long kyoTrkNo, String kyoTelNo) {
+<span class="fc" id="L197">        BigDecimal safeKyoTrkNo = safeLong(kyoTrkNo, &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L198">        String safeKyoTelNo = safeKyoTelNo(kyoTelNo);</span>
+<span class="fc" id="L199">        var builder = criteriaBuilderFactory.create(entityManager, KyotelkEntity.class);</span>
+<span class="fc" id="L200">        builder.where(&quot;kyoTrkNo&quot;)</span>
+<span class="fc" id="L201">                .eq(safeKyoTrkNo)</span>
+<span class="fc" id="L202">                .where(&quot;kyoTelNo&quot;)</span>
+<span class="fc" id="L203">                .eq(safeKyoTelNo);</span>
+<span class="fc" id="L204">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public int updateByKyoTrkNoAndKyoTelNoAndRecUpdJnjNo(
+            KyotelkWriteRecord record,
+            Set&lt;KyotelkColumn&gt; targetColumns,
+            KyotelkUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L213">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L214">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L215">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L216">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L217">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L218">        BigDecimal safeKyoTrkNo = safeLong(updateKey.kyoTrkNo(), &quot;kyoTrkNo&quot;);</span>
+<span class="fc" id="L219">        String safeKyoTelNo = safeKyoTelNo(updateKey.kyoTelNo());</span>
+<span class="fc" id="L220">        Set&lt;KyotelkColumn&gt; canonicalTargetColumns = canonicalTargetColumns(targetColumns);</span>
+<span class="fc" id="L221">        return updateSupport.update(</span>
+                record,
+                canonicalTargetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L225">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L226">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L230">                PreparedWhere.of(</span>
+                        PK_WHERE_CLAUSE,
+                        (query, startIndex) -&gt; {
+<span class="fc" id="L233">                            int nextIndex = JpaBind.set(query, startIndex, safeKyoTrkNo);</span>
+<span class="fc" id="L234">                            return JpaBind.set(query, nextIndex, safeKyoTelNo);</span>
+                        },
+                        safeKyoTrkNo,
+                        safeKyoTelNo),
+<span class="fc" id="L238">                updateKey.recUpdJnjNo(),</span>
+                KyotelkDataAccess.Identifiers.UPDATE_BY_KYO_TRK_NO_AND_KYO_TEL_NO_AND_REC_UPD_JNJ_NO);
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L243">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L244">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static String safeKyoTelNo(String value) {
+<span class="fc" id="L248">        return WhereParamGuard.fixedLengthNotNull(value, &quot;kyoTelNo&quot;, 13);</span>
+    }
+
+    private static Set&lt;KyotelkColumn&gt; canonicalTargetColumns(Set&lt;KyotelkColumn&gt; targetColumns) {
+<span class="fc" id="L252">        EnumSet&lt;KyotelkColumn&gt; canonicalColumns = EnumSet.noneOf(KyotelkColumn.class);</span>
+<span class="fc" id="L253">        canonicalColumns.addAll(targetColumns);</span>
+<span class="fc" id="L254">        return canonicalColumns;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

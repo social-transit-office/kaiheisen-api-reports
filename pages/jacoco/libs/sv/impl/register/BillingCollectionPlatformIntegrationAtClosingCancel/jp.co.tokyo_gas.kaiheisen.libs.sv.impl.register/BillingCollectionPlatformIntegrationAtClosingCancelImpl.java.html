@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationAtClosingCancelImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-billingcollectionplatformintegrationatclosingcancel</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationAtClosingCancelImpl.java</span></div><h1>BillingCollectionPlatformIntegrationAtClosingCancelImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhou;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhouTourokuCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.heisenkannrenji_idoujouhou_touroku.HeisenkannrenjiIdoujouhouTourokuRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.irslhs.IrslhsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.irslhs.write.IrslhsWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.BillingCollectionPlatformIntegrationAtClosingCancel;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf;
+
+/**
+ * 概要: SV-100（閉栓取消時請求回収基盤連携）の実装。
+ * 主な仕様:
+ * - `svkyFkktFlg=true` の場合は helper TSV `他-045_4x復活.tsv` に従って `他-045` を実行し、
+ *   続けて `DA-031-C001` へ IRSLHS を登録する。
+ * - `svkyFkktFlg=false` の場合は `isrrGymCd=CCBG84` かつ `kkysSisnJtkb` 設定済みのときだけ
+ *   helper TSV `他-045_供給停止取消.tsv` に従って `他-045` を実行し、続けて IRSLHS を登録する。
+ * - 上記以外の条件では何も連携せずに終了する。
+ * 既知の制約:
+ * - `step 1.b.1.a.1.a` は best-effort で `nullでも空文字でもない` と解釈する。
+ * - `DA-031-C001.tsv` の 7 行目は `sihKiyNo` の設定指示と解釈する。
+ */
+public final class BillingCollectionPlatformIntegrationAtClosingCancelImpl
+        implements BillingCollectionPlatformIntegrationAtClosingCancel {
+
+    static final String SERVICE_USER_ID = &quot;KHSS100&quot;;
+
+<span class="fc" id="L41">    private static final DateTimeFormatter BASIC_DATE = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private static final long DEFAULT_GAS_METER_LOCATION_NUMBER = 11111111111L;
+
+<span class="fc" id="L45">    private static final Integer OPEN_END_DATE_VALUE = 99991231;</span>
+
+<span class="fc" id="L47">    private static final Integer OPEN_END_YEAR_MONTH_VALUE = 999912;</span>
+
+<span class="fc" id="L49">    private static final Integer ZERO_VALUE = 0;</span>
+
+    private static final String EMPTY_STRING = &quot;&quot;;
+
+    private final HeisenkannrenjiIdoujouhouTourokuCiriusAdapter other045Adapter;
+
+    private final IrslhsDataAccess irslhsDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String presenceFlagNothing;
+
+    private final String presenceFlagYes;
+
+    private final String paymentContractStatusApplying;
+
+    private final String allAtOnceFinalInstallmentBillingServiceType;
+
+    private final String allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType;
+
+    /**
+     * 概要: SV-100 の実行に必要な依存と必須定数を初期化する。
+     *
+     * @param other045Adapter 他-045 adapter
+     * @param irslhsDataAccess DA-031-C001
+     * @param requestContext RequestContext
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    @Inject
+    public BillingCollectionPlatformIntegrationAtClosingCancelImpl(
+            HeisenkannrenjiIdoujouhouTourokuCiriusAdapter other045Adapter,
+            IrslhsDataAccess irslhsDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L86">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L87">        this.other045Adapter = Objects.requireNonNull(other045Adapter, &quot;other045Adapter&quot;);</span>
+<span class="fc" id="L88">        this.irslhsDataAccess = Objects.requireNonNull(irslhsDataAccess, &quot;irslhsDataAccess&quot;);</span>
+<span class="fc" id="L89">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L90">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L93">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L94">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L95">        this.presenceFlagNothing = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.NOTHING);
+<span class="fc" id="L99">        this.presenceFlagYes = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PresenceFlag.TYPE,
+                ConstantLookupKeys.Cirius.PresenceFlag.YES);
+<span class="fc" id="L103">        this.paymentContractStatusApplying = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L107">        this.allAtOnceFinalInstallmentBillingServiceType =</span>
+<span class="fc" id="L108">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                        ConstantLookupKeys.Cirius.BillingServiceType.ALL_AT_ONCE_FINAL_INSTALLMENT);
+<span class="fc" id="L112">        this.allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType =</span>
+<span class="fc" id="L113">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                        ConstantLookupKeys.Cirius.BillingServiceType.ALL_AT_ONCE_NEXT_3RD_BUSINESS_YEAR_CLOSING_AVAILABLE_AT_SHORT_NOTICE);
+<span class="fc" id="L117">    }</span>
+
+    /** 概要: 閉栓取消時の請求回収基盤連携を実行する。 */
+    @Override
+    public void execute(
+            Boolean svkyFkktFlg,
+            Boolean sihakyFkktFlg,
+            BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf sihakyInf,
+            BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf svckyaInf,
+            Boolean suguFlg,
+            LocalDate trkTishYmd,
+            String isrrGymCd) {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (Boolean.TRUE.equals(svkyFkktFlg)) {</span>
+<span class="fc" id="L130">            executeIntegration(</span>
+<span class="fc" id="L131">                    buildRevivalPayload(</span>
+                            sihakyInf,
+                            svckyaInf,
+<span class="fc" id="L134">                            Boolean.TRUE.equals(sihakyFkktFlg),</span>
+<span class="fc" id="L135">                            Boolean.TRUE.equals(suguFlg),</span>
+<span class="fc" id="L136">                            requireSystemDatetime()),</span>
+                    sihakyInf,
+                    trkTishYmd);
+<span class="fc" id="L139">            return;</span>
+        }
+
+<span class="fc" id="L142">        if (!ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                .equals(isrrGymCd)) {</span>
+<span class="fc" id="L144">            return;</span>
+        }
+
+<span class="pc bpc" id="L147" title="1 of 4 branches missed.">        if (svckyaInf.kkysSisnJtkb() == null || svckyaInf.kkysSisnJtkb().isEmpty()) {</span>
+<span class="fc" id="L148">            return;</span>
+        }
+
+<span class="fc" id="L151">        executeIntegration(</span>
+<span class="fc" id="L152">                buildSupplyStopCancelPayload(</span>
+                        svckyaInf,
+<span class="fc" id="L154">                        Boolean.TRUE.equals(suguFlg),</span>
+<span class="fc" id="L155">                        requireSystemDatetime()),</span>
+                sihakyInf,
+                trkTishYmd);
+<span class="fc" id="L158">    }</span>
+
+    private void executeIntegration(
+            HeisenkannrenjiIdoujouhou payload,
+            BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf sihakyInf,
+            LocalDate trkTishYmd) {
+<span class="fc" id="L164">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L165">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L166">        other045Adapter.register(new HeisenkannrenjiIdoujouhouTourokuRequest(payload));</span>
+<span class="fc" id="L167">        irslhsDataAccess.insert(</span>
+<span class="fc" id="L168">                buildIrslhsWriteRecord(systemDatetime, payload, sihakyInf, trkTishYmd),</span>
+<span class="fc" id="L169">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc" id="L170">    }</span>
+
+    private HeisenkannrenjiIdoujouhou buildRevivalPayload(
+            BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf sihakyInf,
+            BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf svckyaInf,
+            boolean sihakyFkktFlg,
+            boolean suguFlg,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L178">        return new HeisenkannrenjiIdoujouhou(</span>
+                EMPTY_STRING,
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                sihakyInf == null ? 0L : sihakyInf.sikKrno(),</span>
+<span class="fc" id="L181">                svckyaInf.sqtiKiyNo(),</span>
+<span class="fc" id="L182">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L183">                svckyaInf.skno(),</span>
+                paymentContractStatusApplying,
+<span class="fc" id="L185">                resolveGasMeterLocationNo(suguFlg, svckyaInf),</span>
+<span class="fc" id="L186">                signedDateOf(svckyaInf.rkkiSttYmd()),</span>
+<span class="fc" id="L187">                signedDateOf(svckyaInf.rkkiEndYmd()),</span>
+                presenceFlagYes,
+                presenceFlagNothing,
+                presenceFlagNothing,
+                presenceFlagNothing,
+                presenceFlagNothing,
+<span class="fc" id="L193">                signedDateOf(systemDatetime.toLocalDate()),</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">                sihakyFkktFlg</span>
+                        ? ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+<span class="fc" id="L196">                                .BILLABLE_PAYMENT_MANAGEMENT_TRANSFER</span>
+<span class="fc" id="L197">                        : EMPTY_STRING,</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                sihakyFkktFlg ? OPEN_END_DATE_VALUE : ZERO_VALUE,</span>
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType
+                        .NO_SERVICE_SUSPENSION_OR_CANCELLATION,
+                OPEN_END_DATE_VALUE,
+                OPEN_END_DATE_VALUE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_CONTRACT_MANAGEMENT_TRANSFER,
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                sihakyInf == null ? ZERO_VALUE : resolveRevivalIkskEndYm(sihakyInf.sikSvcShbt()),</span>
+                EMPTY_STRING,
+                EMPTY_STRING,
+<span class="fc" id="L208">                0L,</span>
+                ZERO_VALUE,
+                EMPTY_STRING,
+                EMPTY_STRING,
+<span class="fc" id="L212">                0L,</span>
+                ZERO_VALUE);
+    }
+
+    private HeisenkannrenjiIdoujouhou buildSupplyStopCancelPayload(
+            BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf svckyaInf,
+            boolean suguFlg,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L220">        return new HeisenkannrenjiIdoujouhou(</span>
+                EMPTY_STRING,
+<span class="fc" id="L222">                0L,</span>
+<span class="fc" id="L223">                svckyaInf.sqtiKiyNo(),</span>
+<span class="fc" id="L224">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L225">                svckyaInf.skno(),</span>
+                paymentContractStatusApplying,
+<span class="fc" id="L227">                resolveGasMeterLocationNo(suguFlg, svckyaInf),</span>
+<span class="fc" id="L228">                signedDateOf(svckyaInf.rkkiSttYmd()),</span>
+<span class="fc" id="L229">                signedDateOf(svckyaInf.rkkiEndYmd()),</span>
+                presenceFlagYes,
+                presenceFlagNothing,
+                presenceFlagNothing,
+                presenceFlagNothing,
+                presenceFlagNothing,
+<span class="fc" id="L235">                signedDateOf(systemDatetime.toLocalDate()),</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_PAYMENT_MANAGEMENT_TRANSFER,
+                ZERO_VALUE,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType
+                        .NO_SERVICE_SUSPENSION_OR_CANCELLATION,
+                OPEN_END_DATE_VALUE,
+                ZERO_VALUE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail
+                        .BILLABLE_CONTRACT_MANAGEMENT_TRANSFER,
+                ZERO_VALUE,
+                EMPTY_STRING,
+                EMPTY_STRING,
+<span class="fc" id="L248">                0L,</span>
+                ZERO_VALUE,
+                EMPTY_STRING,
+                EMPTY_STRING,
+<span class="fc" id="L252">                0L,</span>
+                ZERO_VALUE);
+    }
+
+    private IrslhsWriteRecord buildIrslhsWriteRecord(
+            LocalDateTime systemDatetime,
+            HeisenkannrenjiIdoujouhou payload,
+            BillingCollectionPlatformIntegrationAtClosingCancelSihakyInf sihakyInf,
+            LocalDate trkTishYmd) {
+        Long sihKiyNo;
+<span class="fc bfc" id="L262" title="All 4 branches covered.">        if (sihakyInf != null &amp;&amp; hasTargetContractNumber(payload.skrkSqtkJhu())) {</span>
+<span class="fc" id="L263">            sihKiyNo = sihakyInf.sihKiyNo();</span>
+        } else {
+<span class="fc" id="L265">            sihKiyNo = Long.valueOf(0L);</span>
+        }
+<span class="fc" id="L267">        return new IrslhsWriteRecord(</span>
+<span class="fc" id="L268">                systemDatetime.toLocalDate(),</span>
+<span class="fc" id="L269">                toHms(systemDatetime),</span>
+<span class="fc" id="L270">                payload.gasMtstNo(),</span>
+<span class="fc" id="L271">                presenceFlagYes.equals(payload.trksUmFlg()),</span>
+<span class="fc" id="L272">                presenceFlagYes.equals(payload.olkyUmFlg()),</span>
+<span class="fc" id="L273">                payload.gasMtstNo(),</span>
+<span class="fc" id="L274">                payload.svkyNo(),</span>
+                sihKiyNo,
+<span class="fc" id="L276">                payload.skrkSqkrJhu(),</span>
+<span class="fc" id="L277">                payload.skrkSqtkJhu(),</span>
+                trkTishYmd,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private long resolveGasMeterLocationNo(
+            boolean suguFlg,
+            BillingCollectionPlatformIntegrationAtClosingCancelSvckyaInf svckyaInf) {
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        return suguFlg ? svckyaInf.svkyNo() : DEFAULT_GAS_METER_LOCATION_NUMBER;</span>
+    }
+
+    private boolean hasTargetContractNumber(String value) {
+<span class="pc bpc" id="L297" title="1 of 4 branches missed.">        if (value == null || value.isEmpty()) {</span>
+<span class="fc" id="L298">            return false;</span>
+        }
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (isSxTargetContractNumber(value)) {</span>
+<span class="fc" id="L301">            return true;</span>
+        }
+        try {
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">            return Long.parseLong(value) &gt; 0L;</span>
+<span class="nc" id="L305">        } catch (NumberFormatException ignored) {</span>
+<span class="nc" id="L306">            return false;</span>
+        }
+    }
+
+    private boolean isSxTargetContractNumber(String value) {
+<span class="fc" id="L311">        return value.startsWith(&quot;S&quot;);</span>
+    }
+
+    private Integer resolveRevivalIkskEndYm(String sikSvcShbt) {
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        if (allAtOnceFinalInstallmentBillingServiceType.equals(sikSvcShbt)</span>
+                || allAtOnceNext3rdBusinessYearClosingAvailableAtShortNoticeBillingServiceType
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                        .equals(sikSvcShbt)) {</span>
+<span class="fc" id="L318">            return OPEN_END_YEAR_MONTH_VALUE;</span>
+        }
+<span class="fc" id="L320">        return ZERO_VALUE;</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L324">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L325">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L326">        String decodedOriginFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (decodedOriginFunctionId == null) {</span>
+<span class="nc" id="L330">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE
+                            + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L335">        return decodedOriginFunctionId;</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L339">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L340">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private Integer signedDateOf(LocalDate value) {
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">        return value == null ? null : Integer.valueOf(value.format(BASIC_DATE));</span>
+    }
+
+    private int toHms(LocalDateTime value) {
+<span class="fc" id="L348">        return value.getHour() * 10000 + value.getMinute() * 100 + value.getSecond();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

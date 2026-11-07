@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NcisCisAuditColumnAutoSetter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">NcisCisAuditColumnAutoSetter.java</span></div><h1>NcisCisAuditColumnAutoSetter.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Objects;
+import java.util.function.Function;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+
+/**
+ * NCIS/CIS 監査列を DA 管理対象として自動設定する adapter。
+ */
+public final class NcisCisAuditColumnAutoSetter {
+
+    private static final String DEFAULT_TRANSACTION_NUMBER = &quot;KHS&quot;;
+
+<span class="fc" id="L17">    private static final DateTimeFormatter TASK_NO_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    private final String transactionNumber;
+
+    private final Function&lt;LocalDateTime, LocalDate&gt; businessDateResolver;
+
+    private final Function&lt;LocalDateTime, Integer&gt; taskNumberResolver;
+
+    /**
+     * 標準設定の adapter を生成する。
+     */
+    public NcisCisAuditColumnAutoSetter() {
+<span class="fc" id="L29">        this(</span>
+                DEFAULT_TRANSACTION_NUMBER,
+                LocalDateTime::toLocalDate,
+                NcisCisAuditColumnAutoSetter::defaultTaskNumber
+        );
+<span class="fc" id="L34">    }</span>
+
+    /**
+     * トランザクション番号のみ差し替えた adapter を生成する。
+     *
+     * @param transactionNumber 更新トランザクション番号
+     */
+    public NcisCisAuditColumnAutoSetter(String transactionNumber) {
+<span class="fc" id="L42">        this(</span>
+                transactionNumber,
+                LocalDateTime::toLocalDate,
+                NcisCisAuditColumnAutoSetter::defaultTaskNumber
+        );
+<span class="fc" id="L47">    }</span>
+
+    /**
+     * 監査列設定ルールを指定して adapter を生成する。
+     *
+     * @param transactionNumber 更新トランザクション番号
+     * @param businessDateResolver 業務日付解決
+     * @param taskNumberResolver 更新タスク番号解決
+     */
+    public NcisCisAuditColumnAutoSetter(
+            String transactionNumber,
+            Function&lt;LocalDateTime, LocalDate&gt; businessDateResolver,
+            Function&lt;LocalDateTime, Integer&gt; taskNumberResolver
+<span class="fc" id="L60">    ) {</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">        if (transactionNumber == null || transactionNumber.isBlank()) {</span>
+<span class="nc" id="L62">            throw new IllegalArgumentException(&quot;transactionNumber must not be blank&quot;);</span>
+        }
+<span class="fc" id="L64">        this.transactionNumber = transactionNumber.trim();</span>
+<span class="fc" id="L65">        this.businessDateResolver = Objects.requireNonNull(businessDateResolver, &quot;businessDateResolver&quot;);</span>
+<span class="fc" id="L66">        this.taskNumberResolver = Objects.requireNonNull(taskNumberResolver, &quot;taskNumberResolver&quot;);</span>
+<span class="fc" id="L67">    }</span>
+
+    /**
+     * insert 時の監査列を設定する。
+     *
+     * @param access 列アクセス
+     * @param context 呼び出し元コンテキスト
+     * @param clock システム日時プロバイダ
+     */
+    public void applyForInsert(
+            AuditColumnAccess access,
+            AuditContext context,
+            SystemDateTimeProvider clock
+    ) {
+<span class="fc" id="L81">        apply(access, DataAccessWriteOperation.INSERT, context, clock, null);</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * update 時の監査列を設定する。
+     *
+     * @param access 列アクセス
+     * @param context 呼び出し元コンテキスト
+     * @param clock システム日時プロバイダ
+     * @param currentRecUpdJnjNo 現在の排他順序番号
+     */
+    public void applyForUpdate(
+            AuditColumnAccess access,
+            AuditContext context,
+            SystemDateTimeProvider clock,
+            Integer currentRecUpdJnjNo
+    ) {
+<span class="fc" id="L98">        apply(access, DataAccessWriteOperation.UPDATE, context, clock, currentRecUpdJnjNo);</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * 操作種別に応じて監査列を設定する。
+     *
+     * @param access 列アクセス
+     * @param operation 操作種別
+     * @param context 呼び出し元コンテキスト
+     * @param clock システム日時プロバイダ
+     * @param currentRecUpdJnjNo 現在の排他順序番号。insert 時は不要
+     */
+    public void apply(
+            AuditColumnAccess access,
+            DataAccessWriteOperation operation,
+            AuditContext context,
+            SystemDateTimeProvider clock,
+            Integer currentRecUpdJnjNo
+    ) {
+<span class="fc" id="L117">        Objects.requireNonNull(access, &quot;access&quot;);</span>
+<span class="fc" id="L118">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L119">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L120">        Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+
+<span class="fc" id="L122">        LocalDateTime currentDateTime = Objects.requireNonNull(clock.currentDateTime(), &quot;clock.currentDateTime()&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        Integer nextRecUpdJnjNo = switch (operation) {</span>
+<span class="fc" id="L124">            case INSERT -&gt; 1;</span>
+<span class="fc" id="L125">            case UPDATE -&gt; Math.addExact(Objects.requireNonNull(currentRecUpdJnjNo, &quot;currentRecUpdJnjNo&quot;), 1);</span>
+        };
+<span class="fc" id="L127">        AuditColumnPolicyApplier.apply(</span>
+<span class="fc" id="L128">                createPolicy(context, currentDateTime, nextRecUpdJnjNo),</span>
+                operation,
+                access
+        );
+<span class="fc" id="L132">    }</span>
+
+    private AuditColumnPolicy createPolicy(
+            AuditContext context,
+            LocalDateTime currentDateTime,
+            Integer nextRecUpdJnjNo
+    ) {
+<span class="fc" id="L139">        AuditColumnValueContext valueContext = new AuditColumnValueContext(</span>
+<span class="fc" id="L140">                Objects.requireNonNull(</span>
+<span class="fc" id="L141">                        businessDateResolver.apply(currentDateTime),</span>
+                        &quot;businessDateResolver.apply(currentDateTime)&quot;
+                ),
+                currentDateTime,
+<span class="fc" id="L145">                context.userId(),</span>
+                transactionNumber,
+<span class="fc" id="L147">                Objects.requireNonNull(</span>
+<span class="fc" id="L148">                        taskNumberResolver.apply(currentDateTime),</span>
+                        &quot;taskNumberResolver.apply(currentDateTime)&quot;
+                ),
+                nextRecUpdJnjNo,
+                null
+        );
+<span class="fc" id="L154">        return AuditColumnPolicy.of(</span>
+                AuditColumnPattern.PATTERN2,
+<span class="fc" id="L156">                AuditColumnValueResolvers.from(valueContext)</span>
+        );
+    }
+
+    private static Integer defaultTaskNumber(LocalDateTime currentDateTime) {
+<span class="fc" id="L161">        return Integer.parseInt(TASK_NO_FORMATTER.format(currentDateTime));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

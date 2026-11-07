@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GasMeterLocationInfoUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-gasmeterlocationinfoupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">GasMeterLocationInfoUpdateForRevivalImpl.java</span></div><h1>GasMeterLocationInfoUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetk.GmtsetkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.GasMeterLocationInfoUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.GasMeterLocationInfoUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetdUpdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.GmtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MtsetkUpdInf;
+
+/**
+ * SV-105（ガスメーター設置場所情報更新（契約復活））のサービス実装。
+ * 主な仕様:
+ * - 導管側の設置場所情報を条件検索し、取得件数分だけ小売側の設置場所情報を確認する。
+ * - 小売側情報が存在する場合は SV-119 を呼び出して開栓状態への更新を委譲する。
+ * - 小売側情報が見つからない場合は DataInconsistencyException を送出する。
+ * 既知の制約:
+ * - public API は RequestContext 項目を引数に持たない。
+ */
+public class GasMeterLocationInfoUpdateForRevivalImpl
+        implements GasMeterLocationInfoUpdateForRevival {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GmtsetkDataAccess gmtsetkDataAccess;
+
+    private final GasMeterLocationInfoUpdate gasMeterLocationInfoUpdate;
+
+    private final String withoutExclusionDivision;
+
+    private final String openingGasMeterStatus;
+
+    /**
+     * SV-105 実装に必要な依存オブジェクトと必須定数を初期化する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param gmtsetkDataAccess ガスメーター設置場所＜小売＞データアクセス
+     * @param gasMeterLocationInfoUpdate ガスメーター設置場所情報更新サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public GasMeterLocationInfoUpdateForRevivalImpl(
+            final GmtsetdDataAccess gmtsetdDataAccess,
+            final GmtsetkDataAccess gmtsetkDataAccess,
+            final GasMeterLocationInfoUpdate gasMeterLocationInfoUpdate,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L61">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.gmtsetdDataAccess = Objects.requireNonNull(</span>
+                gmtsetdDataAccess,
+                &quot;gmtsetdDataAccess&quot;);
+<span class="fc" id="L65">        this.gmtsetkDataAccess = Objects.requireNonNull(</span>
+                gmtsetkDataAccess,
+                &quot;gmtsetkDataAccess&quot;);
+<span class="fc" id="L68">        this.gasMeterLocationInfoUpdate = Objects.requireNonNull(</span>
+                gasMeterLocationInfoUpdate,
+                &quot;gasMeterLocationInfoUpdate&quot;);
+<span class="fc" id="L71">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L74">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L77">        this.withoutExclusionDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.Exclusive.TYPE,
+                ConstantLookupKeys.Kaiheisen.Exclusive.NO_EXCLUSION);
+<span class="fc" id="L81">        this.openingGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L85">    }</span>
+
+    /**
+     * 契約復活向けのガスメーター設置場所情報更新を実行する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kasYmd 開栓年月日
+     * @param hesnYmd 閉栓年月日
+     */
+    @Override
+    public void execute(
+            final Long gasMtstNo,
+            final LocalDate kasYmd,
+            final LocalDate hesnYmd) {
+<span class="fc" id="L99">        List&lt;GmtsetdRecord&gt; conduitRecords = gmtsetdDataAccess</span>
+<span class="fc" id="L100">                .findAllByGasMtstNoAndKasYmdAndHesnYmd(gasMtstNo, kasYmd, hesnYmd);</span>
+
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (GmtsetdRecord conduitRecord : conduitRecords) {</span>
+<span class="fc" id="L103">            GmtsetkRecord retailRecord = gmtsetkDataAccess</span>
+<span class="fc" id="L104">                    .findByGasMtstNoAndTkysYmd(gasMtstNo, conduitRecord.tkysYmd())</span>
+<span class="fc" id="L105">                    .orElseThrow(() -&gt; createRetailLocationDataInconsistency(</span>
+                            gasMtstNo,
+<span class="fc" id="L107">                            conduitRecord.tkysYmd()));</span>
+
+<span class="fc" id="L109">            gasMeterLocationInfoUpdate.execute(</span>
+                    withoutExclusionDivision,
+                    new GmtsetdInf(
+                            gasMtstNo,
+<span class="fc" id="L113">                            conduitRecord.tkysYmd(),</span>
+<span class="fc" id="L114">                            conduitRecord.tyenYmd(),</span>
+                            null),
+                    new GmtsetkInf(
+<span class="fc" id="L117">                            retailRecord.gasMtstNo(),</span>
+<span class="fc" id="L118">                            retailRecord.tkysYmd(),</span>
+                            null),
+                    new MtsetkInf(null, null, null),
+                    new GmtsetdUpdInf(
+                            openingGasMeterStatus,
+<span class="fc" id="L123">                            conduitRecord.kasYmd(),</span>
+                            null,
+<span class="fc" id="L125">                            conduitRecord.kasJysb(),</span>
+                            null,
+                            null),
+                    new MtsetkUpdInf(null, null, null, null, null));
+<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">    }</span>
+
+    private DataInconsistencyException createRetailLocationDataInconsistency(
+            final Long gasMtstNo,
+            final LocalDate tkysYmd) {
+<span class="fc" id="L135">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L136">                gmtsetkDataAccess.tableName(),</span>
+<span class="fc" id="L137">                GmtsetkDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L139">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L140">                        .put(&quot;tkysYmd&quot;, tkysYmd));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

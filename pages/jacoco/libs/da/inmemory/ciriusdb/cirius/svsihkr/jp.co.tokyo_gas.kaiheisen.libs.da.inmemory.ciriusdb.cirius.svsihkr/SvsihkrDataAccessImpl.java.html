@@ -1,0 +1,468 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SvsihkrDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-svsihkr</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.svsihkr</a> &gt; <span class="el_source">SvsihkrDataAccessImpl.java</span></div><h1>SvsihkrDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.svsihkr;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrSknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrSknoOptionalUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-044 の SQL 挙動を再現するインメモリ実装。 */
+public class SvsihkrDataAccessImpl extends DataAccessBase implements SvsihkrDataAccess {
+
+    private static final int SIH_KIY_JTKB_LENGTH = 2;
+
+    private static final int SHZI_KBN_LENGTH = 2;
+
+<span class="fc" id="L39">    private static final LocalDate COMPLEMENT_YMD = LocalDate.MIN;</span>
+
+<span class="fc" id="L41">    private static final ReflectiveInMemoryRowMapper&lt;SvsihkrColumn, SvsihkrRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L42">            ReflectiveInMemoryRowMapper.create(SvsihkrColumn.class, SvsihkrRecord.class);</span>
+
+<span class="fc" id="L44">    private static final AutoNeutralValueResolver&lt;SvsihkrColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L45">            AutoNeutralValueResolver.create(SvsihkrColumn.class, SvsihkrRecord.class);</span>
+
+<span class="fc" id="L47">    private final List&lt;EnumMap&lt;SvsihkrColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;SvsihkrWriteRecord, SvsihkrColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;SvsihkrWriteRecord, SvsihkrColumn&gt;
+            updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public SvsihkrDataAccessImpl() {
+<span class="fc" id="L60">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * テスト用の依存差し替え付きで初期化する。
+     *
+     * @param clock システム日時プロバイダ
+     * @param auditColumnAutoSetter 監査列自動設定
+     */
+    SvsihkrDataAccessImpl(
+<span class="fc" id="L70">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L71">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L72">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L73">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L74">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(SvsihkrWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L76">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        SvsihkrWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * テスト用にレコードを追加する。
+     *
+     * @param record レコード
+     * @return このインスタンス
+     */
+    public SvsihkrDataAccessImpl addRow(SvsihkrRecord record) {
+<span class="fc" id="L88">        EnumMap&lt;SvsihkrColumn, Object&gt; values =</span>
+<span class="fc" id="L89">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L90">        NEUTRAL_VALUE_RESOLVER.complement(values, SvsihkrWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L91">        rows.add(values);</span>
+<span class="fc" id="L92">        return this;</span>
+    }
+
+    /**
+     * テスト用に保持している登録済みレコードを返す。
+     *
+     * @return 登録済みレコード一覧
+     */
+    public List&lt;SvsihkrRecord&gt; getRows() {
+<span class="fc" id="L101">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int insert(SvsihkrWriteRecord record, AuditContext context) {
+<span class="fc" id="L106">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L107">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L109">        rows.add(</span>
+<span class="fc" id="L110">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L113">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(SvsihkrColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L117">        return 1;</span>
+    }
+
+    @Override
+    public List&lt;SvsihkrRecord&gt; findAllBySihKiyNoAndSvkyNoAndSihKiyJtkbAndShziKbn(
+            Long sihKiyNo, Long svkyNo, String sihKiyJtkb, String shziKbn) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (svkyNo == null) {</span>
+<span class="fc" id="L124">            return List.of();</span>
+        }
+<span class="fc" id="L126">        return rows.stream()</span>
+<span class="fc" id="L127">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_NO, sihKiyNo))</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                .filter(row -&gt; !hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L129">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L130">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SHZI_KBN, shziKbn))</span>
+<span class="pc" id="L131">                .sorted(Comparator.comparing(row -&gt; normalizedLongValue(row, SvsihkrColumn.SVKY_NO)))</span>
+<span class="fc" id="L132">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L133">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;SvsihkrRecord&gt; findAllBySvkyNoAndSihKiyJtkb(Long svkyNo, String sihKiyJtkb) {
+<span class="nc" id="L138">        return rows.stream()</span>
+<span class="nc" id="L139">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="nc" id="L140">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="nc" id="L141">                .map(ROW_MAPPER::toRecord)</span>
+<span class="nc" id="L142">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySihKiyNoAndSvkyNoAndSihKiyJtkb(
+            Long sihKiyNo, Long svkyNo, String sihKiyJtkb) {
+<span class="fc bfc" id="L148" title="All 4 branches covered.">        if (sihKiyJtkb == null || sihKiyJtkb.isBlank()) {</span>
+<span class="fc" id="L149">            return Optional.empty();</span>
+        }
+<span class="fc" id="L151">        return rows.stream()</span>
+<span class="fc" id="L152">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_NO, sihKiyNo))</span>
+<span class="fc" id="L153">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                .filter(row -&gt; !hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L155">                .sorted(</span>
+<span class="fc" id="L156">                        Comparator.comparing(</span>
+                                        (Map&lt;SvsihkrColumn, Object&gt; row) -&gt;
+<span class="nc" id="L158">                                                normalizedIntegerValue(row, SvsihkrColumn.SKNO))</span>
+<span class="fc" id="L159">                                .reversed())</span>
+<span class="fc" id="L160">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L161">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySvkyNoAndTkysYmdAndSihKiyJtkb(
+            Long svkyNo, LocalDate tkysYmd, String sihKiyJtkb) {
+<span class="fc" id="L167">        return rows.stream()</span>
+<span class="fc" id="L168">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L169">                .filter(row -&gt; isNotAfter(row, SvsihkrColumn.TKYS_YMD, tkysYmd))</span>
+<span class="fc" id="L170">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L171">                .sorted(</span>
+<span class="fc" id="L172">                        Comparator.comparing(</span>
+                                        (Map&lt;SvsihkrColumn, Object&gt; row) -&gt;
+<span class="nc" id="L174">                                                normalizedLocalDateValue(row, SvsihkrColumn.TKYS_YMD))</span>
+<span class="fc" id="L175">                                .reversed())</span>
+<span class="fc" id="L176">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L177">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySvkyNoAndTkysYmdAndNotSihKiyJtkb(
+            Long svkyNo, LocalDate tkysYmd, String sihKiyJtkb) {
+<span class="fc bfc" id="L183" title="All 4 branches covered.">        if (sihKiyJtkb == null || sihKiyJtkb.isBlank()) {</span>
+<span class="fc" id="L184">            return Optional.empty();</span>
+        }
+<span class="fc" id="L186">        return rows.stream()</span>
+<span class="fc" id="L187">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L188">                .filter(row -&gt; isNotAfter(row, SvsihkrColumn.TKYS_YMD, tkysYmd))</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                .filter(row -&gt; !hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L190">                .sorted(</span>
+<span class="fc" id="L191">                        Comparator.comparing(</span>
+                                        (Map&lt;SvsihkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L193">                                                normalizedLocalDateValue(row, SvsihkrColumn.TKYS_YMD))</span>
+<span class="fc" id="L194">                                .reversed())</span>
+<span class="fc" id="L195">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L196">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySvkyNoAndTkysYmdAndTyenYmdAndSihKiyJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, String sihKiyJtkb) {
+<span class="fc" id="L202">        return rows.stream()</span>
+<span class="fc" id="L203">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L204">                .filter(row -&gt; isNotAfter(row, SvsihkrColumn.TKYS_YMD, knskKjnYmd))</span>
+<span class="fc" id="L205">                .filter(row -&gt; isNotBefore(row, SvsihkrColumn.TYEN_YMD, knskKjnYmd))</span>
+<span class="fc" id="L206">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L207">                .sorted(</span>
+<span class="fc" id="L208">                        Comparator.comparing(</span>
+                                        (Map&lt;SvsihkrColumn, Object&gt; row) -&gt;
+<span class="fc" id="L210">                                                normalizedLongValue(row, SvsihkrColumn.SIH_KIY_NO))</span>
+<span class="fc" id="L211">                                .thenComparing(</span>
+<span class="nc" id="L212">                                        row -&gt; normalizedLocalDateValue(row, SvsihkrColumn.TKYS_YMD),</span>
+<span class="fc" id="L213">                                        Comparator.reverseOrder()))</span>
+<span class="fc" id="L214">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L215">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySvkyNoAndTkysYmdAndTyenYmdAndNotSihKiyJtkb(
+            Long svkyNo, LocalDate knskKjnYmd, String sihKiyJtkb) {
+<span class="fc bfc" id="L221" title="All 4 branches covered.">        if (sihKiyJtkb == null || sihKiyJtkb.isBlank()) {</span>
+<span class="fc" id="L222">            return Optional.empty();</span>
+        }
+<span class="fc" id="L224">        return rows.stream()</span>
+<span class="fc" id="L225">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L226">                .filter(row -&gt; isNotAfter(row, SvsihkrColumn.TKYS_YMD, knskKjnYmd))</span>
+<span class="fc" id="L227">                .filter(row -&gt; isNotBefore(row, SvsihkrColumn.TYEN_YMD, knskKjnYmd))</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                .filter(row -&gt; !hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L229">                .sorted(</span>
+<span class="fc" id="L230">                        Comparator.comparing(</span>
+                                        (Map&lt;SvsihkrColumn, Object&gt; row) -&gt;
+<span class="nc" id="L232">                                                normalizedLocalDateValue(row, SvsihkrColumn.TKYS_YMD))</span>
+<span class="fc" id="L233">                                .reversed())</span>
+<span class="fc" id="L234">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L235">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;SvsihkrRecord&gt; findAllBySnskSvkyNoAndTyenYmdAndSihKiyJtkbAndTdssSbtShbt(
+            Long snskSvkyNo, LocalDate tyenYmd, String sihKiyJtkb, List&lt;String&gt; tdssSbtShbtList) {
+<span class="fc" id="L241">        Objects.requireNonNull(tdssSbtShbtList, &quot;tdssSbtShbtList&quot;);</span>
+
+<span class="fc" id="L243">        return rows.stream()</span>
+<span class="fc" id="L244">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SNSK_SVKY_NO, snskSvkyNo))</span>
+<span class="fc" id="L245">                .filter(row -&gt; hasValue(row, SvsihkrColumn.TYEN_YMD, tyenYmd))</span>
+<span class="fc" id="L246">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L247">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L249">                                tdssSbtShbtList.contains(</span>
+<span class="fc" id="L250">                                        getStringValue(row, SvsihkrColumn.TDSS_SBT_SHBT)))</span>
+<span class="fc" id="L251">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L252">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;SvsihkrRecord&gt; findAllBySnskSvkyNoAndSihKiyJtkbAndTdssSbtShbt(
+            Long snskSvkyNo, String sihKiyJtkb, List&lt;String&gt; tdssSbtShbtList) {
+<span class="fc" id="L258">        Objects.requireNonNull(tdssSbtShbtList, &quot;tdssSbtShbtList&quot;);</span>
+
+<span class="fc" id="L260">        return rows.stream()</span>
+<span class="fc" id="L261">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SNSK_SVKY_NO, snskSvkyNo))</span>
+<span class="fc" id="L262">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L263">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L265">                                tdssSbtShbtList.contains(</span>
+<span class="fc" id="L266">                                        getStringValue(row, SvsihkrColumn.TDSS_SBT_SHBT)))</span>
+<span class="fc" id="L267">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L268">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySvkyNoAndSihKiyJtkb(Long svkyNo, String sihKiyJtkb) {
+<span class="fc" id="L273">        return rows.stream()</span>
+<span class="fc" id="L274">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L275">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_JTKB, sihKiyJtkb))</span>
+<span class="fc" id="L276">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L277">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findBySihKiyNoAndSvkyNo(Long sihKiyNo, Long svkyNo) {
+<span class="fc" id="L282">        return rows.stream()</span>
+<span class="fc" id="L283">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SIH_KIY_NO, sihKiyNo))</span>
+<span class="fc" id="L284">                .filter(row -&gt; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo))</span>
+<span class="fc" id="L285">                                .max(Comparator.comparing(row -&gt; normalizedIntegerValue(row, SvsihkrColumn.SKNO)))</span>
+<span class="fc" id="L286">                .map(ROW_MAPPER::toRecord);</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSvkyNoAndSkno(
+            SvsihkrWriteRecord record,
+            Set&lt;SvsihkrColumn&gt; targetColumns,
+            SvsihkrSknoOptionalUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L295">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L296">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L297">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L298">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L300">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L302">                row -&gt; matchesSkno(row, updateKey.sihKiyNo(), updateKey.svkyNo(), updateKey.skno()),</span>
+                row -&gt;
+<span class="fc" id="L304">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L308">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        SvsihkrColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L314">                                                        ? currentRecUpdJnjNo(row)</span>
+<span class="fc" id="L315">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L316">                updateSupport::apply,</span>
+                SvsihkrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L318">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L319">                SvsihkrDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SVKY_NO_AND_SKNO.identifier(),</span>
+<span class="fc" id="L320">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L321">                updateKey.svkyNo(),</span>
+<span class="fc" id="L322">                updateKey.skno());</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSvkyNoAndSknoAndRecUpdJnjNo(
+            SvsihkrWriteRecord record,
+            Set&lt;SvsihkrColumn&gt; targetColumns,
+            SvsihkrSknoJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L331">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L332">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L333">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L334">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L336">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L338">                row -&gt; matchesSkno(row, updateKey.sihKiyNo(), updateKey.svkyNo(), updateKey.skno()),</span>
+                row -&gt;
+<span class="fc" id="L340">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L344">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        SvsihkrColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc bfc" id="L349" title="All 2 branches covered.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L350">                                                        ? currentRecUpdJnjNo(row)</span>
+<span class="fc" id="L351">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L352">                updateSupport::apply,</span>
+                SvsihkrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L354">                updateKey.recUpdJnjNo(),</span>
+                SvsihkrDataAccess.CallSpecs
+                        .UPDATE_BY_SIH_KIY_NO_AND_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L357">                        .identifier(),</span>
+<span class="fc" id="L358">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L359">                updateKey.svkyNo(),</span>
+<span class="fc" id="L360">                updateKey.skno());</span>
+    }
+
+    @Override
+    public Optional&lt;SvsihkrRecord&gt; findByPK(Long sihKiyNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L365">        return rows.stream()</span>
+<span class="fc" id="L366">                .filter(row -&gt; matchesSkno(row, sihKiyNo, svkyNo, skno))</span>
+<span class="fc" id="L367">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L368">                .findFirst();</span>
+    }
+
+    private static boolean matchesSkno(
+            Map&lt;SvsihkrColumn, Object&gt; row, Long sihKiyNo, Long svkyNo, Integer skno) {
+<span class="fc bfc" id="L373" title="All 2 branches covered.">        return hasValue(row, SvsihkrColumn.SIH_KIY_NO, sihKiyNo)</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">                &amp;&amp; hasValue(row, SvsihkrColumn.SVKY_NO, svkyNo)</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">                &amp;&amp; hasValue(row, SvsihkrColumn.SKNO, skno);</span>
+    }
+
+    private static boolean hasValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column, Object value) {
+<span class="fc" id="L380">        return Objects.equals(normalizeValue(column, row.get(column)), normalizeValue(column, value));</span>
+    }
+
+    private static boolean isNotAfter(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column, LocalDate baseDate) {
+<span class="fc" id="L385">        LocalDate value = normalizeYmd(getLocalDateValue(row, column));</span>
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        return !value.isAfter(normalizeYmd(baseDate));</span>
+    }
+
+    private static boolean isNotBefore(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column, LocalDate baseDate) {
+<span class="fc" id="L391">        LocalDate value = normalizeYmd(getLocalDateValue(row, column));</span>
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">        return !value.isBefore(normalizeYmd(baseDate));</span>
+    }
+
+    private static Long normalizedLongValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="fc" id="L397">        return (Long) normalizeValue(column, row.get(column));</span>
+    }
+
+    private static Integer normalizedIntegerValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="fc" id="L402">        return (Integer) normalizeValue(column, row.get(column));</span>
+    }
+
+    private static LocalDate normalizedLocalDateValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="fc" id="L407">        return (LocalDate) normalizeValue(column, row.get(column));</span>
+    }
+
+    private static Long getLongValue(Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="nc" id="L411">        return (Long) row.get(column);</span>
+    }
+
+    private static Integer getIntegerValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="nc" id="L416">        return (Integer) row.get(column);</span>
+    }
+
+    private static String getStringValue(Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="fc" id="L420">        return (String) row.get(column);</span>
+    }
+
+    private static LocalDate getLocalDateValue(
+            Map&lt;SvsihkrColumn, Object&gt; row, SvsihkrColumn column) {
+<span class="fc" id="L425">        return (LocalDate) row.get(column);</span>
+    }
+
+    private static Object normalizeValue(SvsihkrColumn column, Object value) {
+<span class="pc bpc" id="L429" title="1 of 6 branches missed.">        return switch (column) {</span>
+<span class="fc" id="L430">            case SIH_KIY_NO, SVKY_NO, SNSK_SVKY_NO -&gt; safeLong((Long) value, column.name());</span>
+<span class="fc" id="L431">            case SKNO -&gt; safeInteger((Integer) value, column.name());</span>
+<span class="fc" id="L432">            case TKYS_YMD, TYEN_YMD -&gt; safeYmd((LocalDate) value, column.name());</span>
+<span class="fc" id="L433">            case SIH_KIY_JTKB -&gt; safeSihKiyJtkb((String) value, column.name());</span>
+<span class="fc" id="L434">            case SHZI_KBN -&gt; safeShziKbn((String) value, column.name());</span>
+<span class="nc" id="L435">            default -&gt; value;</span>
+        };
+    }
+
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L440">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeInteger(Integer value, String paramName) {
+<span class="fc" id="L444">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L448">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String safeSihKiyJtkb(String value, String paramName) {
+<span class="fc" id="L452">        return WhereParamGuard.fixedLengthNotNull(value, paramName, SIH_KIY_JTKB_LENGTH);</span>
+    }
+
+    private static String safeShziKbn(String value, String paramName) {
+<span class="fc" id="L456">        return WhereParamGuard.fixedLengthNotNull(value, paramName, SHZI_KBN_LENGTH);</span>
+    }
+
+    private static LocalDate normalizeYmd(LocalDate value) {
+<span class="fc" id="L460">        return safeYmd(value, &quot;ymd&quot;);</span>
+    }
+
+    private static Integer currentRecUpdJnjNo(Map&lt;SvsihkrColumn, Object&gt; row) {
+<span class="fc" id="L464">        Integer currentRecUpdJnjNo = (Integer) row.get(SvsihkrColumn.REC_UPD_JNJ_NO);</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">        return currentRecUpdJnjNo == null ? 0 : currentRecUpdJnjNo;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

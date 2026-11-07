@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KubeApi.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">common-service-state</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.servicestate</a> &gt; <span class="el_source">KubeApi.java</span></div><h1>KubeApi.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.servicestate;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+
+/** The Kubernetes REST API, using the mounted token (re-read on EVERY request) and CA. */
+public final class KubeApi implements AutoCloseable {
+    /** A credential-free Kubernetes API failure. */
+    public static final class Failure extends RuntimeException {
+        public final int status;
+
+        /** Expose only the response status, never a signed URI or response body. */
+        public Failure(int status) {
+<span class="fc" id="L35">            super(&quot;Kubernetes HTTP &quot; + status);</span>
+<span class="fc" id="L36">            this.status = status;</span>
+<span class="fc" id="L37">        }</span>
+    }
+
+    /** A named LIST result and its collection resourceVersion. */
+<span class="fc" id="L41">    public record Listing(JsonNode item, String version) {</span>
+    }
+
+    private final URI base;
+
+    private final String namespace;
+
+    private final ObjectMapper json;
+
+    private final Supplier&lt;String&gt; token;
+
+    private final HttpClient client;
+
+    private volatile InputStream activeStream;
+
+    /** Create a namespace-scoped client with explicit TLS trust and token source. */
+    public KubeApi(String namespace, ObjectMapper json)
+            throws java.io.IOException, java.security.GeneralSecurityException {
+<span class="nc" id="L59">        this(</span>
+<span class="nc" id="L60">                URI.create(&quot;https://kubernetes.default.svc&quot;),</span>
+                namespace,
+                json,
+                () -&gt; {
+                    try {
+<span class="nc" id="L65">                        return Files.readString(</span>
+<span class="nc" id="L66">                                        Path.of(</span>
+                                                &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;))
+<span class="nc" id="L68">                                .strip();</span>
+<span class="nc" id="L69">                    } catch (IOException e) {</span>
+<span class="nc" id="L70">                        throw new IllegalStateException(</span>
+                                &quot;Mounted ServiceAccount token is unavailable&quot;);
+                    }
+                },
+<span class="nc" id="L74">                clusterClient());</span>
+<span class="nc" id="L75">    }</span>
+
+    /** Create a namespace-scoped client with explicit TLS trust and token source. */
+    public KubeApi(
+            URI base,
+            String namespace,
+            ObjectMapper json,
+            Supplier&lt;String&gt; token,
+<span class="fc" id="L83">            HttpClient client) {</span>
+<span class="fc" id="L84">        this.base = base;</span>
+<span class="fc" id="L85">        this.namespace = namespace;</span>
+<span class="fc" id="L86">        this.json = json;</span>
+<span class="fc" id="L87">        this.token = token;</span>
+<span class="fc" id="L88">        this.client = client;</span>
+<span class="fc" id="L89">    }</span>
+
+    private static HttpClient clusterClient()
+            throws java.io.IOException, java.security.GeneralSecurityException {
+<span class="nc" id="L93">        var certificates = CertificateFactory.getInstance(&quot;X.509&quot;);</span>
+<span class="nc" id="L94">        KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());</span>
+<span class="nc" id="L95">        store.load(null, null);</span>
+<span class="nc" id="L96">        try (InputStream in =</span>
+<span class="nc" id="L97">                Files.newInputStream(</span>
+<span class="nc" id="L98">                        Path.of(&quot;/var/run/secrets/kubernetes.io/serviceaccount/ca.crt&quot;))) {</span>
+<span class="nc" id="L99">            int index = 0;</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">            for (var cert : certificates.generateCertificates(in)) {</span>
+<span class="nc" id="L101">                store.setCertificateEntry(&quot;cluster-&quot; + index++, cert);</span>
+<span class="nc" id="L102">            }</span>
+        }
+<span class="nc" id="L104">        var trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());</span>
+<span class="nc" id="L105">        trust.init(store);</span>
+<span class="nc" id="L106">        SSLContext ssl = SSLContext.getInstance(&quot;TLS&quot;);</span>
+<span class="nc" id="L107">        ssl.init(null, trust.getTrustManagers(), null);</span>
+<span class="nc" id="L108">        return HttpClient.newBuilder()</span>
+<span class="nc" id="L109">                .sslContext(ssl)</span>
+<span class="nc" id="L110">                .connectTimeout(Duration.ofSeconds(5))</span>
+<span class="nc" id="L111">                .build();</span>
+    }
+
+    /** Return the namespace to which this client is restricted. */
+    public String namespace() {
+<span class="nc" id="L116">        return namespace;</span>
+    }
+
+    /** Read a Deployment or ReplicaSet in the application namespace. */
+    public JsonNode apps(String resource) throws java.io.IOException, InterruptedException {
+<span class="nc" id="L121">        return call(&quot;GET&quot;, &quot;/apis/apps/v1/namespaces/&quot; + namespace + &quot;/&quot; + resource, null);</span>
+    }
+
+    /** Build a core Kubernetes API path within the application namespace. */
+    public String path(String resource) {
+<span class="fc" id="L126">        return &quot;/api/v1/namespaces/&quot; + namespace + &quot;/&quot; + resource;</span>
+    }
+
+    /** Encode a query value or resource name as UTF-8. */
+    public static String encode(String value) {
+<span class="fc" id="L131">        return URLEncoder.encode(value, StandardCharsets.UTF_8);</span>
+    }
+
+    /** Execute one request, rereading the mounted token and refusing non-success responses. */
+    public JsonNode call(String method, String path, JsonNode body)
+            throws java.io.IOException, InterruptedException {
+<span class="fc" id="L137">        HttpRequest.Builder request =</span>
+<span class="fc" id="L138">                request(path)</span>
+<span class="fc" id="L139">                        .timeout(Duration.ofSeconds(5))</span>
+<span class="fc" id="L140">                        .header(&quot;Content-Type&quot;, &quot;application/json&quot;);</span>
+<span class="fc" id="L141">        request.method(</span>
+                method,
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                body == null</span>
+<span class="fc" id="L144">                        ? HttpRequest.BodyPublishers.noBody()</span>
+<span class="nc" id="L145">                        : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));</span>
+<span class="fc" id="L146">        var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());</span>
+<span class="pc bpc" id="L147" title="2 of 4 branches missed.">        if (response.statusCode() &lt; 200 || response.statusCode() &gt;= 300) {</span>
+<span class="nc" id="L148">            throw new Failure(response.statusCode());</span>
+        }
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        return response.body().isBlank() ? json.createObjectNode() : json.readTree(response.body());</span>
+    }
+
+    private HttpRequest.Builder request(String path) {
+<span class="fc" id="L154">        return HttpRequest.newBuilder(base.resolve(path))</span>
+<span class="fc" id="L155">                .timeout(Duration.ofSeconds(30))</span>
+<span class="fc" id="L156">                .header(&quot;Authorization&quot;, &quot;Bearer &quot; + token.get())</span>
+<span class="fc" id="L157">                .header(&quot;Accept&quot;, &quot;application/json&quot;);</span>
+    }
+
+    /** Read one ConfigMap, representing only an actual 404 as missing. */
+    public JsonNode get(String name) throws java.io.IOException, InterruptedException {
+        try {
+<span class="nc" id="L163">            return call(&quot;GET&quot;, path(&quot;configmaps/&quot; + name), null);</span>
+<span class="nc" id="L164">        } catch (Failure f) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            if (f.status == 404) {</span>
+<span class="nc" id="L166">                return null;</span>
+            }
+<span class="nc" id="L168">            throw f;</span>
+        }
+    }
+
+    /** Read an operation Job after validating its allowed name. */
+    public JsonNode job(String name) throws java.io.IOException, InterruptedException {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (!name.matches(&quot;svc-(stop|start|auto|status)-[a-z0-9-]+&quot;)) {</span>
+<span class="nc" id="L175">            throw new IllegalStateException(&quot;UNEXPECTED_JOB_NAME&quot;);</span>
+        }
+<span class="nc" id="L177">        return call(</span>
+<span class="nc" id="L178">                &quot;GET&quot;, &quot;/apis/batch/v1/namespaces/&quot; + namespace + &quot;/jobs/&quot; + encode(name), null);</span>
+    }
+
+    /** Read one of the four fixed operation CronJobs. */
+    public JsonNode cronJob(String name) throws java.io.IOException, InterruptedException {
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (!name.matches(&quot;svc-(stop|start|auto|status)&quot;)) {</span>
+<span class="nc" id="L184">            throw new IllegalStateException(&quot;UNEXPECTED_CRONJOB_NAME&quot;);</span>
+        }
+<span class="nc" id="L186">        return call(</span>
+                &quot;GET&quot;,
+<span class="nc" id="L188">                &quot;/apis/batch/v1/namespaces/&quot; + namespace + &quot;/cronjobs/&quot; + encode(name),</span>
+                null);
+    }
+
+    /** LIST the named state and retain the collection resourceVersion for Watch. */
+    public Listing list(String name) throws java.io.IOException, InterruptedException {
+<span class="fc" id="L194">        JsonNode result =</span>
+<span class="fc" id="L195">                call(</span>
+                        &quot;GET&quot;,
+<span class="fc" id="L197">                        path(&quot;configmaps&quot;) + &quot;?fieldSelector=&quot; + encode(&quot;metadata.name=&quot; + name),</span>
+                        null);
+<span class="fc" id="L199">        JsonNode items = result.path(&quot;items&quot;);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (items.size() &gt; 1) {</span>
+<span class="nc" id="L201">            throw new IllegalStateException(&quot;Named ConfigMap list returned multiple objects&quot;);</span>
+        }
+<span class="fc" id="L203">        return new Listing(</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                items.isEmpty() ? null : items.get(0),</span>
+<span class="fc" id="L205">                result.path(&quot;metadata&quot;).path(&quot;resourceVersion&quot;).asText());</span>
+    }
+
+    /** Consume a bounded Watch stream; close stalled streams to permit recovery. */
+    public void watch(String name, String version, Consumer&lt;JsonNode&gt; event)
+            throws java.io.IOException, InterruptedException {
+<span class="fc" id="L211">        String path =</span>
+<span class="fc" id="L212">                path(&quot;configmaps&quot;)</span>
+                        + &quot;?watch=true&amp;allowWatchBookmarks=true&amp;timeoutSeconds=20&quot;
+                        + &quot;&amp;fieldSelector=&quot;
+<span class="fc" id="L215">                        + encode(&quot;metadata.name=&quot; + name)</span>
+                        + &quot;&amp;resourceVersion=&quot;
+<span class="fc" id="L217">                        + encode(version);</span>
+<span class="fc" id="L218">        var response =</span>
+<span class="fc" id="L219">                client.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofInputStream());</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (response.statusCode() != 200) {</span>
+<span class="fc" id="L221">            response.body().close();</span>
+<span class="fc" id="L222">            throw new Failure(response.statusCode());</span>
+        }
+<span class="fc" id="L224">        activeStream = response.body();</span>
+<span class="fc" id="L225">        AtomicBoolean watchdog = new AtomicBoolean();</span>
+        Thread deadline =
+<span class="fc" id="L227">                Thread.ofVirtual()</span>
+<span class="fc" id="L228">                        .name(&quot;service-state-watch-deadline&quot;)</span>
+<span class="fc" id="L229">                        .start(</span>
+                                () -&gt; {
+                                    try {
+<span class="nc" id="L232">                                        Thread.sleep(25_000);</span>
+<span class="nc" id="L233">                                        watchdog.set(true);</span>
+<span class="nc" id="L234">                                        closeStream();</span>
+<span class="fc" id="L235">                                    } catch (InterruptedException renewed) {</span>
+<span class="fc" id="L236">                                        Thread.currentThread().interrupt();</span>
+<span class="nc" id="L237">                                    }</span>
+<span class="fc" id="L238">                                });</span>
+<span class="fc" id="L239">        try (var lines =</span>
+                new BufferedReader(
+<span class="fc" id="L241">                        new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {</span>
+            String line;
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">            while ((line = lines.readLine()) != null) {</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">                if (!line.isBlank()) {</span>
+<span class="fc" id="L245">                    event.accept(json.readTree(line));</span>
+                }
+            }
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if (watchdog.get()) {</span>
+<span class="nc" id="L249">                throw new IOException(&quot;Watch did not renew within its deadline&quot;);</span>
+            }
+        } finally {
+<span class="fc" id="L252">            deadline.interrupt();</span>
+<span class="fc" id="L253">            activeStream = null;</span>
+        }
+<span class="nc" id="L255">    }</span>
+
+    /** Create a runtime ConfigMap without overwriting an existing object. */
+    public JsonNode createIfAbsent(String name, ObjectNode data)
+            throws java.io.IOException, InterruptedException {
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (!java.util.Set.of(Resources.STATE, Resources.LOCK, Resources.PENDING).contains(name)) {</span>
+<span class="nc" id="L261">            throw new IllegalArgumentException(&quot;Unexpected runtime ConfigMap&quot;);</span>
+        }
+<span class="nc" id="L263">        ObjectNode resource =</span>
+<span class="nc" id="L264">                json.createObjectNode().put(&quot;apiVersion&quot;, &quot;v1&quot;).put(&quot;kind&quot;, &quot;ConfigMap&quot;);</span>
+<span class="nc" id="L265">        resource.putObject(&quot;metadata&quot;)</span>
+<span class="nc" id="L266">                .put(&quot;name&quot;, name)</span>
+<span class="nc" id="L267">                .put(&quot;namespace&quot;, namespace)</span>
+<span class="nc" id="L268">                .putObject(&quot;labels&quot;)</span>
+<span class="nc" id="L269">                .put(Resources.LABEL, &quot;v1&quot;);</span>
+<span class="nc" id="L270">        resource.set(&quot;data&quot;, data);</span>
+        try {
+<span class="nc" id="L272">            return call(&quot;POST&quot;, path(&quot;configmaps&quot;), resource);</span>
+<span class="nc" id="L273">        } catch (Failure f) {</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">            if (f.status == 409) {</span>
+<span class="nc" id="L275">                return get(name);</span>
+            }
+<span class="nc" id="L277">            throw f;</span>
+        }
+    }
+
+    /** Replace a runtime ConfigMap using its resourceVersion for conflict detection. */
+    public JsonNode replace(String name, JsonNode resource)
+            throws java.io.IOException, InterruptedException {
+<span class="nc bnc" id="L284" title="All 2 branches missed.">        if (!java.util.Set.of(Resources.STATE, Resources.LOCK, Resources.PENDING).contains(name)) {</span>
+<span class="nc" id="L285">            throw new IllegalArgumentException(&quot;Unexpected runtime ConfigMap&quot;);</span>
+        }
+        // resourceVersion makes conflicting operations fail; never blindly retry a change.
+<span class="nc" id="L288">        return call(&quot;PUT&quot;, path(&quot;configmaps/&quot; + name), resource);</span>
+    }
+
+    /** Delete only a known runtime ConfigMap. */
+    public void delete(String name) throws java.io.IOException, InterruptedException {
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        if (!java.util.Set.of(Resources.STATE, Resources.LOCK, Resources.PENDING).contains(name)) {</span>
+<span class="nc" id="L294">            throw new IllegalArgumentException(&quot;Unexpected runtime ConfigMap&quot;);</span>
+        }
+        try {
+<span class="nc" id="L297">            call(</span>
+                    &quot;DELETE&quot;,
+<span class="nc" id="L299">                    path(&quot;configmaps/&quot; + name),</span>
+<span class="nc" id="L300">                    json.createObjectNode().put(&quot;apiVersion&quot;, &quot;v1&quot;).put(&quot;kind&quot;, &quot;DeleteOptions&quot;));</span>
+<span class="nc" id="L301">        } catch (Failure f) {</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            if (f.status != 404) {</span>
+<span class="nc" id="L303">                throw f;</span>
+            }
+<span class="nc" id="L305">        }</span>
+<span class="nc" id="L306">    }</span>
+
+    /** List namespace-local Pods using the supplied selector. */
+    public JsonNode pods(String selector) throws java.io.IOException, InterruptedException {
+<span class="nc" id="L310">        return call(&quot;GET&quot;, path(&quot;pods&quot;) + &quot;?labelSelector=&quot; + encode(selector), null).path(&quot;items&quot;);</span>
+    }
+
+    /** Cancel the active Watch body before shutting down its client. */
+    public void closeStream() {
+<span class="fc" id="L315">        InputStream stream = activeStream;</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">        if (stream != null) {</span>
+            try {
+<span class="fc" id="L318">                stream.close();</span>
+<span class="nc" id="L319">            } catch (IOException ignored) {</span>
+                /* reconnection handles this */
+<span class="fc" id="L321">            }</span>
+        }
+<span class="fc" id="L323">    }</span>
+
+    @Override
+    public void close() {
+<span class="fc" id="L327">        closeStream();</span>
+        // A Watch may still be waiting for headers and have no activeStream yet.
+<span class="fc" id="L329">        client.shutdownNow();</span>
+<span class="fc" id="L330">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

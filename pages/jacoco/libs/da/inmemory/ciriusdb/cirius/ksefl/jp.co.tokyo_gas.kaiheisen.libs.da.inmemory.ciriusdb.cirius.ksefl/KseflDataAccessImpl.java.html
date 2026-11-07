@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KseflDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-ksefl</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.ksefl</a> &gt; <span class="el_source">KseflDataAccessImpl.java</span></div><h1>KseflDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.ksefl;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU001UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-139（C001/R001-R005/U001/U002）の SQL 振る舞いを模した KSEFL インメモリ実装。 */
+public class KseflDataAccessImpl extends DataAccessBase implements KseflDataAccess {
+
+<span class="fc" id="L35">    private static final DateTimeFormatter YMD_FORMAT = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L37">    private static final ReflectiveInMemoryRowMapper&lt;KseflColumn, KseflRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L38">            ReflectiveInMemoryRowMapper.create(KseflColumn.class, KseflRecord.class);</span>
+
+<span class="fc" id="L40">    private static final AutoNeutralValueResolver&lt;KseflColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L41">            AutoNeutralValueResolver.create(KseflColumn.class, KseflRecord.class);</span>
+
+<span class="fc" id="L43">    private final List&lt;EnumMap&lt;KseflColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;KseflWriteRecord, KseflColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KseflWriteRecord, KseflColumn&gt; updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public KseflDataAccessImpl() {
+<span class="fc" id="L55">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L56">    }</span>
+
+    KseflDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L59">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L60">    }</span>
+
+    KseflDataAccessImpl(
+<span class="fc" id="L63">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L64">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L65">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L66">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L67">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(KseflWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L69">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KseflWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L72">    }</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param record 追加する行
+     * @return このインスタンス
+     */
+    public KseflDataAccessImpl addRow(KseflRecord record) {
+<span class="fc" id="L81">        EnumMap&lt;KseflColumn, Object&gt; values =</span>
+<span class="fc" id="L82">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L83">        NEUTRAL_VALUE_RESOLVER.complement(values, KseflWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L84">        rows.add(values);</span>
+<span class="fc" id="L85">        return this;</span>
+    }
+
+    @Override
+    public int insert(KseflWriteRecord record, AuditContext context) {
+<span class="fc" id="L90">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L91">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L93">        rows.add(</span>
+<span class="fc" id="L94">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L97">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(KseflColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L101">        return 1;</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdAndKasgYmdAndFlwStCd(
+            String flttCktkCdFrom,
+            String flttCktkCdTo,
+            String flttKtnCd,
+            String kasErryCd,
+            LocalDate kasgYmd,
+            String flwStCd) {
+        String safeFlttKtnCd =
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                flttKtnCd == null</span>
+<span class="fc" id="L114">                        ? null</span>
+<span class="fc" id="L115">                        : WhereParamGuard.fixedLengthNotNull(flttKtnCd, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L116">        String blankFlttKtnCd =</span>
+<span class="fc" id="L117">                WhereParamGuard.fixedLengthNotNull(&quot;&quot;, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L118">        String safeKasErryCd =</span>
+<span class="fc" id="L119">                WhereParamGuard.fixedLengthNotNull(kasErryCd, &quot;kasErryCd&quot;, 2);</span>
+<span class="fc" id="L120">        String safeFlwStCd =</span>
+<span class="fc" id="L121">                WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+<span class="fc" id="L122">        return rows.stream()</span>
+<span class="fc" id="L123">                .filter(r -&gt; isInCktkRange(r, flttCktkCdFrom, flttCktkCdTo))</span>
+<span class="fc" id="L124">                .filter(r -&gt; isMatchKtnCd(r, safeFlttKtnCd, blankFlttKtnCd))</span>
+<span class="fc" id="L125">                .filter(r -&gt; isMatchFixedLength(r, KseflColumn.KAS_ERRY_CD, safeKasErryCd, &quot;kasErryCd&quot;, 2))</span>
+<span class="fc" id="L126">                .filter(r -&gt; {</span>
+<span class="fc" id="L127">                    LocalDate rowYmd = (LocalDate) r.get(KseflColumn.KASG_YMD);</span>
+<span class="pc bpc" id="L128" title="2 of 6 branches missed.">                    return kasgYmd != null &amp;&amp; rowYmd != null &amp;&amp; !rowYmd.isBefore(kasgYmd);</span>
+                })
+<span class="fc" id="L130">                .filter(r -&gt; isMatchFixedLength(r, KseflColumn.FLW_ST_CD, safeFlwStCd, &quot;flwStCd&quot;, 2))</span>
+<span class="fc" id="L131">                .sorted(R001_ORDER)</span>
+<span class="fc" id="L132">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L133">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByFlttCktkCdAndFlwKtnCdAndKasErryCdOrKasErryCdAndKasgYmdAndFlwStCd(
+            String flttCktkCdFrom,
+            String flttCktkCdTo,
+            String flttKtnCd,
+            String kasErryCd,
+            LocalDate kasgYmd,
+            String flwStCd) {
+        String safeFlttKtnCd =
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                flttKtnCd == null</span>
+<span class="fc" id="L146">                        ? null</span>
+<span class="fc" id="L147">                        : WhereParamGuard.fixedLengthNotNull(flttKtnCd, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L148">        String blankFlttKtnCd =</span>
+<span class="fc" id="L149">                WhereParamGuard.fixedLengthNotNull(&quot;&quot;, &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc" id="L150">        String safeKasErryCd =</span>
+<span class="fc" id="L151">                WhereParamGuard.fixedLengthNotNull(kasErryCd, &quot;kasErryCd&quot;, 2);</span>
+<span class="fc" id="L152">        String safeFlwStCd =</span>
+<span class="fc" id="L153">                WhereParamGuard.fixedLengthNotNull(flwStCd, &quot;flwStCd&quot;, 2);</span>
+<span class="fc" id="L154">        return rows.stream()</span>
+<span class="fc" id="L155">                .filter(r -&gt; isInCktkRange(r, flttCktkCdFrom, flttCktkCdTo))</span>
+<span class="fc" id="L156">                .filter(r -&gt; isMatchKtnCd(r, safeFlttKtnCd, blankFlttKtnCd))</span>
+<span class="fc" id="L157">                .filter(r -&gt; isMatchFixedLength(r, KseflColumn.FLW_ST_CD, safeFlwStCd, &quot;flwStCd&quot;, 2))</span>
+<span class="fc" id="L158">                .filter(r -&gt; {</span>
+                    // 共通条件の上で (KAS_ERRY_CD &lt;&gt; kasErryCd) OR (KAS_ERRY_CD = kasErryCd AND KASG_YMD &lt;= kasgYmd)
+<span class="fc" id="L160">                    LocalDate rowKasgYmd = (LocalDate) r.get(KseflColumn.KASG_YMD);</span>
+<span class="fc" id="L161">                    String normalizedKasErryCd =</span>
+<span class="fc" id="L162">                            normalizeRowFixedLength((String) r.get(KseflColumn.KAS_ERRY_CD), &quot;kasErryCd&quot;, 2);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                    boolean condA = !Objects.equals(normalizedKasErryCd, safeKasErryCd);</span>
+<span class="pc bpc" id="L164" title="2 of 6 branches missed.">                    boolean condB = Objects.equals(normalizedKasErryCd, safeKasErryCd)</span>
+                            &amp;&amp; kasgYmd != null
+                            &amp;&amp; rowKasgYmd != null
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                            &amp;&amp; !rowKasgYmd.isAfter(kasgYmd);</span>
+<span class="fc bfc" id="L168" title="All 4 branches covered.">                    return condA || condB;</span>
+                })
+<span class="fc" id="L170">                .sorted(R001_ORDER)</span>
+<span class="fc" id="L171">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L172">                .toList();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByGmbAndFlwStCdAndKasgYmdAndTsigKasgYmd(
+            String gmb, String flwStCd, LocalDate kasgYmd, LocalDate tsigKsgYmd) {
+<span class="fc" id="L178">        return rows.stream()</span>
+<span class="fc" id="L179">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.GMB), gmb))</span>
+<span class="fc" id="L180">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.FLW_ST_CD), flwStCd))</span>
+<span class="fc" id="L181">                .filter(r -&gt; {</span>
+<span class="fc" id="L182">                    LocalDate rowKasgYmd = (LocalDate) r.get(KseflColumn.KASG_YMD);</span>
+<span class="fc" id="L183">                    LocalDate rowTsigKasgYmd = (LocalDate) r.get(KseflColumn.TSIG_KASG_YMD);</span>
+                    // (KASG_YMD = kasgYmd AND TSIG_KASG_YMD = 0) OR (TSIG_KASG_YMD = tsigKsgYmd AND TSIG_KASG_YMD &lt;&gt; 0)
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">                    boolean cond1 = Objects.equals(rowKasgYmd, kasgYmd) &amp;&amp; rowTsigKasgYmd == null;</span>
+<span class="pc bpc" id="L186" title="1 of 4 branches missed.">                    boolean cond2 = rowTsigKasgYmd != null &amp;&amp; Objects.equals(rowTsigKasgYmd, tsigKsgYmd);</span>
+<span class="fc bfc" id="L187" title="All 4 branches covered.">                    return cond1 || cond2;</span>
+                })
+<span class="fc" id="L189">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L190">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;KseflRecord&gt; findByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNo(
+            String gmb, LocalDate kasgYmd, LocalDate kasHukkYmd, String sgyAnknNo) {
+<span class="fc" id="L196">        return rows.stream()</span>
+<span class="fc" id="L197">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.GMB), gmb))</span>
+<span class="fc" id="L198">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.KASG_YMD), kasgYmd))</span>
+<span class="fc" id="L199">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.KAS_HUKK_YMD), kasHukkYmd))</span>
+<span class="fc" id="L200">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.SGY_ANKN_NO), sgyAnknNo))</span>
+<span class="fc" id="L201">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L202">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;KseflRecord&gt; findAllByGmbAndFlwStCd(String gmb, String flwStCd) {
+<span class="fc" id="L207">        return rows.stream()</span>
+<span class="fc" id="L208">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.GMB), gmb))</span>
+<span class="fc" id="L209">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.FLW_ST_CD), flwStCd))</span>
+<span class="fc" id="L210">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L211">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;KseflRecord&gt; findByPK(
+            String gmb,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            String hukkSysShbt,
+            String sgyAnknNo) {
+<span class="fc" id="L221">        return rows.stream()</span>
+<span class="fc" id="L222">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.GMB), gmb))</span>
+<span class="fc" id="L223">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.KASG_YMD), kasgYmd))</span>
+<span class="fc" id="L224">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.KAS_HUKK_YMD), kasHukkYmd))</span>
+<span class="fc" id="L225">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.HUKK_SYS_SHBT), hukkSysShbt))</span>
+<span class="fc" id="L226">                .filter(r -&gt; Objects.equals(r.get(KseflColumn.SGY_ANKN_NO), sgyAnknNo))</span>
+<span class="fc" id="L227">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L228">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGmbAndKasgYmdAndKasHukkYmdAndHukkSysShbtAndSgyAnknNoAndRecUpdJnjNo(
+            KseflWriteRecord record,
+            Set&lt;KseflColumn&gt; targetColumns,
+            KseflU001UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L237">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L238">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L239">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L241">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                r -&gt;
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                        Objects.equals(r.get(KseflColumn.GMB), updateKey.gmb())</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.KASG_YMD), updateKey.kasgYmd())</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.KAS_HUKK_YMD), updateKey.kasHukkYmd())</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.HUKK_SYS_SHBT), updateKey.hukkSysShbt())</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.SGY_ANKN_NO), updateKey.sgyAnknNo()),</span>
+                r -&gt;
+<span class="fc" id="L250">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L254">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(KseflColumn.class, values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L259">                                                        ? (Integer) r.get(KseflColumn.REC_UPD_JNJ_NO)</span>
+<span class="nc" id="L260">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L261">                updateSupport::apply,</span>
+                KseflColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L263">                updateKey.recUpdJnjNo(),</span>
+                KseflDataAccess.CallSpecs
+                        .UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_HUKK_SYS_SHBT_AND_SGY_ANKN_NO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L266">                        .identifier(),</span>
+<span class="fc" id="L267">                updateKey.gmb(),</span>
+<span class="fc" id="L268">                updateKey.kasgYmd(),</span>
+<span class="fc" id="L269">                updateKey.kasHukkYmd(),</span>
+<span class="fc" id="L270">                updateKey.hukkSysShbt(),</span>
+<span class="fc" id="L271">                updateKey.sgyAnknNo());</span>
+    }
+
+    @Override
+    public int updateByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNoAndRecUpdJnjNo(
+            KseflWriteRecord record,
+            Set&lt;KseflColumn&gt; targetColumns,
+            KseflU002UpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L280">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L281">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L282">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L284">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                r -&gt;
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                        Objects.equals(r.get(KseflColumn.GMB), updateKey.gmb())</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.KASG_YMD), updateKey.kasgYmd())</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.KAS_HUKK_YMD), updateKey.kasHukkYmd())</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(r.get(KseflColumn.SGY_ANKN_NO), updateKey.sgyAnknNo()),</span>
+                r -&gt;
+<span class="fc" id="L292">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L296">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(KseflColumn.class, values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="fc" id="L301">                                                        ? (Integer) r.get(KseflColumn.REC_UPD_JNJ_NO)</span>
+<span class="nc" id="L302">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L303">                updateSupport::apply,</span>
+                KseflColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L305">                updateKey.recUpdJnjNo(),</span>
+<span class="fc" id="L306">                KseflDataAccess.CallSpecs.UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_SGY_ANKN_NO_AND_REC_UPD_JNJ_NO.identifier(),</span>
+<span class="fc" id="L307">                updateKey.gmb(),</span>
+<span class="fc" id="L308">                updateKey.kasgYmd(),</span>
+<span class="fc" id="L309">                updateKey.kasHukkYmd(),</span>
+<span class="fc" id="L310">                updateKey.sgyAnknNo());</span>
+    }
+
+    private static boolean isInCktkRange(
+            EnumMap&lt;KseflColumn, Object&gt; r, String from, String to) {
+<span class="pc bpc" id="L315" title="1 of 4 branches missed.">        if (from == null || to == null) {</span>
+<span class="fc" id="L316">            return false;</span>
+        }
+<span class="fc" id="L318">        String cktk = (String) r.get(KseflColumn.FLTT_CKTK_CD);</span>
+<span class="pc bpc" id="L319" title="1 of 6 branches missed.">        return cktk != null &amp;&amp; cktk.compareTo(from) &gt;= 0 &amp;&amp; cktk.compareTo(to) &lt;= 0;</span>
+    }
+
+    private static boolean isMatchKtnCd(
+            EnumMap&lt;KseflColumn, Object&gt; r, String safeFlttKtnCd, String blankFlttKtnCd) {
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        if (safeFlttKtnCd == null) {</span>
+<span class="fc" id="L325">            return true;</span>
+        }
+<span class="fc" id="L327">        String normalizedFlttKtnCd =</span>
+<span class="fc" id="L328">                normalizeRowFixedLength((String) r.get(KseflColumn.FLTT_KTN_CD), &quot;flttKtnCd&quot;, 1);</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">        return Objects.equals(normalizedFlttKtnCd, safeFlttKtnCd)</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">                || Objects.equals(normalizedFlttKtnCd, blankFlttKtnCd);</span>
+    }
+
+    private static boolean isMatchFixedLength(
+            EnumMap&lt;KseflColumn, Object&gt; r,
+            KseflColumn column,
+            String safeValue,
+            String paramName,
+            int length) {
+<span class="fc" id="L339">        return Objects.equals(</span>
+<span class="fc" id="L340">                normalizeRowFixedLength((String) r.get(column), paramName, length),</span>
+                safeValue);
+    }
+
+    private static String normalizeRowFixedLength(String value, String paramName, int length) {
+<span class="fc" id="L345">        return WhereParamGuard.fixedLengthNotNull(value, paramName, length);</span>
+    }
+
+    /** R001/R002 の ORDER BY: KASG_YMD, KAS_HUKK_YMD, KASG_NWK_CD, GMB */
+<span class="fc" id="L349">    private static final Comparator&lt;EnumMap&lt;KseflColumn, Object&gt;&gt; R001_ORDER =</span>
+            Comparator
+<span class="fc" id="L351">                    .&lt;EnumMap&lt;KseflColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L352">                            r -&gt; (LocalDate) r.get(KseflColumn.KASG_YMD), Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L353">                    .thenComparing(</span>
+<span class="fc" id="L354">                            r -&gt; (LocalDate) r.get(KseflColumn.KAS_HUKK_YMD), Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L355">                    .thenComparing(</span>
+<span class="fc" id="L356">                            r -&gt; (String) r.get(KseflColumn.KASG_NWK_CD), Comparator.nullsLast(Comparator.naturalOrder()))</span>
+<span class="fc" id="L357">                    .thenComparing(</span>
+<span class="fc" id="L358">                            r -&gt; (String) r.get(KseflColumn.GMB), Comparator.nullsLast(Comparator.naturalOrder()));</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UsageCodeUpdateFunctionPipelineImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-usagecodeupdatefunctionpipeline</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">UsageCodeUpdateFunctionPipelineImpl.java</span></div><h1>UsageCodeUpdateFunctionPipelineImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailDivisionCode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.pipeline_sc.idousagyourireki_doukan_jouhou.IdousagyourirekiDoukanJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdTyenUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.write.GmtsetdWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ConstantMasterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.UsageCodeUpdateFunctionPipeline;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.GasUsageCodeRegistrationAvailabilityJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.GasUsageCodeRegistrationAvailabilityJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgmentOutput;
+
+/**
+ * 概要: SV-333（用途コード更新機能-導管）の実装クラス。
+ * 主な仕様:
+ * - DA-033-R006、SV-001、SV-274、DA-033-U003、SV-089、他-011/他-012 を直列実行し、用途コード更新を完了する。
+ * - `hukkSysShbt` と `systemDatetime` は RequestContext から取得し、不足時は fail-fast する。
+ * - `correlationId` は本 SV では直接参照しない。
+ * - step 13 は helper TSV `他-011、他-012.tsv` を正とし、導管履歴登録 request を直接組み立てる。
+ */
+public final class UsageCodeUpdateFunctionPipelineImpl implements UsageCodeUpdateFunctionPipeline {
+
+<span class="fc" id="L47">    private static final DateTimeFormatter BASIC_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L49">    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern(&quot;HHmmss&quot;);</span>
+
+    static final String SERVICE_USER_ID = &quot;KHSS333&quot;;
+
+<span class="fc" id="L53">    private static final String SHR_KBN_OTHER = RetailDivisionCode.OTHER.code();</span>
+
+    private static final String GAS_USAGE_CODE_TYPE = ConstantLookupKeys.Cirius.GasUsageCode.TYPE;
+
+    private static final String HISTORY_ITEM_NAME = &quot;用途コード&quot;;
+
+<span class="fc" id="L59">    private static final Set&lt;GmtsetdColumn&gt; GMTSETD_TARGET_COLUMNS = Set.of(GmtsetdColumn.GAS_YT_CD);</span>
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final RetailTypeJudgment retailTypeJudgment;
+
+    private final GasUsageCodeRegistrationAvailabilityJudgment gasUsageCodeRegistrationAvailabilityJudgment;
+
+    private final ConstantMasterInfoAcquisition constantMasterInfoAcquisition;
+
+    private final IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String openingStatus;
+
+    private final String customerInfoAcquisitionPossible;
+
+    /**
+     * 概要: SV-333 実行に必要な依存と必須定数を初期化する。
+     * 主な仕様:
+     * - 下位 DA/SV、RequestContext、定数サービスを保持する。
+     * - 開栓中判定と導管履歴登録に必要な必須定数はコンストラクタ初期化時点で fail-fast に解決する。
+     *
+     * @param gmtsetdDataAccess DA-033 データアクセス
+     * @param retailTypeJudgment SV-001 小売判定
+     * @param gasUsageCodeRegistrationAvailabilityJudgment SV-274 ガス用途コード登録可否判定
+     * @param constantMasterInfoAcquisition SV-089 コンスタントマスタ情報取得
+     * @param doukanAdapter 導管向け異動・作業履歴登録 adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    public UsageCodeUpdateFunctionPipelineImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            RetailTypeJudgment retailTypeJudgment,
+            GasUsageCodeRegistrationAvailabilityJudgment gasUsageCodeRegistrationAvailabilityJudgment,
+            ConstantMasterInfoAcquisition constantMasterInfoAcquisition,
+            IdousagyourirekiDoukanJouhouCiriusAdapter doukanAdapter,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L102">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L103">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L104">        this.retailTypeJudgment = Objects.requireNonNull(retailTypeJudgment, &quot;retailTypeJudgment&quot;);</span>
+<span class="fc" id="L105">        this.gasUsageCodeRegistrationAvailabilityJudgment = Objects.requireNonNull(</span>
+                gasUsageCodeRegistrationAvailabilityJudgment,
+                &quot;gasUsageCodeRegistrationAvailabilityJudgment&quot;);
+<span class="fc" id="L108">        this.constantMasterInfoAcquisition = Objects.requireNonNull(</span>
+                constantMasterInfoAcquisition,
+                &quot;constantMasterInfoAcquisition&quot;);
+<span class="fc" id="L111">        this.doukanAdapter = Objects.requireNonNull(doukanAdapter, &quot;doukanAdapter&quot;);</span>
+<span class="fc" id="L112">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L113">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L114">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L115">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L116">        this.openingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L120">        this.customerInfoAcquisitionPossible = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate shrYmd,
+            String gasYtCd,
+            String akrkKbn,
+            String akrkTrskShbt,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            String isrrSktCd) {
+<span class="fc" id="L140">        RequestContextValues requestContextValues = requireRequestContextValues();</span>
+<span class="fc" id="L141">        LocalDate knskKjnYmd = requestContextValues.systemDatetime().toLocalDate();</span>
+
+<span class="fc" id="L143">        GmtsetdRecord gmtsetdRecord = gmtsetdDataAccess</span>
+<span class="fc" id="L144">                .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, knskKjnYmd)</span>
+<span class="fc" id="L145">                .orElseThrow(() -&gt; new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000056));</span>
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if (!openingStatus.equals(gmtsetdRecord.gmtKhsJtkb())) {</span>
+<span class="fc" id="L148">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000090);</span>
+        }
+
+<span class="fc" id="L151">        RetailTypeJudgmentOutput retailTypeJudgmentOutput = executeRetailTypeJudgment(gasMtstNo, knskKjnYmd);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (!isSupportedRetailType(retailTypeJudgmentOutput)) {</span>
+<span class="fc" id="L153">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000057);</span>
+        }
+
+<span class="fc" id="L156">        GasUsageCodeRegistrationAvailabilityJudgmentOutput registrationAvailabilityOutput =</span>
+<span class="fc" id="L157">                gasUsageCodeRegistrationAvailabilityJudgment.execute(gasYtCd);</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(registrationAvailabilityOutput.gasYtCdTkhFlg())) {</span>
+<span class="fc" id="L159">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000058);</span>
+        }
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (Objects.equals(gmtsetdRecord.gasYtCd(), gasYtCd)) {</span>
+<span class="fc" id="L163">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000059);</span>
+        }
+
+<span class="fc" id="L166">        int updatedCount = gmtsetdDataAccess.updateByGasMtstNoAndTyenYmd(</span>
+<span class="fc" id="L167">                buildGmtsetdWriteRecord(gmtsetdRecord, gasYtCd),</span>
+                GMTSETD_TARGET_COLUMNS,
+<span class="fc" id="L169">                new GmtsetdTyenUpdateKey(gasMtstNo, gmtsetdRecord.tyenYmd()),</span>
+<span class="fc" id="L170">                AuditContext.of(SERVICE_USER_ID, requestContextValues.decodedOriginFunctionId()));</span>
+<span class="fc" id="L171">        ensureUpdatedCount(</span>
+                updatedCount,
+                gasMtstNo,
+<span class="fc" id="L174">                gmtsetdRecord.tyenYmd(),</span>
+                gasYtCd,
+<span class="fc" id="L176">                requestContextValues.decodedOriginFunctionId());</span>
+
+<span class="fc" id="L178">        ConstantMasterInfoAcquisitionOutput beforeUsageCodeInfo =</span>
+<span class="fc" id="L179">                constantMasterInfoAcquisition.execute(GAS_USAGE_CODE_TYPE, gmtsetdRecord.gasYtCd());</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        String reportBeforeInfo = normalizeText(beforeUsageCodeInfo == null ? null : beforeUsageCodeInfo.cntn());</span>
+<span class="fc" id="L181">        String reportAfterInfo = normalizeText(registrationAvailabilityOutput.cntnMix());</span>
+
+<span class="fc" id="L183">        doukanAdapter.register(buildDoukanRequest(</span>
+                gasMtstNo,
+                shrYmd,
+                akrkKbn,
+                akrkTrskShbt,
+                duknIsrgCd,
+                duknIsrsCd,
+                isrrHkkrKbn,
+                isrrSktCd,
+<span class="fc" id="L192">                requestContextValues.systemDatetime(),</span>
+                reportBeforeInfo,
+                reportAfterInfo));
+<span class="fc" id="L195">    }</span>
+
+    private RetailTypeJudgmentOutput executeRetailTypeJudgment(Long gasMtstNo, LocalDate knskKjnYmd) {
+        try {
+<span class="fc" id="L199">            return retailTypeJudgment.execute(SHR_KBN_OTHER, gasMtstNo, knskKjnYmd);</span>
+<span class="fc" id="L200">        } catch (RuntimeException ignored) {</span>
+<span class="fc" id="L201">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000057);</span>
+        }
+    }
+
+    private boolean isSupportedRetailType(RetailTypeJudgmentOutput output) {
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (output == null) {</span>
+<span class="nc" id="L207">            return false;</span>
+        }
+<span class="fc" id="L209">        String retailType = output.kuHntKbn();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        return RetailTypeJudgmentCode.TOKYO_GAS.code().equals(retailType)</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                || RetailTypeJudgmentCode.OTHER.code().equals(retailType);</span>
+    }
+
+    private RequestContextValues requireRequestContextValues() {
+<span class="fc" id="L215">        String hukkSysShbt = requestContext</span>
+<span class="fc" id="L216">                .getHukkSysShbt()</span>
+<span class="fc" id="L217">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L218">        LocalDateTime systemDatetime = requestContext</span>
+<span class="fc" id="L219">                .getSystemDatetime()</span>
+<span class="fc" id="L220">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L221">        String decodedOriginFunctionId = Objects.requireNonNull(</span>
+<span class="fc" id="L222">                kaiheisenConstantService.findNameByTypeAndValue(</span>
+                        ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                        hukkSysShbt),
+                &quot;decodedOriginFunctionId&quot;);
+<span class="fc" id="L226">        return new RequestContextValues(systemDatetime, decodedOriginFunctionId);</span>
+    }
+
+    private GmtsetdWriteRecord buildGmtsetdWriteRecord(GmtsetdRecord record, String gasYtCd) {
+<span class="fc" id="L230">        return new GmtsetdWriteRecord(</span>
+<span class="fc" id="L231">                record.gasMtstNo(),</span>
+<span class="fc" id="L232">                record.tkysYmd(),</span>
+<span class="fc" id="L233">                record.tyenYmd(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                gasYtCd,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L289">                record.recUpdJnjNo(),</span>
+                null);
+    }
+
+    private void ensureUpdatedCount(
+            int updatedCount,
+            Long gasMtstNo,
+            LocalDate tyenYmd,
+            String gasYtCd,
+            String decodedOriginFunctionId) {
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        if (updatedCount == 1) {</span>
+<span class="fc" id="L300">            return;</span>
+        }
+<span class="fc" id="L302">        throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L303">                gmtsetdDataAccess.tableName(),</span>
+<span class="fc" id="L304">                GmtsetdDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TYEN_YMD.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L306">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L307">                        .put(&quot;tyenYmd&quot;, tyenYmd)</span>
+<span class="fc" id="L308">                        .put(&quot;gasYtCd&quot;, gasYtCd)</span>
+<span class="fc" id="L309">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L310">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private IdousagyourirekiDoukanJouhouRequest buildDoukanRequest(
+            Long gasMtstNo,
+            LocalDate shrYmd,
+            String akrkKbn,
+            String akrkTrskShbt,
+            String duknIsrgCd,
+            String duknIsrsCd,
+            String isrrHkkrKbn,
+            String isrrSktCd,
+            LocalDateTime systemDatetime,
+            String reportBeforeInfo,
+            String reportAfterInfo) {
+<span class="fc" id="L325">        Objects.requireNonNull(systemDatetime, &quot;systemDatetime&quot;);</span>
+<span class="fc" id="L326">        Objects.requireNonNull(reportBeforeInfo, &quot;reportBeforeInfo&quot;);</span>
+<span class="fc" id="L327">        Objects.requireNonNull(reportAfterInfo, &quot;reportAfterInfo&quot;);</span>
+<span class="fc" id="L328">        return new IdousagyourirekiDoukanJouhouRequest(</span>
+                new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiDoukanJouhouRenkei(
+                        new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekigyoumuKyoutsuuDoukan(
+<span class="fc" id="L331">                                formatCustomerNumber(gasMtstNo),</span>
+                                akrkKbn,
+                                akrkTrskShbt,
+                                duknIsrgCd,
+                                duknIsrsCd,
+                                isrrHkkrKbn,
+                                isrrSktCd,
+<span class="fc" id="L338">                                formatBasicDate(systemDatetime.toLocalDate()),</span>
+<span class="fc" id="L339">                                formatTime(systemDatetime),</span>
+<span class="fc" id="L340">                                formatBasicDate(shrYmd),</span>
+                                &quot;&quot;,
+                                &quot;&quot;,
+                                &quot;&quot;),
+<span class="fc" id="L344">                        List.of(new IdousagyourirekiDoukanJouhouRequest.IdousagyourirekiShousaiDoukan(</span>
+                                BigDecimal.ONE,
+                                HISTORY_ITEM_NAME,
+<span class="fc" id="L347">                                normalizeText(reportBeforeInfo),</span>
+<span class="fc" id="L348">                                normalizeText(reportAfterInfo))),</span>
+                        customerInfoAcquisitionPossible,
+<span class="fc" id="L350">                        normalizeText(formatBasicDate(shrYmd))));</span>
+    }
+
+    private String normalizeText(String value) {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private String formatCustomerNumber(Long value) {
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        return value == null ? null : &quot;%011d&quot;.formatted(value);</span>
+    }
+
+    private String formatBasicDate(LocalDate value) {
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">        return value == null ? null : BASIC_DATE_FORMATTER.format(value);</span>
+    }
+
+    private String formatTime(LocalDateTime value) {
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">        return value == null ? null : TIME_FORMATTER.format(value.toLocalTime());</span>
+    }
+
+<span class="fc" id="L369">    private record RequestContextValues(</span>
+            LocalDateTime systemDatetime,
+            String decodedOriginFunctionId) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

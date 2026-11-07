@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectiveInMemoryRowMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core</a> &gt; <span class="el_source">ReflectiveInMemoryRowMapper.java</span></div><h1>ReflectiveInMemoryRowMapper.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.ReflectiveValueExtractors;
+
+/**
+ * Column enum と Record コンポーネントの名前照合により InMemory 行変換を自動実行するマッパー。
+ *
+ * &lt;p&gt;{@code toRawValueMap}: Record の各コンポーネント値をそのまま列マップへ格納する。
+ *
+ * &lt;p&gt;{@code toRecord}: 列マップから Record を構築する。 String 型は末尾の半角/全角空白除去、Long 型はゼロ→null 変換を適用する。
+ *
+ * @param &lt;TColumn&gt; Column enum 型
+ * @param &lt;TReadRecord&gt; Read Record 型（Java record）
+ */
+public final class ReflectiveInMemoryRowMapper&lt;
+                TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn, TReadRecord extends Record&gt;
+        implements InMemoryRowMapper&lt;TColumn, TReadRecord&gt; {
+
+    private final Class&lt;TColumn&gt; columnClass;
+
+    private final Class&lt;TReadRecord&gt; recordClass;
+
+    private final ColumnMapping&lt;TColumn&gt;[] columnMappings;
+
+    private final Constructor&lt;TReadRecord&gt; recordConstructor;
+
+    private final RecordComponent[] recordComponents;
+
+    private ReflectiveInMemoryRowMapper(
+            Class&lt;TColumn&gt; columnClass,
+            Class&lt;TReadRecord&gt; recordClass,
+            ColumnMapping&lt;TColumn&gt;[] columnMappings,
+            Constructor&lt;TReadRecord&gt; recordConstructor,
+<span class="nc" id="L43">            RecordComponent[] recordComponents) {</span>
+<span class="nc" id="L44">        this.columnClass = columnClass;</span>
+<span class="nc" id="L45">        this.recordClass = recordClass;</span>
+<span class="nc" id="L46">        this.columnMappings = columnMappings;</span>
+<span class="nc" id="L47">        this.recordConstructor = recordConstructor;</span>
+<span class="nc" id="L48">        this.recordComponents = recordComponents;</span>
+<span class="nc" id="L49">    }</span>
+
+    /**
+     * マッパーを構築する。
+     *
+     * @param &lt;C&gt; Column enum 型
+     * @param &lt;R&gt; Read Record 型
+     * @param columnClass Column enum クラス
+     * @param recordClass Read Record クラス
+     * @return マッパーインスタンス
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;C extends Enum&lt;C&gt; &amp; DataAccessColumn, R extends Record&gt;
+            ReflectiveInMemoryRowMapper&lt;C, R&gt; create(Class&lt;C&gt; columnClass, Class&lt;R&gt; recordClass) {
+<span class="nc" id="L63">        Objects.requireNonNull(columnClass, &quot;columnClass&quot;);</span>
+<span class="nc" id="L64">        Objects.requireNonNull(recordClass, &quot;recordClass&quot;);</span>
+
+<span class="nc" id="L66">        RecordComponent[] components = recordClass.getRecordComponents();</span>
+<span class="nc" id="L67">        Map&lt;String, Integer&gt; componentIndexByName = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        for (int i = 0; i &lt; components.length; i++) {</span>
+<span class="nc" id="L69">            componentIndexByName.put(components[i].getName(), i);</span>
+        }
+
+<span class="nc" id="L72">        C[] columns = columnClass.getEnumConstants();</span>
+<span class="nc" id="L73">        ColumnMapping&lt;C&gt;[] mappings = new ColumnMapping[components.length];</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (C column : columns) {</span>
+<span class="nc" id="L75">            String camelName = ReflectiveValueExtractors.snakeToCamel(column.name());</span>
+<span class="nc" id="L76">            Integer idx = componentIndexByName.get(camelName);</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            if (idx != null) {</span>
+<span class="nc" id="L78">                components[idx].getAccessor().setAccessible(true);</span>
+<span class="nc" id="L79">                mappings[idx] = new ColumnMapping&lt;&gt;(column, components[idx].getAccessor());</span>
+            }
+        }
+
+<span class="nc" id="L83">        Class&lt;?&gt;[] paramTypes = new Class&lt;?&gt;[components.length];</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        for (int i = 0; i &lt; components.length; i++) {</span>
+<span class="nc" id="L85">            paramTypes[i] = components[i].getType();</span>
+        }
+        Constructor&lt;R&gt; ctor;
+        try {
+<span class="nc" id="L89">            ctor = recordClass.getDeclaredConstructor(paramTypes);</span>
+<span class="nc" id="L90">            ctor.setAccessible(true);</span>
+<span class="nc" id="L91">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L92">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L93">                    &quot;Record canonical constructor not found: &quot; + recordClass.getName(), e);</span>
+<span class="nc" id="L94">        }</span>
+
+<span class="nc" id="L96">        return new ReflectiveInMemoryRowMapper&lt;&gt;(</span>
+                columnClass, recordClass, mappings, ctor, components);
+    }
+
+    @Override
+    public EnumMap&lt;TColumn, Object&gt; toRawValueMap(TReadRecord record) {
+<span class="nc" id="L102">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L103">        EnumMap&lt;TColumn, Object&gt; values = new EnumMap&lt;&gt;(columnClass);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">        for (ColumnMapping&lt;TColumn&gt; mapping : columnMappings) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (mapping == null) {</span>
+<span class="nc" id="L106">                continue;</span>
+            }
+            try {
+<span class="nc" id="L109">                values.put(mapping.column, mapping.accessor.invoke(record));</span>
+<span class="nc" id="L110">            } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L111">                throw new IllegalStateException(</span>
+<span class="nc" id="L112">                        &quot;Failed to invoke accessor for column: &quot; + mapping.column.name(), e);</span>
+<span class="nc" id="L113">            }</span>
+        }
+<span class="nc" id="L115">        return values;</span>
+    }
+
+    @Override
+    public TReadRecord toRecord(Map&lt;TColumn, Object&gt; values) {
+<span class="nc" id="L120">        Objects.requireNonNull(values, &quot;values&quot;);</span>
+<span class="nc" id="L121">        Object[] args = new Object[recordComponents.length];</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        for (int i = 0; i &lt; columnMappings.length; i++) {</span>
+<span class="nc" id="L123">            ColumnMapping&lt;TColumn&gt; mapping = columnMappings[i];</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">            if (mapping == null) {</span>
+<span class="nc" id="L125">                args[i] = null;</span>
+<span class="nc" id="L126">                continue;</span>
+            }
+<span class="nc" id="L128">            Object raw = values.get(mapping.column);</span>
+<span class="nc" id="L129">            args[i] = convertForRead(raw, recordComponents[i].getType());</span>
+        }
+        try {
+<span class="nc" id="L132">            return recordConstructor.newInstance(args);</span>
+<span class="nc" id="L133">        } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L134">            throw new IllegalStateException(</span>
+<span class="nc" id="L135">                    &quot;Failed to construct record: &quot; + recordClass.getName(), e);</span>
+        }
+    }
+
+    /** InMemory マップ値を Read Record 型に変換する。 String は末尾の半角/全角空白除去、Long/Integer はゼロ→null を適用する。 */
+    private static Object convertForRead(Object value, Class&lt;?&gt; targetType) {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L142">            return null;</span>
+        }
+<span class="nc bnc" id="L144" title="All 4 branches missed.">        if (targetType == Boolean.class &amp;&amp; value instanceof String s) {</span>
+<span class="nc" id="L145">            String normalized = s.trim();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            if (normalized.isEmpty()) {</span>
+<span class="nc" id="L147">                return null;</span>
+            }
+<span class="nc" id="L149">            String lower = normalized.toLowerCase(java.util.Locale.ROOT);</span>
+<span class="nc bnc" id="L150" title="All 8 branches missed.">            if (lower.equals(&quot;1&quot;) || lower.equals(&quot;y&quot;) || lower.equals(&quot;t&quot;) || lower.equals(&quot;true&quot;)) {</span>
+<span class="nc" id="L151">                return Boolean.TRUE;</span>
+            }
+<span class="nc bnc" id="L153" title="All 8 branches missed.">            if (lower.equals(&quot;0&quot;) || lower.equals(&quot;n&quot;) || lower.equals(&quot;f&quot;) || lower.equals(&quot;false&quot;)) {</span>
+<span class="nc" id="L154">                return Boolean.FALSE;</span>
+            }
+<span class="nc" id="L156">            return null;</span>
+        }
+<span class="nc bnc" id="L158" title="All 4 branches missed.">        if (targetType == String.class &amp;&amp; value instanceof String s) {</span>
+<span class="nc" id="L159">            return FixedLengthFormatter.suppressSpace(s);</span>
+        }
+<span class="nc bnc" id="L161" title="All 4 branches missed.">        if (targetType == Long.class &amp;&amp; value instanceof Long l) {</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            return l == 0L ? null : l;</span>
+        }
+<span class="nc bnc" id="L164" title="All 4 branches missed.">        if (targetType == Integer.class &amp;&amp; value instanceof Integer i) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">            return i == 0 ? null : i;</span>
+        }
+<span class="nc" id="L167">        return value;</span>
+    }
+
+<span class="nc" id="L170">    private record ColumnMapping&lt;C&gt;(C column, Method accessor) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
