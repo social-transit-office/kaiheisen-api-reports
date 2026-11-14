@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComprehensiveCheckAtOpeningOtherRetailImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-comprehensivecheckatopeningotherretail</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ComprehensiveCheckAtOpeningOtherRetailImpl.java</span></div><h1>ComprehensiveCheckAtOpeningOtherRetailImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ComprehensiveCheckAtOpeningOtherRetail;
+
+/**
+ * 概要:
+ * SV-201（開栓時総合チェック（他小売開栓））における他小売判定を実装する。
+ *
+ * 主な仕様:
+ * - 契約有無フラグと総合判定フラグがともに true の場合のみ判定対象とする。
+ * - 料金計算関連状態区分が「関連有効」または「終了待ち」かつ、ＴＧ他小売区分が他小売のとき開栓共通エラーを送出する。
+ * - 判定に必要な定数値はコンストラクタで解決し、実行時は解決済み値を参照する。
+ *
+ * 既知の制約:
+ * - public メソッド引数の null バリデーションは上位層責務とし、本クラスでは null ガードを行わない。
+ */
+public final class ComprehensiveCheckAtOpeningOtherRetailImpl
+        implements ComprehensiveCheckAtOpeningOtherRetail {
+
+    /** 料金計算関連状態区分: 関連有効。 */
+    private final String chargeCalculationRelatedStatusValid;
+
+    /** 料金計算関連状態区分: 終了待ち。 */
+    private final String chargeCalculationRelatedStatusEndWaiting;
+
+    /** TG/他小売区分: 他小売。 */
+    private final String otherRetailCategory;
+
+    /**
+     * 概要: 判定に必要な定数値を解決して初期化する。
+     * 主な仕様:
+     * - CIRIUS 定数サービスから料金計算関連状態区分の判定値を解決する。
+     * - 開閉栓定数サービスから TG/他小売区分の他小売値を解決する。
+     * 既知の制約:
+     * - 定数コード自体の妥当性検証は RequiredConstantResolver と各定数サービスに委譲する。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     */
+    public ComprehensiveCheckAtOpeningOtherRetailImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L49">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L50">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L51">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L52">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L53">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L54">        this.chargeCalculationRelatedStatusValid = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L58">        this.chargeCalculationRelatedStatusEndWaiting = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L62">        this.otherRetailCategory = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L66">    }</span>
+
+    /**
+     * 概要: 開栓時の他小売に関する包括チェックを実行する。
+     * 主な仕様:
+     * - 契約有無フラグ、総合判定フラグ、料金計算関連状態区分、ＴＧ他小売区分の組み合わせを評価する。
+     * - 条件をすべて満たした場合はエラーコード 020100022 の開栓共通エラーを送出する。
+     * 既知の制約:
+     * - 引数が null の場合の扱いは呼び出し側責務であり、本メソッドでは null 安全化しない。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param suguHntFlg 総合判定フラグ
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @param tgTkurKbn ＴＧ他小売区分
+     */
+    @Override
+    public void execute(
+            Boolean kiyUmFlg,
+            Boolean suguHntFlg,
+            String rkkiKnrnJtkb,
+            String tgTkurKbn) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (Boolean.TRUE.equals(kiyUmFlg)</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                &amp;&amp; Boolean.TRUE.equals(suguHntFlg)</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                &amp;&amp; isRelatedStatus(rkkiKnrnJtkb)</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                &amp;&amp; isOtherRetail(tgTkurKbn)) {</span>
+<span class="fc" id="L91">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100022);</span>
+        }
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * 概要: 料金計算関連状態区分が判定対象かを判定する。
+     * 主な仕様:
+     * - 「関連有効」または「終了待ち」のいずれかに一致する場合に true を返す。
+     * 既知の制約:
+     * - 引数が null の場合は NullPointerException となる。
+     *
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @return 判定対象の料金計算関連状態区分であれば true
+     */
+    private boolean isRelatedStatus(String rkkiKnrnJtkb) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        return rkkiKnrnJtkb.equals(chargeCalculationRelatedStatusValid)</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                || rkkiKnrnJtkb.equals(chargeCalculationRelatedStatusEndWaiting);</span>
+    }
+
+    /**
+     * 概要: TG/他小売区分が他小売かを判定する。
+     * 主な仕様:
+     * - 解決済みの他小売区分定数と一致する場合に true を返す。
+     * 既知の制約:
+     * - 引数が null の場合は NullPointerException となる。
+     *
+     * @param tgTkurKbn TG/他小売区分
+     * @return 他小売であれば true
+     */
+    private boolean isOtherRetail(String tgTkurKbn) {
+<span class="fc" id="L121">        return tgTkurKbn.equals(otherRetailCategory);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

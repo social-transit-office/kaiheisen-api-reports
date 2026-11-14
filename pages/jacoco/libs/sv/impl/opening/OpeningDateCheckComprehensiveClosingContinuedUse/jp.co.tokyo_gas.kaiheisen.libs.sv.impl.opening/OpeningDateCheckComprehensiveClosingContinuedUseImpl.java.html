@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningDateCheckComprehensiveClosingContinuedUseImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingdatecheckcomprehensiveclosingcontinueduse</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningDateCheckComprehensiveClosingContinuedUseImpl.java</span></div><h1>OpeningDateCheckComprehensiveClosingContinuedUseImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckComprehensiveClosingContinuedUse;
+
+/**
+ * 概要: SV-185（開栓日チェック（総合閉栓時の継続使用判定））の実装クラス。
+ * 主な仕様:
+ * - 総合判定結果フラグ、継続使用扱いコード、サービス契約有無フラグ、日付条件を組み合わせて判定する。
+ * - 条件がすべて成立する場合は開栓共通エラー 020100018（KaisenRuleException）を送出する。
+ * 既知の制約:
+ * - 公開メソッド引数の null バリデーションは上位層責務とし、本クラスでは null ガードを行わない。
+ */
+public final class OpeningDateCheckComprehensiveClosingContinuedUseImpl
+        implements OpeningDateCheckComprehensiveClosingContinuedUse {
+
+    /**
+     * 概要: SV 実行時のリクエストコンテキスト。
+     * 主な仕様:
+     * - 設計書上の共通入力である correlationId、hukkSysShbt、systemDatetime の受け渡し先となる。
+     * - SV-185 の判定ロジック自体では参照しないが、既存 SV 実装と同じ依存注入形を維持する。
+     * 既知の制約:
+     * - 本フィールドはコンストラクタで非 null を必須とする。
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    private final RequestContext requestContext;
+
+    /**
+     * 継続使用扱いコード: 総合ワーニング対象（KH007-1）
+     * fail-fast: 必須定数が取得できない場合はコンストラクタで例外
+     */
+    private final String comprehensiveWarningTargetCode;
+
+    /**
+     * 概要: 共通入力・定数サービスを受け取って初期化する。
+     * 主な仕様:
+     * - 設計書上の共通入力は RequestContext で扱う。
+     * - 継続使用扱いコード（KH007-1）は KaiheisenConstantService + RequiredConstantResolver でfail-fast解決。
+     * - 必須依存（requestContext, kaiheisenConstantService）はnull禁止。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public OpeningDateCheckComprehensiveClosingContinuedUseImpl(
+            RequestContext requestContext,
+<span class="fc" id="L53">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L54">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L55">        Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+        // fail-fast: KH007-1 必須定数
+<span class="fc" id="L57">        this.comprehensiveWarningTargetCode = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.ContinuousUseHandlingCode.COMPREHENSIVE_WARNING_TARGET);
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * 概要: 総合閉栓時の継続使用開栓における開栓日エラー判定を実行する。
+     * 主な仕様:
+     * - 総合判定結果フラグが true、継続使用扱いコードが総合ワーニング対象、サービス契約有無フラグが true、
+    *   開栓作業年月日が料金計算開始年月日より前のときに開栓共通エラーを送出する。
+     * - それ以外の場合は何も返さずに正常終了する。
+     * 既知の制約:
+     * - null を含む入力の扱いは上位層責務であり、必要に応じて NullPointerException となる。
+     *
+     * @param suguHtkFlg 総合判定結果フラグ
+     * @param kzksyAtkCd 継続使用扱いコード
+     * @param svckyaUmuFlg サービス契約有無フラグ
+     * @param rkkiSttYmd 料金計算開始年月日
+     * @param kasgYmd 開栓作業年月日
+         * @throws KaisenRuleException 開栓共通エラー 020100018 を送出する場合
+     */
+    @Override
+     public void execute(
+            Boolean suguHtkFlg,
+            String kzksyAtkCd,
+            Boolean svckyaUmuFlg,
+            LocalDate rkkiSttYmd,
+            LocalDate kasgYmd) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (suguHtkFlg</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                &amp;&amp; isComprehensiveWarningTarget(kzksyAtkCd)</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                &amp;&amp; svckyaUmuFlg</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                &amp;&amp; kasgYmd.isBefore(rkkiSttYmd)) {</span>
+<span class="fc" id="L90">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100018);</span>
+        }
+
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * 概要: 継続使用扱いコードが総合ワーニング対象かを判定する。
+     * 主な仕様:
+     * - 解決済みの総合ワーニング対象コードと完全一致する場合に true を返却する。
+     * 既知の制約:
+     * - 引数が null の場合は false を返す（NullPointerException とはならない）。
+     *
+     * @param kzksyAtkCd 継続使用扱いコード（null可）
+     * @return 総合ワーニング対象の場合 true、nullの場合はfalse
+     */
+    private boolean isComprehensiveWarningTarget(String kzksyAtkCd) {
+<span class="fc" id="L106">        return comprehensiveWarningTargetCode.equals(kzksyAtkCd);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

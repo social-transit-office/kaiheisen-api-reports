@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCommonForceOtherRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-opening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.retail.retail_other</a> &gt; <span class="el_source">OpeningCommonForceOtherRetailResource.java</span></div><h1>OpeningCommonForceOtherRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_opening.retail.retail_other;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_other.OpeningCommonForceOtherRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_other.OpeningCommonForceOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_other.OpeningCommonForceOtherRetailRequest.NewTelInf;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_other.OpeningCommonForceOtherRetailRequest.TelnoUpdInf;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_opening.retail.retail_other.OpeningCommonForceOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.filter.CorrelationIdFilter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerNameKanjiDisplayFlagAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerNameKanjiDisplayFlagAcquisitionOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-058 開栓共通処理 強制入力 他小売 API のリソース実装。
+ */
+@MainService(identifier = &quot;MA-058&quot;, name = &quot;開栓共通処理 強制入力 他小売 API&quot;)
+@Path(OpeningCommonForceOtherRetailEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;開栓共通処理 強制入力 他小売&quot;, description = &quot;MA-058 開栓共通処理 強制入力 他小売 API&quot;)
+public class OpeningCommonForceOtherRetailResource extends BaseResource&lt;OpeningCommonForceOtherRetailRequest&gt; {
+
+    /** KSEFL 登録時に使用する更新ユーザー ID。 */
+    static final String SERVICE_USER_ID = &quot;KHSM058&quot;;
+
+    /** 拠点コード未解決時に KSEFL 特記事項メモへ設定する文言。 */
+    static final String TKJ_MEM_BASE_UNIDENTIFIED = &quot;拠点未特定&quot;;
+
+    /** KSEFL の NOT NULL 列へ設定する未特定拠点コード。 */
+    static final String UNRESOLVED_BASE_CODE = &quot; &quot;;
+
+    /** other-retail で未解決の契約番号に使う既定値。 */
+    private static final long DEFAULT_UNRESOLVED_CONTRACT_NO = 0L;
+
+    /** SV-075 おなまえ漢字表示可否コード取得サービス。 */
+    private final CustomerNameKanjiDisplayFlagAcquisition customerNameKanjiDisplayFlagAcquisition;
+
+    /** DA-066-R001 検針分担エリア別ガスメーター設置場所取得。 */
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    /** DA-139-C001 開栓エラーフォロー件名登録。 */
+    private final KseflDataAccess kseflDataAccess;
+
+    /** 未着手のフォロー状態コード。 */
+    private final String followStatusCode;
+
+    /** 他小売のTG/他小売区分。 */
+    private final String otherRetailCategory;
+
+    /** 報告システム種別のデコードに使用する定数サービス。 */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator DTO バリデータ
+     * @param clock システム時刻プロバイダ
+     * @param customerNameKanjiDisplayFlagAcquisition おなまえ漢字表示可否コード取得サービス
+     * @param kbagmstDataAccess 検針分担エリア別ガスメーター設置場所データアクセス
+     * @param kseflDataAccess 開栓エラーフォロー件名データアクセス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     */
+    @Inject
+    public OpeningCommonForceOtherRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            CustomerNameKanjiDisplayFlagAcquisition customerNameKanjiDisplayFlagAcquisition,
+            KbagmstDataAccess kbagmstDataAccess,
+            KseflDataAccess kseflDataAccess,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService) {
+<span class="fc" id="L115">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L116">        this.customerNameKanjiDisplayFlagAcquisition = Objects.requireNonNull(</span>
+                customerNameKanjiDisplayFlagAcquisition,
+                &quot;customerNameKanjiDisplayFlagAcquisition&quot;);
+<span class="fc" id="L119">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L120">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L121">        this.followStatusCode = RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L122">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L125">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L126">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L127">        this.otherRetailCategory = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                this.kaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.OTHER_RETAIL);
+<span class="fc" id="L131">    }</span>
+
+    /**
+     * MA-058 開栓共通処理 強制入力 他小売 API を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return 実行結果レスポンス
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;開栓共通処理 強制入力 他小売&quot;,
+            description = &quot;SV-075、DA-066-R001、DA-139-C001 を用いて開栓エラーフォロー件名を登録する。&quot;,
+            operationId = &quot;postOpeningCommonForceOtherRetail&quot;)
+    @Parameter(
+            name = CorrelationIdFilter.HEADER_NAME,
+            in = ParameterIn.HEADER,
+            description = &quot;相関ID。未指定時はサーバで採番する。&quot;,
+            schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;登録成功&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = OpeningCommonForceOtherRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            headers = @Header(
+                    name = CorrelationIdFilter.HEADER_NAME,
+                    description = &quot;相関ID&quot;,
+                    schema = @Schema(type = SchemaType.STRING, format = &quot;uuid&quot;, maxLength = 36)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public OpeningCommonForceOtherRetailResponse endpoint(OpeningCommonForceOtherRetailRequest request) {
+<span class="fc" id="L181">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    /**
+     * MA-058 の業務処理本体を実行する。
+     *
+     * @param request リクエスト DTO
+     * @return 実行結果レスポンス
+     */
+    OpeningCommonForceOtherRetailResponse handle(OpeningCommonForceOtherRetailRequest request) {
+<span class="fc" id="L191">        LocalDateTime systemDatetime = requiredSystemDatetime();</span>
+<span class="fc" id="L192">        String hukkSysShbt = requiredHukkSysShbt();</span>
+<span class="fc" id="L193">        CustomerNameKanjiDisplayFlagAcquisitionOutput flagOutput =</span>
+<span class="fc" id="L194">                customerNameKanjiDisplayFlagAcquisition.execute(request.ctnmKj1());</span>
+<span class="fc" id="L195">        KbagmstRecord kbagmstRecord = resolveKbagmstRecord(request, systemDatetime);</span>
+<span class="fc" id="L196">        kseflDataAccess.insert(</span>
+<span class="fc" id="L197">            buildWriteRecord(request, flagOutput, kbagmstRecord, hukkSysShbt),</span>
+<span class="fc" id="L198">                AuditContext.of(</span>
+                        SERVICE_USER_ID,
+<span class="fc" id="L200">                        decodeOriginFunctionId(hukkSysShbt)));</span>
+<span class="fc" id="L201">        return new OpeningCommonForceOtherRetailResponse(</span>
+<span class="fc" id="L202">                resolveResponseCorrelationId(),</span>
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * フォロー担当の地域統括コードと拠点コードを解決するため KBAGMST を取得する。
+     *
+     * &lt;p&gt;ガスメーター設置場所番号が null または 0 の場合、または KBAGMST を取得できない場合は、
+     * リクエスト値を用いた疑似レコードを返す。&lt;/p&gt;
+     *
+     * @param request リクエスト DTO
+     * @param systemDatetime システム日時
+     * @return KBAGMST レコード、または地域統括コードのみ補完した疑似レコード
+     */
+    private KbagmstRecord resolveKbagmstRecord(
+            OpeningCommonForceOtherRetailRequest request,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L221">        YearMonth knskKjnYm = YearMonth.of(systemDatetime.getYear(), systemDatetime.getMonthValue());</span>
+<span class="fc" id="L222">        String normalizedCktkCd = normalizeOptional(request.cktkCd());</span>
+<span class="fc bfc" id="L223" title="All 4 branches covered.">        if (request.gasMtstNo() == null || request.gasMtstNo() == 0L) {</span>
+<span class="fc" id="L224">            return fallbackKbagmstRecord(request.gasMtstNo(), knskKjnYm, normalizedCktkCd);</span>
+        }
+<span class="fc" id="L226">        return kbagmstDataAccess.findByGasMtstNoAndTkysYmAndTyenYm(request.gasMtstNo(), knskKjnYm)</span>
+<span class="fc" id="L227">                .orElseGet(() -&gt; fallbackKbagmstRecord(request.gasMtstNo(), knskKjnYm, normalizedCktkCd));</span>
+    }
+
+    /**
+     * KBAGMST 未取得時にリクエスト値から代替レコードを組み立てる。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYm 検針基準年月
+     * @param normalizedCktkCd 正規化済み地域統括コード
+     * @return 疑似 KBAGMST レコード
+     */
+    private KbagmstRecord fallbackKbagmstRecord(
+            Long gasMtstNo,
+            YearMonth knskKjnYm,
+            String normalizedCktkCd) {
+<span class="fc" id="L242">        return new KbagmstRecord(</span>
+                gasMtstNo,
+                knskKjnYm,
+                knskKjnYm,
+                normalizedCktkCd,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * MA-058 リクエストを KSEFL 登録用 write レコードへ変換する。
+     *
+     * @param request リクエスト DTO
+     * @param flagOutput SV-075 の実行結果
+     * @param kbagmstRecord フォロー担当コード解決済みの KBAGMST レコード
+     * @return KSEFL 登録用 write レコード
+     */
+    private KseflWriteRecord buildWriteRecord(
+            OpeningCommonForceOtherRetailRequest request,
+            CustomerNameKanjiDisplayFlagAcquisitionOutput flagOutput,
+            KbagmstRecord kbagmstRecord,
+            String hukkSysShbt) {
+<span class="fc" id="L274">        TelProjection firstTel = telProjection(request.telnoUpdInfList(), 0);</span>
+<span class="fc" id="L275">        TelProjection secondTel = telProjection(request.telnoUpdInfList(), 1);</span>
+<span class="fc" id="L276">        String cktkCd = normalizeOptional(kbagmstRecord.kbabCktkCd());</span>
+<span class="fc" id="L277">        FollowBaseInfo followBaseInfo = resolveFollowBaseInfo(kbagmstRecord.kbabKtnCd());</span>
+<span class="fc" id="L278">        return new KseflWriteRecord(</span>
+<span class="fc" id="L279">                request.gmb(),</span>
+<span class="fc" id="L280">                parseDate(request.kasgYmd()),</span>
+<span class="fc" id="L281">                parseDate(request.kasHukkYmd()),</span>
+                hukkSysShbt,
+<span class="fc" id="L283">                request.sgyAnknNo(),</span>
+                followStatusCode,
+                null,
+<span class="fc" id="L286">                request.gasMtstNo(),</span>
+<span class="fc" id="L287">                request.syoKyoTrno(),</span>
+                otherRetailCategory,
+<span class="fc" id="L289">                request.tkykNo(),</span>
+<span class="fc" id="L290">                request.kasJysb(),</span>
+<span class="fc" id="L291">                request.ksenErrRyCd(),</span>
+                cktkCd,
+<span class="fc" id="L293">                followBaseInfo.flttKtnCd(),</span>
+<span class="fc" id="L294">                request.sgytNwkCd(),</span>
+<span class="fc" id="L295">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L296">                request.sagyTntEmpNmKj(),</span>
+<span class="fc" id="L297">                request.gmtShjSu(),</span>
+<span class="fc" id="L298">                request.ctnmKn1(),</span>
+<span class="fc" id="L299">                request.ctnmKj1(),</span>
+<span class="fc" id="L300">                flagOutput.onmeKjhkFlg(),</span>
+<span class="fc" id="L301">                request.ctnm1HujnShbt(),</span>
+<span class="fc" id="L302">                request.ctnm1HshiShbt(),</span>
+<span class="fc" id="L303">                request.ctnmKn2(),</span>
+<span class="fc" id="L304">                request.ctnmKj2(),</span>
+<span class="fc" id="L305">                request.ctnm2HujnShbt(),</span>
+<span class="fc" id="L306">                request.ctnm2HshiShbt(),</span>
+<span class="fc" id="L307">                request.yubnNo(),</span>
+<span class="fc" id="L308">                request.gkkCd(),</span>
+<span class="fc" id="L309">                request.mchCd(),</span>
+<span class="fc" id="L310">                request.cmazCd(),</span>
+<span class="fc" id="L311">                request.cbgSuj1(),</span>
+<span class="fc" id="L312">                request.cbgKn2(),</span>
+<span class="fc" id="L313">                request.cbgKn3(),</span>
+<span class="fc" id="L314">                request.cbgKn4(),</span>
+<span class="fc" id="L315">                request.tunoKn(),</span>
+<span class="fc" id="L316">                request.hynKn(),</span>
+<span class="fc" id="L317">                request.htuFlg(),</span>
+<span class="fc" id="L318">                request.bldnKn(),</span>
+<span class="fc" id="L319">                request.bldnKj(),</span>
+<span class="fc" id="L320">                request.ohmKj(),</span>
+<span class="fc" id="L321">                request.utidxNo(),</span>
+<span class="fc" id="L322">                request.custmrNo(),</span>
+<span class="fc" id="L323">                request.gasYtCd(),</span>
+<span class="fc" id="L324">                firstTel.kyoTelNo(),</span>
+<span class="fc" id="L325">                firstTel.telShbt(),</span>
+<span class="fc" id="L326">                firstTel.telRrskShbt(),</span>
+<span class="fc" id="L327">                firstTel.telKnzShbt(),</span>
+<span class="fc" id="L328">                firstTel.telStsdShbt(),</span>
+<span class="fc" id="L329">                firstTel.telShtkYmd(),</span>
+<span class="fc" id="L330">                firstTel.tetsCtnmKj(),</span>
+<span class="fc" id="L331">                firstTel.telZkgrShbt(),</span>
+<span class="fc" id="L332">                firstTel.telMusdKbn(),</span>
+<span class="fc" id="L333">                firstTel.oldKyoTelNo(),</span>
+<span class="fc" id="L334">                secondTel.kyoTelNo(),</span>
+<span class="fc" id="L335">                secondTel.telShbt(),</span>
+<span class="fc" id="L336">                secondTel.telRrskShbt(),</span>
+<span class="fc" id="L337">                secondTel.telKnzShbt(),</span>
+<span class="fc" id="L338">                secondTel.telStsdShbt(),</span>
+<span class="fc" id="L339">                secondTel.telShtkYmd(),</span>
+<span class="fc" id="L340">                secondTel.tetsCtnmKj(),</span>
+<span class="fc" id="L341">                secondTel.telZkgrShbt(),</span>
+<span class="fc" id="L342">                secondTel.telMusdKbn(),</span>
+<span class="fc" id="L343">                secondTel.oldKyoTelNo(),</span>
+<span class="fc" id="L344">                parseDate(request.kasgYmd()),</span>
+<span class="fc" id="L345">                request.gmb(),</span>
+<span class="fc" id="L346">                request.gasMtstNo(),</span>
+<span class="fc" id="L347">                request.syoKyoTrno(),</span>
+<span class="fc" id="L348">                request.tkykNo(),</span>
+                cktkCd,
+<span class="fc" id="L350">                DEFAULT_UNRESOLVED_CONTRACT_NO,</span>
+<span class="fc" id="L351">                DEFAULT_UNRESOLVED_CONTRACT_NO,</span>
+<span class="fc" id="L352">                followBaseInfo.tkjMem());</span>
+    }
+
+    private FollowBaseInfo resolveFollowBaseInfo(String value) {
+<span class="fc" id="L356">        String normalized = normalizeSingleCharacterCode(value);</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (normalized == null) {</span>
+<span class="fc" id="L358">            return new FollowBaseInfo(UNRESOLVED_BASE_CODE, TKJ_MEM_BASE_UNIDENTIFIED);</span>
+        }
+<span class="fc" id="L360">        return new FollowBaseInfo(normalized, null);</span>
+    }
+
+    private String normalizeSingleCharacterCode(String value) {
+<span class="fc" id="L364">        String normalized = normalizeOptional(value);</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (normalized == null) {</span>
+<span class="fc" id="L366">            return null;</span>
+        }
+<span class="fc" id="L368">        return normalized.substring(0, 1);</span>
+    }
+
+<span class="fc" id="L371">    private record FollowBaseInfo(String flttKtnCd, String tkjMem) {</span>
+    }
+
+    /**
+     * RequestContext からシステム日時を取得する。
+     *
+     * @return システム日時
+     */
+    private LocalDateTime requiredSystemDatetime() {
+<span class="fc" id="L380">        return requestContext.getSystemDatetime()</span>
+<span class="pc" id="L381">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * RequestContext から相関 ID を取得する。
+     *
+     * @return 相関 ID
+     */
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L390">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="fc" id="L391">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="fc" id="L392">            requestContext.setCorrelationId(generated);</span>
+<span class="fc" id="L393">            return generated;</span>
+        });
+    }
+
+    /**
+     * RequestContext から報告元システム種別を取得する。
+     *
+     * @return 報告元システム種別
+     */
+    private String requiredHukkSysShbt() {
+<span class="fc" id="L403">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L404">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    /**
+     * 報告システム種別から最終更新起点機能 ID を解決する。
+     *
+     * @param hukkSysShbt 報告システム種別
+     * @return 最終更新起点機能 ID
+     */
+    private String decodeOriginFunctionId(String hukkSysShbt) {
+<span class="fc" id="L414">        String normalizedHukkSysShbt = normalizeOptional(hukkSysShbt);</span>
+        try {
+<span class="fc" id="L416">            return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                    ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                    normalizedHukkSysShbt);
+<span class="fc" id="L419">        } catch (ConstantDefinitionNotFoundException ex) {</span>
+<span class="fc" id="L420">            throw new KaiheisenException(&quot;報告システム種別の定数定義が見つかりません&quot;, ex);</span>
+        }
+    }
+
+    /**
+     * 日付文字列を LocalDate へ変換する。
+     *
+     * @param value RFC3339 日付文字列
+     * @return 変換結果。未設定時は {@code null}
+     */
+    private static LocalDate parseDate(String value) {
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">        String normalized = value == null ? null : value.trim();</span>
+<span class="pc bpc" id="L432" title="2 of 4 branches missed.">        return normalized == null || normalized.isEmpty() ? null : LocalDate.parse(normalized);</span>
+    }
+
+    /**
+     * 電話更新情報リストから KSEFL の 1 レコード分の電話情報を取り出す。
+     *
+     * @param telnoUpdInfList 電話更新情報リスト
+     * @param index 取り出し対象の添字
+     * @return 抽出結果。存在しない場合は空オブジェクト
+     */
+    private static TelProjection telProjection(List&lt;TelnoUpdInf&gt; telnoUpdInfList, int index) {
+<span class="pc bpc" id="L443" title="1 of 6 branches missed.">        if (telnoUpdInfList == null || telnoUpdInfList.size() &lt;= index || telnoUpdInfList.get(index) == null) {</span>
+<span class="fc" id="L444">            return TelProjection.empty();</span>
+        }
+<span class="fc" id="L446">        TelnoUpdInf telnoUpdInf = telnoUpdInfList.get(index);</span>
+<span class="fc" id="L447">        NewTelInf newTelInf = telnoUpdInf.newTelInf();</span>
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">        if (newTelInf == null) {</span>
+<span class="nc" id="L449">            return new TelProjection(null, null, null, null, null, null, null, null, null, telnoUpdInf.oldKyoTelNo());</span>
+        }
+<span class="fc" id="L451">        return new TelProjection(</span>
+<span class="fc" id="L452">                newTelInf.kyoTelNo(),</span>
+<span class="fc" id="L453">                newTelInf.telShbt(),</span>
+<span class="fc" id="L454">                newTelInf.telRrskShbt(),</span>
+<span class="fc" id="L455">                newTelInf.telKnzShbt(),</span>
+<span class="fc" id="L456">                newTelInf.telStsdShbt(),</span>
+<span class="fc" id="L457">                parseDate(newTelInf.telShtkYmd()),</span>
+<span class="fc" id="L458">                newTelInf.tetsCtnmKj(),</span>
+<span class="fc" id="L459">                newTelInf.telZkgrShbt(),</span>
+<span class="fc" id="L460">                newTelInf.telMusdKbn(),</span>
+<span class="fc" id="L461">                telnoUpdInf.oldKyoTelNo());</span>
+    }
+
+    /**
+     * KSEFL に格納する電話情報 1 枠分の投影値。
+     */
+<span class="fc" id="L467">    private record TelProjection(</span>
+            String kyoTelNo,
+            String telShbt,
+            String telRrskShbt,
+            String telKnzShbt,
+            String telStsdShbt,
+            LocalDate telShtkYmd,
+            String tetsCtnmKj,
+            String telZkgrShbt,
+            String telMusdKbn,
+            String oldKyoTelNo) {
+
+        /**
+         * 値未設定を表す空の投影値を返す。
+         *
+         * @return 空の投影値
+         */
+        private static TelProjection empty() {
+<span class="fc" id="L485">            return new TelProjection(null, null, null, null, null, null, null, null, null, null);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

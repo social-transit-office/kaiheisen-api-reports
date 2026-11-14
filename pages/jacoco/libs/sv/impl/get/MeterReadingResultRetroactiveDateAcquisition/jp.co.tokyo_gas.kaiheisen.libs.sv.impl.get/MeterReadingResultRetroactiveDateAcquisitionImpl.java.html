@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MeterReadingResultRetroactiveDateAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-meterreadingresultretroactivedateacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">MeterReadingResultRetroactiveDateAcquisitionImpl.java</span></div><h1>MeterReadingResultRetroactiveDateAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultRetroactiveDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.MeterReadingResultRetroactiveDateAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KensakuTaishoukikanJouhou;
+
+/** 検針結果情報遡及日取得サービス実装。 */
+public class MeterReadingResultRetroactiveDateAcquisitionImpl
+        implements MeterReadingResultRetroactiveDateAcquisition {
+
+    private static final long RETROACTIVE_DAYS_DEFAULT = 810L;
+
+    private static final long RETROACTIVE_DAYS_OPENING_NON_TEMPORARY = 100L;
+
+    private final String openingStatusCode;
+
+    private final String temporaryReasonCode;
+
+    private final String temporarySwCancellationReasonCode;
+
+    /**
+     * 概要: 判定処理で使用する必須コンスタントを初期化する。 主な仕様: - CIRIUS コンスタント取得サービスの null を検知し、初期化時に失敗させる。 -
+     * ガスメーター開閉栓状態区分（開栓中）を必須定義として取得・保持する。 - 検針結果作成事由種別（臨時/臨時(SW解約)）を必須定義として取得・保持する。 既知の制約: -
+     * 必須コンスタント未定義時は RequiredConstantResolver の例外が送出される。
+     *
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public MeterReadingResultRetroactiveDateAcquisitionImpl(
+<span class="fc" id="L35">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L36">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L37">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L39">        this.openingStatusCode =</span>
+<span class="fc" id="L40">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L44">        this.temporaryReasonCode =</span>
+<span class="fc" id="L45">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .TEMPORARY);
+<span class="fc" id="L50">        this.temporarySwCancellationReasonCode =</span>
+<span class="fc" id="L51">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .TEMPORARY_SW_CANCELLATION);
+<span class="fc" id="L56">    }</span>
+
+    /**
+     * 概要: 入力値に基づき検索対象期間（開始日/終了日）を算出して返却する。 主な仕様: - 検針年月日が null の場合は専用分岐を置かず、処理途中で自然に例外となる。 - 基準日は
+     * resolveBaseDate で決定し、遡及日数は resolveRetroactiveDays で決定する。 - 戻り値の開始日は「基準日 - 遡及日数」、終了日は基準日を設定する。
+     * 既知の制約: - 日付演算は LocalDate の日単位計算に依存する。 - 状態区分/事由種別の空白・空値判定は normalize の仕様に従う。
+     *
+     * @param tsimKnsYmd 訂正前検針年月日
+     * @param knsYmd 検針年月日
+     * @param gmtKhsJtkb ガスメーター開閉栓状態区分
+     * @param knkkSksiJysb 検針結果作成事由種別
+     * @return 検索対象期間情報
+     */
+    @Override
+    public MeterReadingResultRetroactiveDateAcquisitionOutput execute(
+            LocalDate tsimKnsYmd, LocalDate knsYmd, String gmtKhsJtkb, String knkkSksiJysb) {
+<span class="fc" id="L72">        LocalDate baseDate = resolveBaseDate(tsimKnsYmd, knsYmd);</span>
+<span class="fc" id="L73">        long retroactiveDays = resolveRetroactiveDays(gmtKhsJtkb, knkkSksiJysb);</span>
+
+<span class="fc" id="L75">        return new MeterReadingResultRetroactiveDateAcquisitionOutput(</span>
+<span class="fc" id="L76">                new KensakuTaishoukikanJouhou(baseDate.minusDays(retroactiveDays), baseDate));</span>
+    }
+
+    /**
+     * 概要: 検索対象期間の基準日（検針年月日または訂正前検針年月日）を決定する。 主な仕様: - 訂正前検針年月日が null の場合は検針年月日を基準日にする。 -
+     * 両日付が存在する場合、経過日数（検針年月日 - 訂正前検針年月日）が 0 以上なら検針年月日を採用する。 - 経過日数が負の場合は訂正前検針年月日を採用する。 既知の制約: -
+     * knsYmd が null の場合、本メソッド内での参照により NullPointerException が発生し得る （呼び出し側で knsYmd の null を除外しない場合）。
+     *
+     * @param tsimKnsYmd 訂正前検針年月日
+     * @param knsYmd 検針年月日
+     * @return 算出に使用する基準日
+     */
+    private static LocalDate resolveBaseDate(LocalDate tsimKnsYmd, LocalDate knsYmd) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (tsimKnsYmd == null) {</span>
+<span class="fc" id="L90">            return knsYmd;</span>
+        }
+<span class="fc" id="L92">        long elapsedDays = ChronoUnit.DAYS.between(tsimKnsYmd, knsYmd);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        return elapsedDays &gt;= 0 ? knsYmd : tsimKnsYmd;</span>
+    }
+
+    /**
+     * 概要: 開閉栓状態区分と検針結果作成事由種別から遡及日数を判定する。 主な仕様: - 開栓中以外は既定遡及日数（810日）を返却する。 -
+     * 開栓中かつ事由種別が臨時または臨時(SW解約)の場合は810日を返却する。 - 上記以外（開栓中かつ臨時系以外）の場合は100日を返却する。 既知の制約: - 入力値比較前に
+     * normalize で trim と空値 null 化を行う。
+     *
+     * @param gmtKhsJtkb ガスメーター開閉栓状態区分
+     * @param knkkSksiJysb 検針結果作成事由種別
+     * @return 判定した遡及日数
+     */
+    private long resolveRetroactiveDays(String gmtKhsJtkb, String knkkSksiJysb) {
+<span class="fc" id="L106">        String normalizedStatus = normalize(gmtKhsJtkb);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!openingStatusCode.equals(normalizedStatus)) {</span>
+<span class="fc" id="L108">            return RETROACTIVE_DAYS_DEFAULT;</span>
+        }
+
+<span class="fc" id="L111">        String normalizedReason = normalize(knkkSksiJysb);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (temporaryReasonCode.equals(normalizedReason)</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                || temporarySwCancellationReasonCode.equals(normalizedReason)) {</span>
+<span class="fc" id="L114">            return RETROACTIVE_DAYS_DEFAULT;</span>
+        }
+<span class="fc" id="L116">        return RETROACTIVE_DAYS_OPENING_NON_TEMPORARY;</span>
+    }
+
+    /**
+     * 概要: 文字列を trim し、空値を null に正規化する。 主な仕様: - 入力値が null の場合は null を返却する。 - trim 後の文字列が空文字の場合は null
+     * を返却する。 - それ以外の場合は trim 後の文字列を返却する。 既知の制約: - 空白除去の挙動は Java 標準の trim 仕様に依存する。
+     *
+     * @param value 正規化対象の文字列
+     * @return 正規化後の文字列（空値は null）
+     */
+    private static String normalize(String value) {
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L128">            return null;</span>
+        }
+<span class="fc" id="L130">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

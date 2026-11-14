@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RetailTypeJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-retailtypejudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">RetailTypeJudgmentImpl.java</span></div><h1>RetailTypeJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.RetailTypeJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TkssvkyInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.TskgmstInfo;
+
+/**
+ * 小売種別判定サービス実装.
+ */
+public final class RetailTypeJudgmentImpl implements RetailTypeJudgment {
+
+    /** DA-099-R005 の TKSSVKY 参照 CallSpec. */
+<span class="fc" id="L31">    private static final DataAccessCallSpec FIND_TKSSVKY_BY_DATE_STATUS =</span>
+            TkssvkyDataAccess.CallSpecs
+                    .FIND_BY_TKSU_SVKY_NO_AND_TKYS_YMD_AND_TKSU_SVKY_JTKB;
+
+    /** 処理区分: 適用中. */
+    private static final String SHR_KBN_ACTIVE = &quot;1&quot;;
+
+    /** 処理区分: 直近. */
+    private static final String SHR_KBN_NEAREST = &quot;2&quot;;
+
+    /** 処理区分: 適用中または終了. */
+    private static final String SHR_KBN_ACTIVE_OR_END = &quot;3&quot;;
+
+    /** TSKGMST データアクセス. */
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    /** TKSSVKY データアクセス. */
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    /** TSKGMST の適用中状態区分. */
+    private final String tksSvkkActive;
+
+    /** TSKGMST の終了状態区分. */
+    private final String tksSvkkEnd;
+
+    /** TSKGMST の無効状態区分. */
+    private final String tksSvkkInvalid;
+
+    /** TKSSVKY の契約適用中状態区分. */
+    private final String tksSvkyActive;
+
+    /** TKSSVKY の契約終了状態区分. */
+    private final String tksSvkyEnd;
+
+    /** TKSSVKY の無効状態区分. */
+    private final String tksSvkyInvalid;
+
+    /** 東京ガスの小売事業者コード. */
+    private final String tokyoGasSupplierCode;
+
+    /** TG 小売の判定コード. */
+    private final String kuHntKbnTokyoGas;
+
+    /** 他小売の判定コード. */
+    private final String kuHntKbnOther;
+
+    /** 対象データなしの判定コード. */
+    private final String kuHntKbnNoData;
+
+    /** TSKGMST の適用中または終了状態一覧. */
+    private final List&lt;String&gt; activeOrEndSvkk;
+
+    /** TKSSVKY の適用中または終了状態一覧. */
+    private final List&lt;String&gt; activeOrEndSvky;
+
+    /**
+     * コンストラクタ.
+     *
+     * @param tskgmstDataAccessParam 託送サービス契約・ガスメーター設置場所関連
+     *     データアクセス
+     * @param tkssvkyDataAccessParam 託送サービス契約データアクセス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public RetailTypeJudgmentImpl(
+            final TskgmstDataAccess tskgmstDataAccessParam,
+            final TkssvkyDataAccess tkssvkyDataAccessParam,
+<span class="fc" id="L97">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L98">        this.tskgmstDataAccess =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(tskgmstDataAccessParam, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L100">        this.tkssvkyDataAccess =</span>
+<span class="fc" id="L101">                Objects.requireNonNull(tkssvkyDataAccessParam, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L102">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L103">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L105">        String contractRelatedStatusType =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE;
+<span class="fc" id="L107">        String contractStatusType =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE;
+<span class="fc" id="L109">        String contractRelatedStatusApplying =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.APPLYING;
+<span class="fc" id="L111">        String contractRelatedStatusApplicableEnds =</span>
+                ConstantLookupKeys.Cirius
+                        .TransportationServiceContractRelatedStatus
+                        .APPLICABLE_ENDS;
+<span class="fc" id="L115">        String contractRelatedStatusInvalid =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.INVALID;
+<span class="fc" id="L117">        String contractStatusUnderContract =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT;
+<span class="fc" id="L119">        String contractStatusEndOfContract =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.END_OF_CONTRACT;
+<span class="fc" id="L121">        String contractStatusInvalid =</span>
+                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.INVALID;
+
+<span class="fc" id="L124">        this.tksSvkkActive =</span>
+<span class="fc" id="L125">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractRelatedStatusType,
+                        contractRelatedStatusApplying);
+<span class="fc" id="L129">        this.tksSvkkEnd =</span>
+<span class="fc" id="L130">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractRelatedStatusType,
+                        contractRelatedStatusApplicableEnds);
+<span class="fc" id="L134">        this.tksSvkkInvalid =</span>
+<span class="fc" id="L135">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractRelatedStatusType,
+                        contractRelatedStatusInvalid);
+<span class="fc" id="L139">        this.tksSvkyActive =</span>
+<span class="fc" id="L140">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractStatusType,
+                        contractStatusUnderContract);
+<span class="fc" id="L144">        this.tksSvkyEnd =</span>
+<span class="fc" id="L145">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractStatusType,
+                        contractStatusEndOfContract);
+<span class="fc" id="L149">        this.tksSvkyInvalid =</span>
+<span class="fc" id="L150">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        contractStatusType,
+                        contractStatusInvalid);
+<span class="fc" id="L154">        this.tokyoGasSupplierCode =</span>
+<span class="fc" id="L155">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                        ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+
+<span class="fc" id="L160">        this.kuHntKbnTokyoGas = RetailTypeJudgmentCode.TOKYO_GAS.code();</span>
+<span class="fc" id="L161">        this.kuHntKbnOther = RetailTypeJudgmentCode.OTHER.code();</span>
+<span class="fc" id="L162">        this.kuHntKbnNoData = RetailTypeJudgmentCode.NO_DATA.code();</span>
+
+<span class="fc" id="L164">        this.activeOrEndSvkk = List.of(tksSvkkActive, tksSvkkEnd);</span>
+<span class="fc" id="L165">        this.activeOrEndSvky = List.of(tksSvkyActive, tksSvkyEnd);</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * 小売種別の判定を実行する.
+     *
+     * @param shrKbn 処理区分
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYmd 検索基準年月日
+     * @return 小売判定結果
+     */
+    @Override
+    public RetailTypeJudgmentOutput execute(
+            final String shrKbn,
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc bfc" id="L181" title="All 4 branches covered.">        return switch (shrKbn) {</span>
+<span class="fc" id="L182">            case SHR_KBN_ACTIVE -&gt; handleActive(gasMtstNo, knskKjnYmd);</span>
+<span class="fc" id="L183">            case SHR_KBN_NEAREST -&gt; handleNearest(gasMtstNo, knskKjnYmd);</span>
+<span class="fc" id="L184">            case SHR_KBN_ACTIVE_OR_END -&gt; handleActiveOrEnd(gasMtstNo);</span>
+            default -&gt;
+<span class="fc" id="L186">                    throw new KaiheisenException(</span>
+                            &quot;処理区分の値が不正のため、処理を終了しました。shrKbn=&quot; + shrKbn);
+        };
+    }
+
+    /**
+     * 処理区分1（適用中）で小売判定情報を取得する.
+     *
+     * &lt;p&gt;TSKGMST を適用中ステータスで検索し、0件の場合は対象データなしを返却する。
+     * 取得した最初の TSKGMST をキーに TKSSVKY を適用中ステータスで検索する。
+     * TKSSVKY が0件の場合は DA-099-R001 を識別子に
+     * DataInconsistencyException を送出する。&lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param baseDate 検索基準日
+     * @return 小売判定結果
+     */
+    private RetailTypeJudgmentOutput handleActive(
+            final Long gasMtstNo,
+            final LocalDate baseDate) {
+<span class="fc" id="L206">        List&lt;TskgmstRecord&gt; tskgmstRecords =</span>
+<span class="fc" id="L207">                tskgmstDataAccess.findAllByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        baseDate,
+                        tksSvkkActive);
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if (tskgmstRecords.isEmpty()) {</span>
+<span class="fc" id="L212">            return noData();</span>
+        }
+<span class="fc" id="L214">        TskgmstRecord tskgmstRecord = tskgmstRecords.getFirst();</span>
+
+<span class="fc" id="L216">        List&lt;TkssvkyRecord&gt; tkssvkyRecords =</span>
+<span class="fc" id="L217">                tkssvkyDataAccess.findAllByTksuSvkyNoAndTksuSvkyJtkb(</span>
+<span class="fc" id="L218">                        tskgmstRecord.tksuSvkyNo(),</span>
+                        tksSvkyActive);
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (tkssvkyRecords.isEmpty()) {</span>
+<span class="fc" id="L221">            throw dataInconsistency(</span>
+                    TkssvkyDataAccess.CallSpecs.FIND_ALL_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB,
+                    new FlatJsonBuilder()
+<span class="fc" id="L224">                            .put(&quot;tksuSvkyNo&quot;, tskgmstRecord.tksuSvkyNo())</span>
+<span class="fc" id="L225">                            .put(&quot;tksuSvkyJtkb&quot;, tksSvkyActive));</span>
+        }
+<span class="fc" id="L227">        TkssvkyRecord tkssvkyRecord = tkssvkyRecords.getFirst();</span>
+<span class="fc" id="L228">        return toOutput(tskgmstRecord, tkssvkyRecord);</span>
+    }
+
+    /**
+     * 処理区分2（直近）で小売判定情報を取得する.
+     *
+     * &lt;p&gt;TSKGMST を無効ステータスで検索し、未取得の場合は対象データなしを返却する。
+     * 取得した TSKGMST をキーに TKSSVKY を基準日付き無効ステータスで検索する。
+     * TKSSVKY が0件の場合は DA-099-R005 を識別子に
+     * DataInconsistencyException を送出する。&lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param baseDate 検索基準日
+     * @return 小売判定結果
+     */
+    private RetailTypeJudgmentOutput handleNearest(
+            final Long gasMtstNo,
+            final LocalDate baseDate) {
+<span class="fc" id="L246">        Optional&lt;TskgmstRecord&gt; tskgmstRecord =</span>
+<span class="fc" id="L247">                tskgmstDataAccess.findByGasMtstNoAndTkysYmdAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        baseDate,
+                        tksSvkkInvalid);
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        if (tskgmstRecord.isEmpty()) {</span>
+<span class="nc" id="L252">            return noData();</span>
+        }
+<span class="fc" id="L254">        TskgmstRecord resolvedTskgmstRecord = tskgmstRecord.orElseThrow();</span>
+
+<span class="fc" id="L256">        Optional&lt;TkssvkyRecord&gt; tkssvkyRecord =</span>
+<span class="fc" id="L257">                tkssvkyDataAccess.findByTksuSvkyNoAndTkysYmdAndTksuSvkyJtkb(</span>
+<span class="fc" id="L258">                        resolvedTskgmstRecord.tksuSvkyNo(),</span>
+                        baseDate,
+                        tksSvkyInvalid);
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (tkssvkyRecord.isEmpty()) {</span>
+<span class="fc" id="L262">            throw dataInconsistency(</span>
+                    FIND_TKSSVKY_BY_DATE_STATUS,
+                    new FlatJsonBuilder()
+<span class="fc" id="L265">                            .put(&quot;tksuSvkyNo&quot;, resolvedTskgmstRecord.tksuSvkyNo())</span>
+<span class="fc" id="L266">                            .put(&quot;tkysYmd&quot;, baseDate)</span>
+<span class="fc" id="L267">                            .put(&quot;tksuSvkyJtkb&quot;, tksSvkyInvalid));</span>
+        }
+<span class="fc" id="L269">        return toOutput(resolvedTskgmstRecord, tkssvkyRecord.orElseThrow());</span>
+    }
+
+    /**
+     * 処理区分3（適用中または終了）で小売判定情報を取得する.
+     *
+     * &lt;p&gt;TSKGMST を適用中または終了ステータス一覧で検索し、未取得の場合は
+     * 対象データなしを返却する。取得した TSKGMST をキーに TKSSVKY を
+     * 適用中または終了ステータス一覧で検索する。TKSSVKY が0件の場合は
+     * DA-099-R003 を識別子に DataInconsistencyException を送出する。&lt;/p&gt;
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 小売判定結果
+     */
+    private RetailTypeJudgmentOutput handleActiveOrEnd(final Long gasMtstNo) {
+<span class="fc" id="L284">        Optional&lt;TskgmstRecord&gt; tskgmstRecord =</span>
+<span class="fc" id="L285">                tskgmstDataAccess.findByGasMtstNoAndTksuSvkkJtkbList(</span>
+                        gasMtstNo,
+                        activeOrEndSvkk);
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (tskgmstRecord.isEmpty()) {</span>
+<span class="nc" id="L289">            return noData();</span>
+        }
+<span class="fc" id="L291">        TskgmstRecord resolvedTskgmstRecord = tskgmstRecord.orElseThrow();</span>
+
+<span class="fc" id="L293">        Optional&lt;TkssvkyRecord&gt; tkssvkyRecord =</span>
+<span class="fc" id="L294">                tkssvkyDataAccess.findByTksuSvkyNoAndTksuSvkyJtkbList(</span>
+<span class="fc" id="L295">                        resolvedTskgmstRecord.tksuSvkyNo(),</span>
+                        activeOrEndSvky);
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (tkssvkyRecord.isEmpty()) {</span>
+<span class="fc" id="L298">            throw dataInconsistency(</span>
+                    TkssvkyDataAccess.CallSpecs.FIND_BY_TKSU_SVKY_NO_AND_TKSU_SVKY_JTKB_LIST,
+                    new FlatJsonBuilder()
+<span class="fc" id="L301">                            .put(&quot;tksuSvkyNo&quot;, resolvedTskgmstRecord.tksuSvkyNo())</span>
+<span class="fc" id="L302">                            .put(&quot;tksuSvkyJtkbList&quot;, activeOrEndSvky));</span>
+        }
+<span class="fc" id="L304">        return toOutput(resolvedTskgmstRecord, tkssvkyRecord.orElseThrow());</span>
+    }
+
+    /**
+     * 対象データなしの判定結果を生成する.
+     *
+     * @return 対象データなしの小売判定結果
+     */
+    private RetailTypeJudgmentOutput noData() {
+<span class="fc" id="L313">        return new RetailTypeJudgmentOutput(</span>
+                kuHntKbnNoData,
+<span class="fc" id="L315">                noDataTskgmstInfo(),</span>
+<span class="fc" id="L316">                noDataTkssvkyInfo());</span>
+    }
+
+    private static TskgmstInfo noDataTskgmstInfo() {
+<span class="fc" id="L320">        return new TskgmstInfo(null, null, null, null, null, null, null);</span>
+    }
+
+    private static TkssvkyInfo noDataTkssvkyInfo() {
+<span class="fc" id="L324">        return new TkssvkyInfo(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * TSKGMST と TKSSVKY から小売判定の出力 DTO を構築する.
+     *
+     * @param tskgmstRecord TSKGMST 取得結果
+     * @param tkssvkyRecord TKSSVKY 取得結果
+     * @return 小売判定結果
+     */
+    private RetailTypeJudgmentOutput toOutput(
+            final TskgmstRecord tskgmstRecord,
+            final TkssvkyRecord tkssvkyRecord) {
+        String kuHntKbn =
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                tokyoGasSupplierCode.equals(tkssvkyRecord.tksuKijsCd())</span>
+<span class="fc" id="L352">                        ? kuHntKbnTokyoGas</span>
+<span class="fc" id="L353">                        : kuHntKbnOther;</span>
+<span class="fc" id="L354">        return new RetailTypeJudgmentOutput(</span>
+                kuHntKbn,
+<span class="fc" id="L356">                toTskgmstInfo(tskgmstRecord),</span>
+<span class="fc" id="L357">                toTkssvkyInfo(tkssvkyRecord));</span>
+    }
+
+    /**
+     * TSKGMST の DA record を API DTO に変換する.
+     *
+     * @param record TSKGMST の DA record
+     * @return TSKGMST 情報 DTO
+     */
+    private static TskgmstInfo toTskgmstInfo(final TskgmstRecord record) {
+<span class="fc" id="L367">        return new TskgmstInfo(</span>
+<span class="fc" id="L368">                record.gasMtstNo(),</span>
+<span class="fc" id="L369">                record.tksuSvkyNo(),</span>
+<span class="fc" id="L370">                record.skno(),</span>
+<span class="fc" id="L371">                record.tksuSvkkJtkb(),</span>
+<span class="fc" id="L372">                record.tkysYmd(),</span>
+<span class="fc" id="L373">                record.tyenYmd(),</span>
+<span class="fc" id="L374">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * TKSSVKY の DA record を API DTO に変換する.
+     *
+     * @param record TKSSVKY の DA record
+     * @return TKSSVKY 情報 DTO
+     */
+    private static TkssvkyInfo toTkssvkyInfo(final TkssvkyRecord record) {
+<span class="fc" id="L384">        return new TkssvkyInfo(</span>
+<span class="fc" id="L385">                record.tksuSvkyNo(),</span>
+<span class="fc" id="L386">                record.skno(),</span>
+<span class="fc" id="L387">                record.tksuSvkyJtkb(),</span>
+<span class="fc" id="L388">                record.tksuSvksJysb(),</span>
+<span class="fc" id="L389">                record.tksuSvkeJysb(),</span>
+<span class="fc" id="L390">                record.tkysYmd(),</span>
+<span class="fc" id="L391">                record.tyenYmd(),</span>
+<span class="fc" id="L392">                record.hesnYtiYmd(),</span>
+<span class="fc" id="L393">                record.tkykShbt(),</span>
+<span class="fc" id="L394">                record.tksuKijsCd(),</span>
+<span class="fc" id="L395">                record.sutiKskhFlg(),</span>
+<span class="fc" id="L396">                record.syoKyoTrno(),</span>
+<span class="fc" id="L397">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * DA-099 の返却件数不整合を表す例外を生成する.
+     *
+     * @param callSpec 不整合判定元の DA CallSpec
+     * @param parameterBuilder DA 呼出しパラメータを構築した JSON builder
+     * @return DataInconsistencyException インスタンス
+     */
+    private DataInconsistencyException dataInconsistency(
+            final DataAccessCallSpec callSpec,
+            final FlatJsonBuilder parameterBuilder) {
+<span class="fc" id="L410">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L411">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L412">                callSpec.identifier(),</span>
+                parameterBuilder);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

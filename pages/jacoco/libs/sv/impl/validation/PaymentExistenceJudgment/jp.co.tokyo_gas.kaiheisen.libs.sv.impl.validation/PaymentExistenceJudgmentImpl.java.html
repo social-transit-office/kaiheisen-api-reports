@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaymentExistenceJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-paymentexistencejudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">PaymentExistenceJudgmentImpl.java</span></div><h1>PaymentExistenceJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.external.CiriusApiException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.billing.BillingBreakdownDebtItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.billing.BillingCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.billing.BillingItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.billing.BillingResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.uncollected_billings_convenience_deposits.UncollectedBillingItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.uncollected_billings_convenience_deposits.UncollectedBillingsConvenienceDepositsCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.uncollected_billings_convenience_deposits.UncollectedBillingsConvenienceDepositsRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.uncollected_billings_convenience_deposits.UncollectedBillingsConvenienceDepositsResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaymentExistenceJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.PaymentExistenceJudgmentOutput;
+
+/** SV-018 入金有無判定の実装。 */
+public final class PaymentExistenceJudgmentImpl implements PaymentExistenceJudgment {
+
+<span class="fc" id="L29">    private static final DateTimeFormatter BASIC_DATE = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+    private static final String STATUS_PREFIX = &quot;status=&quot;;
+
+    private static final String BODY_PREFIX = &quot;, body=&quot;;
+
+    private final BillingCiriusAdapter billingCiriusAdapter;
+
+    private final UncollectedBillingsConvenienceDepositsCiriusAdapter
+            uncollectedBillingsConvenienceDepositsCiriusAdapter;
+
+    private final RequestContext requestContext;
+
+    private final String latestBillingStatusBilling;
+
+    private final Set&lt;String&gt; targetDebtCodes;
+
+    private final Set&lt;String&gt; allowedConvenienceRecordKinds;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param billingCiriusAdapter 請求情報取得 adapter
+     * @param uncollectedBillingsConvenienceDepositsCiriusAdapter 未収請求一覧取得 adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public PaymentExistenceJudgmentImpl(
+            BillingCiriusAdapter billingCiriusAdapter,
+            UncollectedBillingsConvenienceDepositsCiriusAdapter
+                    uncollectedBillingsConvenienceDepositsCiriusAdapter,
+            RequestContext requestContext,
+<span class="fc" id="L61">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L62">        this.billingCiriusAdapter = Objects.requireNonNull(billingCiriusAdapter, &quot;billingCiriusAdapter&quot;);</span>
+<span class="fc" id="L63">        this.uncollectedBillingsConvenienceDepositsCiriusAdapter = Objects.requireNonNull(</span>
+                uncollectedBillingsConvenienceDepositsCiriusAdapter,
+                &quot;uncollectedBillingsConvenienceDepositsCiriusAdapter&quot;);
+<span class="fc" id="L66">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L67">        CiriusConstantService resolved = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L70">        this.latestBillingStatusBilling = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolved,
+                ConstantLookupKeys.Cirius.LatestBillingStatus.TYPE,
+                ConstantLookupKeys.Cirius.LatestBillingStatus.BILLING);
+<span class="fc" id="L74">        this.targetDebtCodes = Set.of(</span>
+<span class="fc" id="L75">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolved,
+                        ConstantLookupKeys.Cirius.DebtCode.TYPE,
+                        ConstantLookupKeys.Cirius.DebtCode.GAS_FEE),
+<span class="fc" id="L79">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolved,
+                        ConstantLookupKeys.Cirius.DebtCode.TYPE,
+                        ConstantLookupKeys.Cirius.DebtCode.LATE_GAS_BILL_INTEREST));
+<span class="fc" id="L83">        this.allowedConvenienceRecordKinds = Set.of(</span>
+<span class="fc" id="L84">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolved,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord.TYPE,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord
+                                .POS_BREAKING_NEWS_RECEPTION),
+<span class="fc" id="L89">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolved,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord.TYPE,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord
+                                .CONFIRMATION_OF_THE_SAME_ROUTE_HAS_BEEN_RECEIVED),
+<span class="fc" id="L94">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolved,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord.TYPE,
+                        ConstantLookupKeys.Cirius.ConvenienceStoreDepositReportRecord
+                                .INVESTIGATION_IS_BEING_CONFIRMED_AFTER_RECEIVING_THE_BREAKING_NEWS));
+<span class="fc" id="L99">    }</span>
+
+    @Override
+    public PaymentExistenceJudgmentOutput execute(Long sikKrno) {
+<span class="fc" id="L103">        LocalDate systemDate = requireSystemDatetime().toLocalDate();</span>
+        BillingResponse billingResponse;
+        try {
+<span class="fc" id="L106">            billingResponse = billingCiriusAdapter.getByBillingManagementNumber(</span>
+<span class="fc" id="L107">                    formatYmd(systemDate.minusYears(2)),</span>
+<span class="fc" id="L108">                    formatYmd(systemDate),</span>
+<span class="fc" id="L109">                    String.valueOf(sikKrno));</span>
+<span class="fc" id="L110">        } catch (CiriusApiException exception) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (isNotFound(exception)) {</span>
+<span class="fc" id="L112">                return new PaymentExistenceJudgmentOutput(true);</span>
+            }
+<span class="fc" id="L114">            throw exception;</span>
+<span class="fc" id="L115">        }</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        List&lt;BillingItem&gt; billingItems = billingResponse == null ? null : billingResponse.sikList();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (billingItems == null) {</span>
+<span class="fc" id="L118">            return new PaymentExistenceJudgmentOutput(true);</span>
+        }
+
+<span class="fc" id="L121">        Set&lt;Integer&gt; targetBillingSerialNumbers = collectTargetBillingSerialNumbers(</span>
+                billingItems,
+                systemDate);
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (targetBillingSerialNumbers.isEmpty()) {</span>
+<span class="fc" id="L125">            return new PaymentExistenceJudgmentOutput(true);</span>
+        }
+
+<span class="fc" id="L128">        UncollectedBillingsConvenienceDepositsResponse response =</span>
+<span class="fc" id="L129">                uncollectedBillingsConvenienceDepositsCiriusAdapter.search(</span>
+<span class="fc" id="L130">                        UncollectedBillingsConvenienceDepositsRequest.of(</span>
+<span class="fc" id="L131">                                String.valueOf(sikKrno),</span>
+<span class="fc" id="L132">                                billingItems.size()));</span>
+
+        List&lt;UncollectedBillingItem&gt; uncollectedItems =
+<span class="pc bpc" id="L135" title="2 of 4 branches missed.">                response == null || response.response() == null</span>
+<span class="nc" id="L136">                        ? null</span>
+<span class="fc" id="L137">                        : response.response().mishuuSeikyuuIchiranList();</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (uncollectedItems == null) {</span>
+<span class="nc" id="L139">            return new PaymentExistenceJudgmentOutput(true);</span>
+        }
+
+<span class="fc" id="L142">        boolean existsDisallowedRecord = uncollectedItems.stream()</span>
+<span class="fc" id="L143">                .filter(Objects::nonNull)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                .anyMatch(item -&gt; targetBillingSerialNumbers.contains(item.sikTsno())</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                        &amp;&amp; (item.cnsRecKbn() == null</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                                || !allowedConvenienceRecordKinds.contains(item.cnsRecKbn())));</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        return new PaymentExistenceJudgmentOutput(!existsDisallowedRecord);</span>
+    }
+
+    private Set&lt;Integer&gt; collectTargetBillingSerialNumbers(
+            List&lt;BillingItem&gt; billingItems,
+            LocalDate systemDate) {
+<span class="fc" id="L153">        Set&lt;Integer&gt; targetSerialNumbers = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (BillingItem billingItem : billingItems) {</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (!isTargetBilling(billingItem, systemDate)) {</span>
+<span class="fc" id="L156">                continue;</span>
+            }
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (containsTargetDebtCode(billingItem.squwSiknList())) {</span>
+<span class="fc" id="L159">                targetSerialNumbers.add(billingItem.sikTsno());</span>
+            }
+<span class="fc" id="L161">        }</span>
+<span class="fc" id="L162">        return targetSerialNumbers;</span>
+    }
+
+    private boolean isTargetBilling(BillingItem billingItem, LocalDate systemDate) {
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (billingItem == null</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                || billingItem.sikTsno() == null</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                || billingItem.shkgYmd() == null</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                || !latestBillingStatusBilling.equals(billingItem.sshnSqjkKbn())) {</span>
+<span class="fc" id="L170">            return false;</span>
+        }
+<span class="fc" id="L172">        return toLocalDate(billingItem.shkgYmd()).isBefore(systemDate);</span>
+    }
+
+    private boolean containsTargetDebtCode(List&lt;BillingBreakdownDebtItem&gt; breakdownDebtItems) {
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if (breakdownDebtItems == null) {</span>
+<span class="nc" id="L177">            return false;</span>
+        }
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (BillingBreakdownDebtItem breakdownDebtItem : breakdownDebtItems) {</span>
+<span class="pc bpc" id="L180" title="2 of 4 branches missed.">            if (breakdownDebtItem == null || breakdownDebtItem.squwDto() == null) {</span>
+<span class="nc" id="L181">                continue;</span>
+            }
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (targetDebtCodes.contains(breakdownDebtItem.squwDto().siknCd())) {</span>
+<span class="fc" id="L184">                return true;</span>
+            }
+<span class="fc" id="L186">        }</span>
+<span class="fc" id="L187">        return false;</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L191">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L192">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+
+    private static String formatYmd(LocalDate date) {
+<span class="fc" id="L197">        return date.format(BASIC_DATE);</span>
+    }
+
+    private static boolean isNotFound(CiriusApiException exception) {
+<span class="fc" id="L201">        Integer status = extractStatus(exception.getResponseInfo());</span>
+<span class="pc bpc" id="L202" title="1 of 4 branches missed.">        return status != null &amp;&amp; status == 404;</span>
+    }
+
+    private static Integer extractStatus(String responseInfo) {
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">        if (responseInfo == null || !responseInfo.startsWith(STATUS_PREFIX)) {</span>
+<span class="nc" id="L207">            return null;</span>
+        }
+
+<span class="fc" id="L210">        int bodyPrefixIndex = responseInfo.indexOf(BODY_PREFIX);</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        String statusText = bodyPrefixIndex &gt;= 0</span>
+<span class="fc" id="L212">                ? responseInfo.substring(STATUS_PREFIX.length(), bodyPrefixIndex)</span>
+<span class="pc" id="L213">                : responseInfo.substring(STATUS_PREFIX.length());</span>
+        try {
+<span class="fc" id="L215">            return Integer.valueOf(statusText.trim());</span>
+<span class="nc" id="L216">        } catch (NumberFormatException ignored) {</span>
+<span class="nc" id="L217">            return null;</span>
+        }
+    }
+
+    private static LocalDate toLocalDate(Integer ymd) {
+<span class="fc" id="L222">        String normalized = String.format(&quot;%08d&quot;, ymd);</span>
+<span class="fc" id="L223">        return LocalDate.parse(normalized, BASIC_DATE);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningReasonCheckImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingreasoncheck</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningReasonCheckImpl.java</span></div><h1>OpeningReasonCheckImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningReasonCheck;
+
+/**
+ * 概要: SV-202（開栓事由チェック）の実装クラス。
+ * 主な仕様:
+ * - 契約有無、氏名カナ、報告開栓事由種別、託送関連有無フラグ、閉栓事由種別の組み合わせを判定する。
+ * - TSV / YAML 設計で禁止されている開栓事由パターンを検知した場合は開栓共通エラー 020100041 を送出する。
+ * - 判定に使用する CIRIUS 定数はコンストラクタ初期化時に必須解決し、検証済みコードで比較する。
+ * - 下位 DA や他 SV 呼び出しは行わず、入力値のみで分岐判定を完結させる。
+ * 既知の制約:
+ * - 入力値の null 許可/不許可や前後空白補正は上位層責務とし、本クラスでは追加の正規化を行わない。
+ * - 必須定数が未登録の場合はコンストラクタ初期化時点で例外送出となり、インスタンス生成に失敗する。
+ */
+public final class OpeningReasonCheckImpl implements OpeningReasonCheck {
+
+    // 継続使用を表す解決済み報告開栓事由種別コード。
+    private final String openingReasonContinuedUse;
+
+    // 供給再開を表す解決済み報告開栓事由種別コード。
+    private final String openingReasonSupplyResumed;
+
+    // 保安復旧を表す解決済み報告開栓事由種別コード。
+    private final String openingReasonSecurityRestoration;
+
+    // 保安閉栓を表す解決済み閉栓事由種別コード。
+    private final String closureReasonSecurityClosure;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - 報告開栓事由種別 04900 の継続使用、供給再開、保安復旧を必須解決して保持する。
+     * - 閉栓事由種別 J0273 の保安閉栓を必須解決して保持する。
+     * 既知の制約:
+     * - CIRIUS 定数取得サービスの null は許容しない。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+<span class="fc" id="L46">    public OpeningReasonCheckImpl(CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L47">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L48">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L49">        this.openingReasonContinuedUse =</span>
+<span class="fc" id="L50">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L54">        this.openingReasonSupplyResumed =</span>
+<span class="fc" id="L55">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.SUPPLY_RESUMED);
+<span class="fc" id="L59">        this.openingReasonSecurityRestoration =</span>
+<span class="fc" id="L60">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION);
+<span class="fc" id="L64">        this.closureReasonSecurityClosure =</span>
+<span class="fc" id="L65">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE);
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * 概要: 開栓事由チェックを実行し、禁止パターンに該当する場合は開栓共通エラーを送出する。
+     * 主な仕様:
+     * - 契約なし時は氏名不一致かつ継続使用、保安閉栓かつ保安復旧、供給再開の各パターンを判定する。
+     * - 契約あり時は保安閉栓と継続使用または供給再開の組み合わせを判定する。
+     * - いずれかの禁止条件に一致した場合は `KaisenRuleException` により 020100041 を送出する。
+     * 既知の制約:
+     * - `correlationId`、`hukkSysShbt`、`systemDatetime` は SV 規約に従い公開引数へ含めない。
+     * - public 引数の null ガードは追加せず、上位バリデーション済み前提で評価する。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param ctnmKn1Hsen お客さま名カナ１（閉栓時）
+     * @param ctnmKn1Ksen お客さま名カナ１（開栓時）
+     * @param hkkKasJysb 報告開栓事由種別
+     * @param tskgmstUmFlg 託送サービス契約・ガスメーター設置場所関連有無フラグ
+     * @param hesnJysb 閉栓事由種別
+     */
+    @Override
+    public void execute(
+            boolean kiyUmFlg,
+            String ctnmKn1Hsen,
+            String ctnmKn1Ksen,
+            String hkkKasJysb,
+            boolean tskgmstUmFlg,
+            String hesnJysb) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (shouldRejectForNoContractNameMismatchAndContinuedUseAndConsignmentRelated(</span>
+                        kiyUmFlg, ctnmKn1Hsen, ctnmKn1Ksen, hkkKasJysb, tskgmstUmFlg)
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                || shouldRejectForNoContractSecurityRecovery(kiyUmFlg, hesnJysb, hkkKasJysb)</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                || shouldRejectForNoContractSupplyResumed(kiyUmFlg, hkkKasJysb)</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">                || shouldRejectForContractedSecurityClosure(kiyUmFlg, hesnJysb, hkkKasJysb)) {</span>
+<span class="fc" id="L101">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100041);</span>
+        }
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * 概要: 契約なし時の氏名不一致かつ継続使用パターンを判定する。
+     * 主な仕様:
+     * - 契約有無フラグが false、閉栓時/開栓時のお客さま名カナが不一致、開栓事由が継続使用、託送関連有無が true の全条件成立時に true を返す。
+     * - step 1.a.1.a の禁止パターン判定をそのままメソッド化している。
+     * 既知の制約:
+     * - 文字列の正規化や大文字小文字変換は行わず、`String#equals` による完全一致で比較する。
+     * - 入力文字列の null 許可/不許可の妥当性は呼び出し元で担保されている前提とする。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param ctnmKn1Hsen お客さま名カナ１（閉栓時）
+     * @param ctnmKn1Ksen お客さま名カナ１（開栓時）
+     * @param hkkKasJysb 報告開栓事由種別
+     * @param tskgmstUmFlg 託送サービス契約・ガスメーター設置場所関連有無フラグ
+     * @return 禁止パターンに一致する場合 true
+     */
+    private boolean shouldRejectForNoContractNameMismatchAndContinuedUseAndConsignmentRelated(
+            boolean kiyUmFlg,
+            String ctnmKn1Hsen,
+            String ctnmKn1Ksen,
+            String hkkKasJysb,
+            boolean tskgmstUmFlg) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        return !kiyUmFlg</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                &amp;&amp; !Objects.equals(ctnmKn1Hsen, ctnmKn1Ksen)</span>
+<span class="fc bfc" id="L129" title="All 4 branches covered.">                &amp;&amp; openingReasonContinuedUse.equals(hkkKasJysb)</span>
+                &amp;&amp; tskgmstUmFlg;
+    }
+
+    /**
+     * 概要: 契約なし時の保安閉栓かつ保安復旧パターンを判定する。
+     * 主な仕様:
+     * - 契約有無フラグが false、閉栓事由が保安閉栓、開栓事由が保安復旧の全条件成立時に true を返す。
+     * - step 1.a.1.b.1.a の禁止パターン判定に対応する。
+     * 既知の制約:
+     * - 契約なし時の先行判定を通過した後でも本メソッド単体では排他制御を持たず、純粋に条件式のみを評価する。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param hesnJysb 閉栓事由種別
+     * @param hkkKasJysb 報告開栓事由種別
+     * @return 禁止パターンに一致する場合 true
+     */
+    private boolean shouldRejectForNoContractSecurityRecovery(
+            boolean kiyUmFlg,
+            String hesnJysb,
+            String hkkKasJysb) {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        return !kiyUmFlg</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                &amp;&amp; closureReasonSecurityClosure.equals(hesnJysb)</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                &amp;&amp; openingReasonSecurityRestoration.equals(hkkKasJysb);</span>
+    }
+
+    /**
+     * 概要: 契約なし時の供給再開パターンを判定する。
+     * 主な仕様:
+     * - 契約有無フラグが false かつ開栓事由が供給再開である場合に true を返す。
+     * - step 1.a.1.b.1.b.1.a の禁止パターン判定に対応する。
+     * 既知の制約:
+     * - 閉栓事由との組み合わせは本メソッドでは見ず、供給再開単独条件のみを評価する。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param hkkKasJysb 報告開栓事由種別
+     * @return 禁止パターンに一致する場合 true
+     */
+    private boolean shouldRejectForNoContractSupplyResumed(
+            boolean kiyUmFlg,
+            String hkkKasJysb) {
+<span class="fc bfc" id="L170" title="All 4 branches covered.">        return !kiyUmFlg &amp;&amp; openingReasonSupplyResumed.equals(hkkKasJysb);</span>
+    }
+
+    /**
+     * 概要: 契約あり時の保安閉栓かつ継続使用/供給再開パターンを判定する。
+     * 主な仕様:
+     * - 契約有無フラグが true、閉栓事由が保安閉栓、開栓事由が継続使用または供給再開のとき true を返す。
+     * - step 1.b.1.a の禁止パターン判定に対応する。
+     * 既知の制約:
+     * - 継続使用と供給再開以外の開栓事由は、契約あり分岐では一律に正常終了側として扱う。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param hesnJysb 閉栓事由種別
+     * @param hkkKasJysb 報告開栓事由種別
+     * @return 禁止パターンに一致する場合 true
+     */
+    private boolean shouldRejectForContractedSecurityClosure(
+            boolean kiyUmFlg,
+            String hesnJysb,
+            String hkkKasJysb) {
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        return kiyUmFlg</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                &amp;&amp; closureReasonSecurityClosure.equals(hesnJysb)</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                &amp;&amp; (openingReasonContinuedUse.equals(hkkKasJysb)</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                        || openingReasonSupplyResumed.equals(hkkKasJysb));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

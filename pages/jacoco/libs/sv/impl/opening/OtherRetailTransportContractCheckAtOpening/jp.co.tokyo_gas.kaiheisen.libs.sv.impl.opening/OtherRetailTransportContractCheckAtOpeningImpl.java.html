@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OtherRetailTransportContractCheckAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-otherretailtransportcontractcheckatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OtherRetailTransportContractCheckAtOpeningImpl.java</span></div><h1>OtherRetailTransportContractCheckAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OtherRetailTransportContractCheckAtOpening;
+
+/**
+ * 概要: SV-191（開栓時他小売託送契約チェック）の実装クラス。
+ * 主な仕様:
+ * - 契約有無フラグが false の場合は、託送メータ情報本登録・仮解約有無フラグまたは仮登録有無フラグが true なら開栓共通エラー 020100033 を送出する。
+ * - 契約有無フラグが false 以外の場合は、東京ガス事業者コードかつ、本登録・仮解約有無フラグが true、または仮登録有無フラグが true かつスイッチ申込以外なら開栓共通エラー 020100033 を送出する。
+ * - 判定に使用する CIRIUS 定数はコンストラクタ初期化時に必須解決し、実行時は解決済み値のみで比較する。
+ * - 下位 DA や他 SV 呼び出しは行わず、入力値だけで分岐判定を完結させる。
+ * 既知の制約:
+ * - 入力値の trim、blank 補正、null 補正は行わず、呼び出し元から渡された値をそのまま評価する。
+ * - `correlationId`、`hukkSysShbt`、`systemDatetime` は SV 規約に従い公開引数へ含めない。
+ */
+public final class OtherRetailTransportContractCheckAtOpeningImpl
+        implements OtherRetailTransportContractCheckAtOpening {
+
+    private final String tokyoGasRetailerCode;
+
+    private final String switchApplicationCisJudgmentCode;
+
+    /**
+     * 概要: 判定に必要な CIRIUS 定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - 託送供給依頼事業者コード J0580 の東京ガス株式会社コードを必須解決して保持する。
+     * - 託送契約ＣＩＳ判定コード 1AP00 のスイッチ申込コードを必須解決して保持する。
+     * 既知の制約:
+     * - CIRIUS 定数取得サービスの null は許容しない。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public OtherRetailTransportContractCheckAtOpeningImpl(
+<span class="fc" id="L40">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L41">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L42">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L43">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L47">        this.switchApplicationCisJudgmentCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractCisJudgmentCode.SWITCH_APPLICATION);
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * 概要: 開栓時他小売託送契約チェックを実行し、対象条件に該当する場合は開栓共通例外を送出する。
+     * 主な仕様:
+     * - 契約有無フラグが false の場合は、第1判定を優先し、託送メータ情報の有無だけで開栓共通エラー要否を決定する。
+     * - 契約有無フラグが false 以外の場合は、東京ガス事業者コードに限定して第2判定を行う。
+     * - 第2判定では、本登録・仮解約有無フラグが true の場合、または仮登録有無フラグが true かつスイッチ申込以外の場合に開栓共通エラーとする。
+     * - 条件に該当しない場合は正常終了とする。
+     * 既知の制約:
+     * - `Boolean.FALSE.equals(...)` と `Boolean.TRUE.equals(...)` により null 入力も判定可能だが、業務上の null 補完は行わない。
+     * - 事業者コードおよび託送契約ＣＩＳ判定コードは完全一致でのみ比較する。
+     *
+     * @param kiyUmFlg 契約有無フラグ
+     * @param taksmtrHntrKrkykUmFlg 託送メータ情報本登録・仮解約有無フラグ
+     * @param taksmtrKtrUmFlg 託送メータ情報仮登録有無フラグ
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param tkykCisjCd 託送契約ＣＩＳ判定コード
+     */
+    @Override
+    public void execute(
+            Boolean kiyUmFlg,
+            Boolean taksmtrHntrKrkykUmFlg,
+            Boolean taksmtrKtrUmFlg,
+            String tksuKijsCd,
+            String tkykCisjCd) {
+<span class="fc" id="L77">        boolean hasNoContract = Boolean.FALSE.equals(kiyUmFlg);</span>
+<span class="fc" id="L78">        boolean hasMainOrTemporaryCancellationRegistration =</span>
+<span class="fc" id="L79">                Boolean.TRUE.equals(taksmtrHntrKrkykUmFlg);</span>
+<span class="fc" id="L80">        boolean hasTemporaryRegistration = Boolean.TRUE.equals(taksmtrKtrUmFlg);</span>
+
+<span class="fc bfc" id="L82" title="All 6 branches covered.">        if (hasNoContract</span>
+                &amp;&amp; (hasMainOrTemporaryCancellationRegistration || hasTemporaryRegistration)) {
+<span class="fc" id="L84">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100033);</span>
+        }
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (!hasNoContract</span>
+<span class="pc bpc" id="L88" title="1 of 6 branches missed.">                &amp;&amp; tokyoGasRetailerCode.equals(tksuKijsCd)</span>
+                &amp;&amp; (hasMainOrTemporaryCancellationRegistration
+                        || (hasTemporaryRegistration
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                                &amp;&amp; !switchApplicationCisJudgmentCode.equals(tkykCisjCd)))) {</span>
+<span class="fc" id="L92">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100033);</span>
+        }
+<span class="fc" id="L94">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

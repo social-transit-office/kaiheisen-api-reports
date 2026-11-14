@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectiveValueExtractors.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">ReflectiveValueExtractors.java</span></div><h1>ReflectiveValueExtractors.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+
+/**
+ * Record コンポーネントと Column enum の名前マッチングにより
+ * 値抽出関数マップを自動生成するユーティリティ。
+ *
+ * &lt;p&gt;Column 名（UPPER_SNAKE_CASE）を lowerCamelCase へ変換し、
+ * Record コンポーネント名と照合する。マッチしない Column（監査列等）は
+ * マップに含まれない。&lt;/p&gt;
+ */
+public final class ReflectiveValueExtractors {
+
+    private ReflectiveValueExtractors() {
+    }
+
+    /**
+     * Record クラスのコンポーネントと Column enum を名前照合し、
+     * 列→値抽出関数の {@link EnumMap} を構築する。
+     *
+     * @param &lt;RecordT&gt; Record 型
+     * @param &lt;ColumnT&gt; Column enum 型
+     * @param columnClass Column enum クラス
+     * @param recordClass Record クラス
+     * @return 列→値抽出関数マップ（マッチしない列は含まない）
+     */
+    public static &lt;RecordT extends Record, ColumnT extends Enum&lt;ColumnT&gt; &amp; DataAccessColumn&gt;
+        EnumMap&lt;ColumnT, Function&lt;RecordT, Object&gt;&gt; build(
+            Class&lt;ColumnT&gt; columnClass,
+            Class&lt;RecordT&gt; recordClass
+    ) {
+<span class="fc" id="L39">        Objects.requireNonNull(columnClass, &quot;columnClass&quot;);</span>
+<span class="fc" id="L40">        Objects.requireNonNull(recordClass, &quot;recordClass&quot;);</span>
+
+<span class="fc" id="L42">        Map&lt;String, Method&gt; accessors = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (RecordComponent component : recordClass.getRecordComponents()) {</span>
+<span class="fc" id="L44">            accessors.put(component.getName(), component.getAccessor());</span>
+        }
+
+<span class="fc" id="L47">        EnumMap&lt;ColumnT, Function&lt;RecordT, Object&gt;&gt; extractors = new EnumMap&lt;&gt;(columnClass);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (ColumnT column : columnClass.getEnumConstants()) {</span>
+<span class="fc" id="L49">            String camelName = snakeToCamel(column.name());</span>
+<span class="fc" id="L50">            Method accessor = accessors.get(camelName);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">            if (accessor != null) {</span>
+<span class="fc" id="L52">                extractors.put(column, createExtractor(accessor));</span>
+            }
+        }
+<span class="fc" id="L55">        return extractors;</span>
+    }
+
+    /**
+     * UPPER_SNAKE_CASE を lowerCamelCase に変換する。
+     *
+     * @param snakeCase 変換元文字列（例: {@code GMT_SET_NO}）
+     * @return lowerCamelCase 文字列（例: {@code gmtSetNo}）
+     */
+    public static String snakeToCamel(String snakeCase) {
+<span class="fc" id="L65">        Objects.requireNonNull(snakeCase, &quot;snakeCase&quot;);</span>
+<span class="fc" id="L66">        String[] parts = snakeCase.split(&quot;_&quot;, -1);</span>
+<span class="fc" id="L67">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (int i = 0; i &lt; parts.length; i++) {</span>
+<span class="fc" id="L69">            String part = parts[i];</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">            if (part.isEmpty()) {</span>
+<span class="nc" id="L71">                continue;</span>
+            }
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (i == 0) {</span>
+<span class="fc" id="L74">                sb.append(part.toLowerCase());</span>
+            } else {
+<span class="fc" id="L76">                sb.append(Character.toUpperCase(part.charAt(0)));</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                if (part.length() &gt; 1) {</span>
+<span class="fc" id="L78">                    sb.append(part.substring(1).toLowerCase());</span>
+                }
+            }
+        }
+<span class="fc" id="L82">        return sb.toString();</span>
+    }
+
+    private static &lt;RecordT&gt; Function&lt;RecordT, Object&gt; createExtractor(Method accessor) {
+<span class="fc" id="L86">        accessor.setAccessible(true);</span>
+<span class="fc" id="L87">        return record -&gt; {</span>
+            try {
+<span class="fc" id="L89">                return accessor.invoke(record);</span>
+<span class="nc" id="L90">            } catch (ReflectiveOperationException e) {</span>
+<span class="nc" id="L91">                throw new IllegalStateException(</span>
+<span class="nc" id="L92">                        &quot;Failed to invoke accessor: &quot; + accessor.getName(), e);</span>
+            }
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

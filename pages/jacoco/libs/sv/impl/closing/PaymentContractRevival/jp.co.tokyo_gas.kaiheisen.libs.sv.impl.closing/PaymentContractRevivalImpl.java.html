@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaymentContractRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-paymentcontractrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">PaymentContractRevivalImpl.java</span></div><h1>PaymentContractRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess.CallSpecs.FIND_BY_SIH_KIY_NO_AND_KNSK_KJN_YMD_AND_NOT_SIH_KIY_JTKB_ORDER_BY_TKYS_YMD_DESC_AND_SKNO_DESC;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess.CallSpecs.FIND_BY_SVKY_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_SIH_KIY_JTKB;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gssihhh.GssihhhDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.OtherProductServicePaymentContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractInfoUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractRevivalOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServicePaymentContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.PaymentContractRevivalSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CompanyTransferUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.InvoiceDisplayControlUpdateForRevival;
+
+/**
+ * 概要: SV-112（支払契約復活）のサービス実装。
+ * 主な仕様:
+ * - DA-044-R006、DA-075-R006 で契約復活対象の支払契約関連と支払契約を取得する。
+ * - 契約復活日に応じて SV-095、SV-030、SV-113 を分岐実行する。
+ * - ガス最終精算支払方法指示削除と他商材更新を最後に実行し、支払契約情報を返却する。
+ */
+public final class PaymentContractRevivalImpl implements PaymentContractRevival {
+
+<span class="fc" id="L36">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final GssihhhDataAccess gssihhhDataAccess;
+
+    private final ServicePaymentContractUpdateForRevival servicePaymentContractUpdateForRevival;
+
+    private final PaymentContractInfoUpdateForRevival paymentContractInfoUpdateForRevival;
+
+    private final CompanyTransferUpdate companyTransferUpdate;
+
+    private final InvoiceDisplayControlUpdateForRevival invoiceDisplayControlUpdateForRevival;
+
+    private final OtherProductServicePaymentContractUpdateForRevival
+            otherProductServicePaymentContractUpdateForRevival;
+
+    private final RequestContext requestContext;
+
+    private final String applicableEndsPaymentContractStatus;
+
+    private final String invalidPaymentContractStatus;
+
+    /**
+     * 概要: 必須依存と検索用定数を初期化する。
+     *
+     * @param svsihkrDataAccess サービス契約・支払契約関連 DA
+     * @param sihakyDataAccess 支払契約 DA
+     * @param gssihhhDataAccess ガス最終精算支払方法指示 DA
+     * @param servicePaymentContractUpdateForRevival SV-114 API
+     * @param paymentContractInfoUpdateForRevival SV-095 API
+     * @param companyTransferUpdate SV-030 API
+     * @param invoiceDisplayControlUpdateForRevival SV-113 API
+     * @param otherProductServicePaymentContractUpdateForRevival SV-116 API
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public PaymentContractRevivalImpl(
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            GssihhhDataAccess gssihhhDataAccess,
+            ServicePaymentContractUpdateForRevival servicePaymentContractUpdateForRevival,
+            PaymentContractInfoUpdateForRevival paymentContractInfoUpdateForRevival,
+            CompanyTransferUpdate companyTransferUpdate,
+            InvoiceDisplayControlUpdateForRevival invoiceDisplayControlUpdateForRevival,
+            OtherProductServicePaymentContractUpdateForRevival otherProductServicePaymentContractUpdateForRevival,
+            RequestContext requestContext,
+<span class="fc" id="L85">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L86">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L87">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L88">        this.gssihhhDataAccess = Objects.requireNonNull(gssihhhDataAccess, &quot;gssihhhDataAccess&quot;);</span>
+<span class="fc" id="L89">        this.servicePaymentContractUpdateForRevival = Objects.requireNonNull(</span>
+                servicePaymentContractUpdateForRevival,
+                &quot;servicePaymentContractUpdateForRevival&quot;);
+<span class="fc" id="L92">        this.paymentContractInfoUpdateForRevival = Objects.requireNonNull(</span>
+                paymentContractInfoUpdateForRevival,
+                &quot;paymentContractInfoUpdateForRevival&quot;);
+<span class="fc" id="L95">        this.companyTransferUpdate = Objects.requireNonNull(</span>
+                companyTransferUpdate,
+                &quot;companyTransferUpdate&quot;);
+<span class="fc" id="L98">        this.invoiceDisplayControlUpdateForRevival = Objects.requireNonNull(</span>
+                invoiceDisplayControlUpdateForRevival,
+                &quot;invoiceDisplayControlUpdateForRevival&quot;);
+<span class="fc" id="L101">        this.otherProductServicePaymentContractUpdateForRevival = Objects.requireNonNull(</span>
+                otherProductServicePaymentContractUpdateForRevival,
+                &quot;otherProductServicePaymentContractUpdateForRevival&quot;);
+<span class="fc" id="L104">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L105">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L108">        this.applicableEndsPaymentContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLICABLE_ENDS);
+<span class="fc" id="L112">        this.invalidPaymentContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID);
+<span class="fc" id="L116">    }</span>
+
+    @Override
+    public PaymentContractRevivalOutput execute(Long svkyNo, String syaKbn) {
+<span class="fc" id="L120">        LocalDate businessDate = requireBusinessDate();</span>
+<span class="fc" id="L121">        SvsihkrRecord servicePaymentRelation = requireServicePaymentRelation(svkyNo, businessDate);</span>
+<span class="fc" id="L122">        SihakyRecord paymentContract = requirePaymentContract(</span>
+<span class="fc" id="L123">                servicePaymentRelation.sihKiyNo(),</span>
+                businessDate);
+
+<span class="fc" id="L126">        servicePaymentContractUpdateForRevival.execute(</span>
+<span class="fc" id="L127">                servicePaymentRelation.sihKiyNo(),</span>
+                svkyNo,
+<span class="fc" id="L129">                servicePaymentRelation.skno(),</span>
+<span class="fc" id="L130">                paymentContract.sikSvcShbt());</span>
+
+<span class="fc" id="L132">        boolean sameDayRevival = businessDate.equals(paymentContract.tyenYmd());</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (sameDayRevival) {</span>
+<span class="fc" id="L134">            paymentContractInfoUpdateForRevival.execute(</span>
+<span class="fc" id="L135">                    paymentContract.sihHuhuShbt(),</span>
+<span class="fc" id="L136">                    paymentContract.sihKiyNo(),</span>
+<span class="fc" id="L137">                    paymentContract.skno());</span>
+<span class="fc" id="L138">            companyTransferUpdate.execute(</span>
+                    syaKbn,
+<span class="fc" id="L140">                    servicePaymentRelation.sihKiyNo(),</span>
+                    MAX_DATE,
+                    businessDate);
+        }
+
+<span class="fc bfc" id="L145" title="All 4 branches covered.">        if (sameDayRevival &amp;&amp; paymentContract.skshHyjsKrno() != null) {</span>
+<span class="fc" id="L146">            invoiceDisplayControlUpdateForRevival.execute(paymentContract.skshHyjsKrno());</span>
+        }
+
+<span class="fc" id="L149">        gssihhhDataAccess.deleteBySvkyNo(svkyNo, null);</span>
+<span class="fc" id="L150">        otherProductServicePaymentContractUpdateForRevival.execute(</span>
+                svkyNo,
+<span class="fc" id="L152">                servicePaymentRelation.tyenYmd(),</span>
+<span class="fc" id="L153">                paymentContract.sikSvcShbt());</span>
+
+<span class="fc" id="L155">        return new PaymentContractRevivalOutput(new PaymentContractRevivalSihakyInf(</span>
+<span class="fc" id="L156">                paymentContract.sihKiyNo(),</span>
+<span class="fc" id="L157">                paymentContract.sikSvcShbt(),</span>
+<span class="fc" id="L158">                paymentContract.sikKrno()));</span>
+    }
+
+    private LocalDate requireBusinessDate() {
+<span class="fc" id="L162">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L163">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L164">                .toLocalDate();</span>
+    }
+
+    private SvsihkrRecord requireServicePaymentRelation(Long svkyNo, LocalDate businessDate) {
+<span class="fc" id="L168">        return svsihkrDataAccess</span>
+<span class="fc" id="L169">                .findBySvkyNoAndTkysYmdAndTyenYmdAndSihKiyJtkb(</span>
+                        svkyNo,
+                        businessDate,
+                        applicableEndsPaymentContractStatus)
+<span class="fc" id="L173">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L174">                        svsihkrDataAccess.tableName(),</span>
+<span class="fc" id="L175">                        FIND_BY_SVKY_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_SIH_KIY_JTKB.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L177">                                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L178">                                .put(&quot;knskKjnYmd&quot;, businessDate)</span>
+<span class="fc" id="L179">                                .put(&quot;sihKiyJtkb&quot;, applicableEndsPaymentContractStatus)));</span>
+    }
+
+    private SihakyRecord requirePaymentContract(Long sihKiyNo, LocalDate businessDate) {
+<span class="fc" id="L183">        return sihakyDataAccess</span>
+<span class="fc" id="L184">                .findBySihKiyNoAndKnskKjnYmdAndNotSihKiyJtkbOrderByTkysYmdDescAndSknoDesc(</span>
+                        sihKiyNo,
+                        businessDate,
+                        invalidPaymentContractStatus)
+<span class="fc" id="L188">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L189">                        sihakyDataAccess.tableName(),</span>
+<span class="fc" id="L190">                        FIND_BY_SIH_KIY_NO_AND_KNSK_KJN_YMD_AND_NOT_SIH_KIY_JTKB_ORDER_BY_TKYS_YMD_DESC_AND_SKNO_DESC.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L192">                                .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L193">                                .put(&quot;knskKjnYmd&quot;, businessDate)</span>
+<span class="fc" id="L194">                                .put(&quot;sihKiyJtkb&quot;, invalidPaymentContractStatus)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

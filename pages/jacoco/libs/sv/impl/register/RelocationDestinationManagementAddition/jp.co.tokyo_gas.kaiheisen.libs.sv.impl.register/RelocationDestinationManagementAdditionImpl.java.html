@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelocationDestinationManagementAdditionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-relocationdestinationmanagementaddition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">RelocationDestinationManagementAdditionImpl.java</span></div><h1>RelocationDestinationManagementAdditionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DatabaseException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DuplicateKeyException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.ItensakRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.itensak.write.ItensakWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.RelocationDestinationManagementAddition;
+
+/**
+ * 概要: SV-262（移転先管理追加）のサービス実装。
+ * 主な仕様:
+ * - 未取消の移転先管理が既に存在する場合は登録を行わず終了する。
+ * - 未登録時は fallback 検索で移転先管理通し番号を採番し、ITENSAK へ登録する。
+ * - 主キー重複は握りつぶし、それ以外の DB エラーは `030000001` の DatabaseException として送出する。
+ * 既知の制約:
+ * - 補助 TSV に定義された固定値はコンストラクタ初期化時に定数存在確認を行う。
+ */
+public class RelocationDestinationManagementAdditionImpl implements RelocationDestinationManagementAddition {
+
+    static final String SERVICE_USER_ID = &quot;KHSS262&quot;;
+
+    private final ItensakDataAccess itensakDataAccess;
+
+    private final String noPhone;
+
+    private final String relocationAddressUnderInvestigation;
+
+    private final String noRoomNumberRegistration;
+
+    private final String blankContactType;
+
+    private final String noInformation;
+
+    private final String noOtherPaymentCollectionRequest;
+
+    private final String branchOfficeSwitchingNoConcept;
+
+    private final String branchNoConcept;
+
+    private final String officeNoConcept;
+
+    private final String baseNoConcept;
+
+    private final String relocationDestinationUnknown;
+
+    private final String relocationInformationNotRegistered;
+
+    private final String ownerEtcRelocationDestinationInvestigationNotInvestigated;
+
+    private final String relocationDestinationGovernmentOfficeInvestigationNotInvestigated;
+
+    private final String relocationTelephoneContactNotInvestigated;
+
+    private final String relocationSiteVisitNotInvestigated;
+
+    private final String relocationNameSurveyNotInvestigated;
+
+    private final String transferSourceReturnReasonBlank;
+
+    private final String transferDestinationCancellationNoConcept;
+
+    /**
+     * 概要: 依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - ITENSAK データアクセスを保持する。
+     * - 補助 TSV に記載された固定値定数をコンストラクタ初期化時に解決する。
+     *
+     * @param itensakDataAccess 移転先管理データアクセス
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public RelocationDestinationManagementAdditionImpl(
+            ItensakDataAccess itensakDataAccess,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L83">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L84">        this.itensakDataAccess = Objects.requireNonNull(itensakDataAccess, &quot;itensakDataAccess&quot;);</span>
+<span class="fc" id="L85">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L88">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L91">        this.noPhone = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PhoneType.TYPE,
+                ConstantLookupKeys.Cirius.PhoneType.NO_PHONE);
+<span class="fc" id="L95">        this.relocationAddressUnderInvestigation = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationAddressValidCategory.TYPE,
+                ConstantLookupKeys.Cirius.RelocationAddressValidCategory.UNDER_INVESTIGATION);
+<span class="fc" id="L99">        this.noRoomNumberRegistration = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RoomNumberRegistrationFlag.TYPE,
+                ConstantLookupKeys.Cirius.RoomNumberRegistrationFlag.NO_REGISTRATION);
+<span class="fc" id="L103">        this.blankContactType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContactType.TYPE,
+                ConstantLookupKeys.Cirius.ContactType.BLANK);
+<span class="fc" id="L107">        this.noInformation = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FullTimeEmployee.TYPE,
+                ConstantLookupKeys.Cirius.FullTimeEmployee.NO_INFORMATION);
+<span class="fc" id="L111">        this.noOtherPaymentCollectionRequest = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OtherPaymentCollectionRequestStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.OtherPaymentCollectionRequestStatusCode.NO_REQUEST);
+<span class="fc" id="L115">        this.branchOfficeSwitchingNoConcept = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BranchOfficeSwitchingTargetCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.BranchOfficeSwitchingTargetCode.NO_CONCEPT);
+<span class="fc" id="L119">        this.branchNoConcept = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BranchCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.BranchCode.NO_CONCEPT);
+<span class="fc" id="L123">        this.officeNoConcept = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.OfficeCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.OfficeCode.NO_CONCEPT);
+<span class="fc" id="L127">        this.baseNoConcept = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.BaseCode.TYPE,
+                ConstantLookupKeys.Kaiheisen.BaseCode.NO_CONCEPT);
+<span class="fc" id="L131">        this.relocationDestinationUnknown = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationDestination.TYPE,
+                ConstantLookupKeys.Cirius.RelocationDestination.NOT_CLEAR);
+<span class="fc" id="L135">        this.relocationInformationNotRegistered = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.CategoryOfReasonForRegistrationOfTransferDestination.TYPE,
+                ConstantLookupKeys.Cirius.CategoryOfReasonForRegistrationOfTransferDestination.RELOCATION_INFORMATION_NOT_REGISTERED);
+<span class="fc" id="L139">        this.ownerEtcRelocationDestinationInvestigationNotInvestigated = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OwnerEtcRelocationDestinationInvestigationCategory.TYPE,
+                ConstantLookupKeys.Cirius.OwnerEtcRelocationDestinationInvestigationCategory.NOT_INVESTIGATED);
+<span class="fc" id="L143">        this.relocationDestinationGovernmentOfficeInvestigationNotInvestigated = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationDestinationGovernmentOfficeInvestigationCategory.TYPE,
+                ConstantLookupKeys.Cirius.RelocationDestinationGovernmentOfficeInvestigationCategory.NOT_INVESTIGATED);
+<span class="fc" id="L147">        this.relocationTelephoneContactNotInvestigated = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationTelephoneContactCategory.TYPE,
+                ConstantLookupKeys.Cirius.RelocationTelephoneContactCategory.NOT_INVESTIGATED);
+<span class="fc" id="L151">        this.relocationSiteVisitNotInvestigated = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationSiteVisit.TYPE,
+                ConstantLookupKeys.Cirius.RelocationSiteVisit.NOT_INVESTIGATED);
+<span class="fc" id="L155">        this.relocationNameSurveyNotInvestigated = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RelocationDestinationNameSurveyCategory.TYPE,
+                ConstantLookupKeys.Cirius.RelocationDestinationNameSurveyCategory.NOT_INVESTIGATED);
+<span class="fc" id="L159">        this.transferSourceReturnReasonBlank = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferSourceReturnReasonCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferSourceReturnReasonCode.BLANK);
+<span class="fc" id="L163">        this.transferDestinationCancellationNoConcept = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferDestinationCancellationFlag.TYPE,
+                ConstantLookupKeys.Cirius.TransferDestinationCancellationFlag.NO_CONCEPT);
+<span class="fc" id="L167">    }</span>
+
+    /**
+     * 概要: 移転先管理の追加要否を判定して必要な場合のみ新規登録する。
+     * 主な仕様:
+     * - `DA-004-R003` で既存レコードが見つかった場合は何もせず終了する。
+     * - `DA-004-R001` の先頭レコードから次通し番号を決定する。
+     * - `DA-004-C001` の主キー重複は正常継続、それ以外の DB エラーは `030000001` に正規化して送出する。
+     */
+    @Override
+    public void execute(
+            Long gmtSetNo,
+            Long syokyNo,
+            Long itmSihKiyNo,
+            String itmKktSsyaCd,
+            String itmKktEgsyCd,
+            String itmKktKitiCd) {
+<span class="fc" id="L184">        List&lt;ItensakRecord&gt; existingRecords = itensakDataAccess.findAllByGmtSetNoAndSyokyNoAndItenTksCd(</span>
+                gmtSetNo,
+                syokyNo,
+                transferDestinationCancellationNoConcept);
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (!existingRecords.isEmpty()) {</span>
+<span class="fc" id="L189">            return;</span>
+        }
+
+<span class="fc" id="L192">        int nextSequenceNo = resolveNextSequenceNo(gmtSetNo, syokyNo);</span>
+<span class="fc" id="L193">        ItensakWriteRecord writeRecord = buildWriteRecord(</span>
+                gmtSetNo,
+                syokyNo,
+                nextSequenceNo,
+                itmSihKiyNo,
+                itmKktSsyaCd,
+                itmKktEgsyCd,
+                itmKktKitiCd);
+        try {
+<span class="fc" id="L202">            itensakDataAccess.insert(writeRecord, AuditContext.of(SERVICE_USER_ID));</span>
+<span class="fc" id="L203">        } catch (DatabaseException databaseException) {</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">            if (databaseException instanceof DuplicateKeyException) {</span>
+<span class="fc" id="L205">                return;</span>
+            } else {
+<span class="fc" id="L207">                throw databaseException;</span>
+            }
+<span class="fc" id="L209">        }</span>
+<span class="fc" id="L210">    }</span>
+
+    /**
+     * 概要: fallback 検索結果から次の移転先管理通し番号を決定する。
+     * 主な仕様:
+     * - `DA-004-R001` が 0 件の場合は 1 を返す。
+     * - 1 件以上ある場合は最大の `itenSakSeqNo + 1` を返す。
+     *
+     * @param gmtSetNo ガスメータ設置場所番号
+     * @param syokyNo 使用契約番号
+     * @return 次に使用する移転先管理通し番号
+     */
+    private int resolveNextSequenceNo(Long gmtSetNo, Long syokyNo) {
+<span class="fc" id="L223">        List&lt;ItensakRecord&gt; fallbackRecords = itensakDataAccess.findAllByGmtSetNoAndSyokyNo(gmtSetNo, syokyNo);</span>
+<span class="fc" id="L224">        return fallbackRecords.stream()</span>
+<span class="fc" id="L225">                .map(ItensakRecord::itenSakSeqNo)</span>
+<span class="fc" id="L226">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L227">                .max(Integer::compareTo)</span>
+<span class="fc" id="L228">                .orElse(0) + 1;</span>
+    }
+
+    /**
+     * 概要: DA-004-C001 へ渡す write record を組み立てる。
+     * 主な仕様:
+     * - 補助 TSV に記載された固定値と入力値を ITENSAK の登録 DTO へ写像する。
+     * - 補助 TSV に未記載の項目は null を維持する。
+     *
+     * @param gmtSetNo ガスメータ設置場所番号
+     * @param syokyNo 使用契約番号
+     * @param nextSequenceNo 次の移転先管理通し番号
+     * @param itmSihKiyNo 移転前支払契約番号
+     * @param itmKktSsyaCd 移転前管轄支社コード
+     * @param itmKktEgsyCd 移転前管轄営業所コード
+     * @param itmKktKitiCd 移転前管轄基地コード
+     * @return ITENSAK 登録用 write record
+     */
+    private ItensakWriteRecord buildWriteRecord(
+            Long gmtSetNo,
+            Long syokyNo,
+            int nextSequenceNo,
+            Long itmSihKiyNo,
+            String itmKktSsyaCd,
+            String itmKktEgsyCd,
+            String itmKktKitiCd) {
+<span class="fc" id="L254">        return new ItensakWriteRecord(</span>
+                gmtSetNo,
+                syokyNo,
+<span class="fc" id="L257">                nextSequenceNo,</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                noPhone,
+                null,
+                relocationAddressUnderInvestigation,
+                noRoomNumberRegistration,
+                null,
+                blankContactType,
+                null,
+                null,
+                null,
+                null,
+                null,
+                blankContactType,
+                null,
+                itmSihKiyNo,
+                noInformation,
+                noInformation,
+                noOtherPaymentCollectionRequest,
+                branchOfficeSwitchingNoConcept,
+                itmKktSsyaCd,
+                itmKktEgsyCd,
+                itmKktKitiCd,
+                branchNoConcept,
+                officeNoConcept,
+                baseNoConcept,
+                relocationDestinationUnknown,
+                relocationInformationNotRegistered,
+                null,
+                ownerEtcRelocationDestinationInvestigationNotInvestigated,
+                null,
+                relocationDestinationGovernmentOfficeInvestigationNotInvestigated,
+                null,
+                relocationTelephoneContactNotInvestigated,
+                null,
+                relocationSiteVisitNotInvestigated,
+                null,
+                relocationNameSurveyNotInvestigated,
+                null,
+                null,
+                transferSourceReturnReasonBlank,
+                transferDestinationCancellationNoConcept,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

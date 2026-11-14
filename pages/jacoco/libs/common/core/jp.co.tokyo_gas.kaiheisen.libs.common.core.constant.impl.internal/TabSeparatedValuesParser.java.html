@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TabSeparatedValuesParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal</a> &gt; <span class="el_source">TabSeparatedValuesParser.java</span></div><h1>TabSeparatedValuesParser.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.impl.internal;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDataFormatException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDataLoadException;
+
+/**
+ * ダブルクォートを考慮した TSV パーサ。
+ */
+public final class TabSeparatedValuesParser {
+
+    private TabSeparatedValuesParser() {
+    }
+
+    /**
+     * 入力ストリームから TSV を読み込みパースする。
+     *
+     * @param inputStream 入力ストリーム
+     * @param sourceName ソース名（エラーメッセージ用）
+     * @return パース済みレコード一覧
+     */
+    public static List&lt;List&lt;String&gt;&gt; parse(InputStream inputStream, String sourceName) {
+        try {
+<span class="fc" id="L28">            String content = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L29">            return parse(content, sourceName);</span>
+<span class="nc" id="L30">        } catch (IOException ex) {</span>
+<span class="nc" id="L31">            throw new ConstantDataLoadException(&quot;Failed to read TSV: source=&quot; + sourceName, ex);</span>
+        }
+    }
+
+    /**
+     * 文字列コンテンツから TSV をパースする。
+     *
+     * @param content TSV 文字列
+     * @param sourceName ソース名（エラーメッセージ用）
+     * @return パース済みレコード一覧
+     */
+    public static List&lt;List&lt;String&gt;&gt; parse(String content, String sourceName) {
+<span class="fc" id="L43">        List&lt;List&lt;String&gt;&gt; records = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">        List&lt;String&gt; row = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L45">        StringBuilder field = new StringBuilder();</span>
+<span class="fc" id="L46">        boolean inQuotes = false;</span>
+
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (int index = 0; index &lt; content.length(); index++) {</span>
+<span class="fc" id="L49">            char ch = content.charAt(index);</span>
+
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (ch == '&quot;') {</span>
+<span class="pc bpc" id="L52" title="2 of 6 branches missed.">                if (inQuotes &amp;&amp; index + 1 &lt; content.length() &amp;&amp; content.charAt(index + 1) == '&quot;') {</span>
+<span class="nc" id="L53">                    field.append('&quot;');</span>
+<span class="nc" id="L54">                    index++;</span>
+                } else {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                    inQuotes = !inQuotes;</span>
+                }
+<span class="fc" id="L58">                continue;</span>
+            }
+
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">            if (ch == '\t' &amp;&amp; !inQuotes) {</span>
+<span class="fc" id="L62">                row.add(field.toString());</span>
+<span class="fc" id="L63">                field.setLength(0);</span>
+<span class="fc" id="L64">                continue;</span>
+            }
+
+<span class="pc bpc" id="L67" title="1 of 6 branches missed.">            if ((ch == '\n' || ch == '\r') &amp;&amp; !inQuotes) {</span>
+<span class="pc bpc" id="L68" title="5 of 6 branches missed.">                if (ch == '\r' &amp;&amp; index + 1 &lt; content.length() &amp;&amp; content.charAt(index + 1) == '\n') {</span>
+<span class="nc" id="L69">                    index++;</span>
+                }
+
+<span class="fc" id="L72">                row.add(field.toString());</span>
+<span class="fc" id="L73">                field.setLength(0);</span>
+
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                if (!isBlankRow(row)) {</span>
+<span class="fc" id="L76">                    records.add(List.copyOf(row));</span>
+                }
+<span class="fc" id="L78">                row.clear();</span>
+<span class="fc" id="L79">                continue;</span>
+            }
+
+<span class="fc" id="L82">            field.append(ch);</span>
+        }
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (inQuotes) {</span>
+<span class="fc" id="L86">            throw new ConstantDataFormatException(&quot;Unclosed quote in TSV: source=&quot; + sourceName);</span>
+        }
+
+<span class="fc" id="L89">        row.add(field.toString());</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (!isBlankRow(row)) {</span>
+<span class="fc" id="L91">            records.add(List.copyOf(row));</span>
+        }
+
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (!records.isEmpty()) {</span>
+<span class="fc" id="L95">            List&lt;String&gt; firstRow = new ArrayList&lt;&gt;(records.getFirst());</span>
+<span class="pc bpc" id="L96" title="2 of 4 branches missed.">            if (!firstRow.isEmpty() &amp;&amp; firstRow.getFirst().startsWith(&quot;\uFEFF&quot;)) {</span>
+<span class="nc" id="L97">                firstRow.set(0, firstRow.getFirst().substring(1));</span>
+<span class="nc" id="L98">                records.set(0, List.copyOf(firstRow));</span>
+            }
+        }
+
+<span class="fc" id="L102">        return records;</span>
+    }
+
+    private static boolean isBlankRow(List&lt;String&gt; row) {
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        return row.stream().allMatch(value -&gt; value == null || value.isBlank());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CstmstDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-cstmst</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.cstmst</a> &gt; <span class="el_source">CstmstDataAccessImpl.java</span></div><h1>CstmstDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.cstmst;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.cstmst.CstmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.cstmst.CstmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+
+/**
+ * CSTMST データアクセスのインメモリ実装。
+ */
+<span class="fc" id="L17">public class CstmstDataAccessImpl extends DataAccessBase implements CstmstDataAccess {</span>
+
+    private static final int CNST_SHBT_CD_LENGTH = 5;
+
+    private static final int CNST_CD_LENGTH = 10;
+
+    private static final int TIGN_SGN_LENGTH = 1;
+
+<span class="fc" id="L25">    private static final LocalDate COMPLEMENT_YMD = LocalDate.MIN;</span>
+
+<span class="fc" id="L27">    private final List&lt;CstmstRecord&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param row 追加するレコード
+     * @return このインスタンス
+     */
+    public CstmstDataAccessImpl addRow(CstmstRecord row) {
+<span class="fc" id="L36">        rows.add(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L37">        return this;</span>
+    }
+
+    @Override
+    public List&lt;CstmstRecord&gt; findAllByCnstShbtCd(String cnstShbtCd) {
+<span class="fc" id="L42">        String safeCnstShbtCd = safeCnstShbtCd(cnstShbtCd, &quot;cnstShbtCd&quot;);</span>
+<span class="fc" id="L43">        return rows.stream()</span>
+<span class="fc" id="L44">                .filter(r -&gt; safeCnstShbtCd.equals(normalizeCnstShbtCd(r.cnstShbtCd())))</span>
+<span class="fc" id="L45">                .sorted(Comparator.comparing(CstmstRecord::cnstCd))</span>
+<span class="fc" id="L46">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;CstmstRecord&gt; findByCnstShbtCdAndCnstCdAndTkysYmdAndTyenYmdAndTignSgn(
+            String cnstShbtCd, String cnstCd, LocalDate knskKjnYmd, String tignSgn) {
+<span class="fc bfc" id="L52" title="All 4 branches covered.">        if (tignSgn == null || tignSgn.isBlank()) {</span>
+<span class="fc" id="L53">            return Optional.empty();</span>
+        }
+<span class="fc" id="L55">        String safeCnstShbtCd = safeCnstShbtCd(cnstShbtCd, &quot;cnstShbtCd&quot;);</span>
+<span class="fc" id="L56">        String safeCnstCd = safeCnstCd(cnstCd, &quot;cnstCd&quot;);</span>
+<span class="fc" id="L57">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L58">        String safeTignSgn = safeTignSgn(tignSgn, &quot;tignSgn&quot;);</span>
+<span class="fc" id="L59">        return rows.stream()</span>
+<span class="fc" id="L60">                .filter(r -&gt; safeCnstShbtCd.equals(normalizeCnstShbtCd(r.cnstShbtCd())))</span>
+<span class="fc" id="L61">                .filter(r -&gt; safeCnstCd.equals(normalizeCnstCd(r.cnstCd())))</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                .filter(r -&gt; !normalizeYmd(r.tkysYmd()).isAfter(safeKnskKjnYmd))</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                .filter(r -&gt; !normalizeYmd(r.tyenYmd()).isBefore(safeKnskKjnYmd))</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                .filter(r -&gt; !safeTignSgn.equals(normalizeTignSgn(r.tignSgn())))</span>
+<span class="fc" id="L65">                .findFirst();</span>
+    }
+
+    private static String safeCnstShbtCd(String value, String paramName) {
+<span class="fc" id="L69">        return WhereParamGuard.fixedLengthNotNull(value, paramName, CNST_SHBT_CD_LENGTH);</span>
+    }
+
+    private static String safeCnstCd(String value, String paramName) {
+<span class="fc" id="L73">        return WhereParamGuard.fixedLengthNotNull(value, paramName, CNST_CD_LENGTH);</span>
+    }
+
+    private static String safeTignSgn(String value, String paramName) {
+<span class="fc" id="L77">        return WhereParamGuard.fixedLengthNotNull(value, paramName, TIGN_SGN_LENGTH);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L81">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String normalizeCnstShbtCd(String value) {
+<span class="fc" id="L85">        return WhereParamGuard.fixedLengthNotNull(value, &quot;cnstShbtCd&quot;, CNST_SHBT_CD_LENGTH);</span>
+    }
+
+    private static String normalizeCnstCd(String value) {
+<span class="fc" id="L89">        return WhereParamGuard.fixedLengthNotNull(value, &quot;cnstCd&quot;, CNST_CD_LENGTH);</span>
+    }
+
+    private static String normalizeTignSgn(String value) {
+<span class="fc" id="L93">        return WhereParamGuard.fixedLengthNotNull(value, &quot;tignSgn&quot;, TIGN_SGN_LENGTH);</span>
+    }
+
+    private static LocalDate normalizeYmd(LocalDate value) {
+<span class="fc" id="L97">        return WhereParamGuard.complement(value, &quot;ymd&quot;, COMPLEMENT_YMD);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

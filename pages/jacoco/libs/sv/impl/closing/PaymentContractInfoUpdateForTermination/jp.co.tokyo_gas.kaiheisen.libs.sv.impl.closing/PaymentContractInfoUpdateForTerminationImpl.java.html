@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaymentContractInfoUpdateForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-paymentcontractinfoupdatefortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">PaymentContractInfoUpdateForTerminationImpl.java</span></div><h1>PaymentContractInfoUpdateForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.CrdhriDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.crdhri.write.CrdhriWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.DsqkjhDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dsqkjh.write.DsqkjhWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.PaymentContractInfoUpdateForTermination;
+
+/**
+ * 支払契約関連情報更新（契約終了）のサービス実装。
+ */
+public class PaymentContractInfoUpdateForTerminationImpl
+        implements PaymentContractInfoUpdateForTermination {
+
+    static final String SERVICE_USER_ID = &quot;KHSS032&quot;;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final KuzfrkDataAccess kuzfrkDataAccess;
+
+    private final HrikmiDataAccess hrikmiDataAccess;
+
+    private final CrdhriDataAccess crdhriDataAccess;
+
+    private final DsqkjhDataAccess dsqkjhDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String paymentContractApplicableEnds;
+
+    private final String accountTransfer;
+
+    private final String payment;
+
+    private final String cardPayment;
+
+    private final String electronicBilling;
+
+    /**
+     * 依存オブジェクトと必須定数を初期化する。
+     *
+     * @param sihakyDataAccess 支払契約 DA
+     * @param kuzfrkDataAccess 口座振替関連情報 DA
+     * @param hrikmiDataAccess 払込関連情報 DA
+     * @param crdhriDataAccess カード払い関連情報 DA
+     * @param dsqkjhDataAccess 電子請求関連情報 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public PaymentContractInfoUpdateForTerminationImpl(
+            SihakyDataAccess sihakyDataAccess,
+            KuzfrkDataAccess kuzfrkDataAccess,
+            HrikmiDataAccess hrikmiDataAccess,
+            CrdhriDataAccess crdhriDataAccess,
+            DsqkjhDataAccess dsqkjhDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L88">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L89">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L90">        this.kuzfrkDataAccess = Objects.requireNonNull(kuzfrkDataAccess, &quot;kuzfrkDataAccess&quot;);</span>
+<span class="fc" id="L91">        this.hrikmiDataAccess = Objects.requireNonNull(hrikmiDataAccess, &quot;hrikmiDataAccess&quot;);</span>
+<span class="fc" id="L92">        this.crdhriDataAccess = Objects.requireNonNull(crdhriDataAccess, &quot;crdhriDataAccess&quot;);</span>
+<span class="fc" id="L93">        this.dsqkjhDataAccess = Objects.requireNonNull(dsqkjhDataAccess, &quot;dsqkjhDataAccess&quot;);</span>
+<span class="fc" id="L94">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L95">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L98">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L100">        this.paymentContractApplicableEnds = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLICABLE_ENDS);
+<span class="fc" id="L104">        this.accountTransfer = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.ACCOUNT_TRANSFER);
+<span class="fc" id="L108">        this.payment = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.PAYMENT);
+<span class="fc" id="L112">        this.cardPayment = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.CARD_PAYMENT);
+<span class="fc" id="L116">        this.electronicBilling = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.ELECTRONIC_BILLING);
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * 支払契約関連情報を契約終了状態へ更新する。
+     *
+         * @param sihKiyNo 支払契約番号
+         * @param skno 世代管理番号
+         * @param sihHuhuShbt 支払方法種別
+         * @param recUpdJnjNo レコード更新排他制御順序番号
+     */
+    @Override
+        public void execute(
+                        Long sihKiyNo,
+                        Integer skno,
+                        String sihHuhuShbt,
+                        Integer recUpdJnjNo) {
+<span class="fc" id="L136">        requireRequestContext();</span>
+<span class="fc" id="L137">        LocalDate tyenYmd = resolveSystemDate();</span>
+<span class="fc" id="L138">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L139">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc" id="L141">        updatePaymentContract(sihKiyNo, skno, recUpdJnjNo, tyenYmd, decodedOriginFunctionId, auditContext);</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (accountTransfer.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L144">            updateAccountTransferInfo(sihKiyNo, skno, tyenYmd, decodedOriginFunctionId, auditContext);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        } else if (payment.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L146">            updatePaymentSlipInfo(sihKiyNo, skno, tyenYmd, decodedOriginFunctionId, auditContext);</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        } else if (cardPayment.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L148">            updateCardPaymentInfo(sihKiyNo, skno, tyenYmd, decodedOriginFunctionId, auditContext);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        } else if (electronicBilling.equals(sihHuhuShbt)) {</span>
+<span class="fc" id="L150">            updateElectronicBillingInfo(sihKiyNo, skno, tyenYmd, decodedOriginFunctionId, auditContext);</span>
+        }
+
+<span class="fc" id="L153">    }</span>
+
+    /**
+     * RequestContext の必須項目を検証する。
+     */
+    private void requireRequestContext() {
+<span class="fc" id="L159">        requestContext.getCorrelationId()</span>
+<span class="fc" id="L160">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L161">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L162">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L163">        requestContext.getSystemDatetime()</span>
+<span class="fc" id="L164">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L165">    }</span>
+
+    /**
+     * RequestContext から更新年月日を取得する。
+     *
+     * @return 更新年月日
+     */
+    private LocalDate resolveSystemDate() {
+<span class="fc" id="L173">        return requestContext.getSystemDatetime()</span>
+<span class="pc" id="L174">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L175">                .toLocalDate();</span>
+    }
+
+    /**
+     * RequestContext の報告システム種別を監査用機能 ID に変換する。
+     *
+     * @return 監査用機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L184">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="pc" id="L185">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L186">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+    }
+
+    /**
+     * 支払契約を適用終了へ更新する。
+     */
+    private void updatePaymentContract(
+            Long sihKiyNo,
+            Integer skno,
+            Integer recUpdJnjNo,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId,
+            AuditContext auditContext) {
+<span class="fc" id="L201">        int updatedCount = sihakyDataAccess.updateBySihKiyNoAndSknoAndRecUpdJnjNo(</span>
+                new SihakyWriteRecord(
+                        sihKiyNo,
+                        skno,
+                        null,
+                        tyenYmd,
+                        paymentContractApplicableEnds,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L221">                EnumSet.of(SihakyColumn.TYEN_YMD, SihakyColumn.SIH_KIY_JTKB),</span>
+                new SihakySknoJnjUpdateKey(sihKiyNo, skno, recUpdJnjNo),
+                auditContext);
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L225">            throw createSihakyUpdateException(</span>
+                    sihKiyNo,
+                    skno,
+                    recUpdJnjNo,
+                    tyenYmd,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L232">    }</span>
+
+    /**
+     * 口座振替関連情報を更新する。
+     */
+    private void updateAccountTransferInfo(
+            Long sihKiyNo,
+            Integer skno,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId,
+            AuditContext auditContext) {
+<span class="fc" id="L243">        int updatedCount = kuzfrkDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+                new KuzfrkWriteRecord(
+                        sihKiyNo,
+                        skno,
+                        null,
+                        tyenYmd,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L261">                EnumSet.of(KuzfrkColumn.TYEN_YMD),</span>
+                new KuzfrkSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L265">            throw createPaymentMethodUpdateException(</span>
+<span class="fc" id="L266">                    kuzfrkDataAccess.tableName(),</span>
+<span class="fc" id="L267">                    KuzfrkDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+                    sihKiyNo,
+                    skno,
+                    tyenYmd,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L273">    }</span>
+
+    /**
+     * 払込関連情報を更新する。
+     */
+    private void updatePaymentSlipInfo(
+            Long sihKiyNo,
+            Integer skno,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId,
+            AuditContext auditContext) {
+<span class="fc" id="L284">        int updatedCount = hrikmiDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+                new HrikmiWriteRecord(
+                        sihKiyNo,
+                        skno,
+                        null,
+                        tyenYmd,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L298">                EnumSet.of(HrikmiColumn.TYEN_YMD),</span>
+                new HrikmiSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc bfc" id="L301" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L302">            throw createPaymentMethodUpdateException(</span>
+<span class="fc" id="L303">                    hrikmiDataAccess.tableName(),</span>
+<span class="fc" id="L304">                    HrikmiDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+                    sihKiyNo,
+                    skno,
+                    tyenYmd,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L310">    }</span>
+
+    /**
+     * カード払い関連情報を更新する。
+     */
+    private void updateCardPaymentInfo(
+            Long sihKiyNo,
+            Integer skno,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId,
+            AuditContext auditContext) {
+<span class="fc" id="L321">        int updatedCount = crdhriDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+                new CrdhriWriteRecord(sihKiyNo, skno, null, tyenYmd, null, null, null),
+<span class="fc" id="L323">                EnumSet.of(CrdhriColumn.TYEN_YMD),</span>
+                new CrdhriSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L327">            throw createPaymentMethodUpdateException(</span>
+<span class="fc" id="L328">                    crdhriDataAccess.tableName(),</span>
+<span class="fc" id="L329">                    CrdhriDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+                    sihKiyNo,
+                    skno,
+                    tyenYmd,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L335">    }</span>
+
+    /**
+     * 電子請求関連情報を更新する。
+     */
+    private void updateElectronicBillingInfo(
+            Long sihKiyNo,
+            Integer skno,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId,
+            AuditContext auditContext) {
+<span class="fc" id="L346">        int updatedCount = dsqkjhDataAccess.updateBySihKiyNoAndSihKiySkno(</span>
+                new DsqkjhWriteRecord(sihKiyNo, skno, null, tyenYmd, null, null, null, null),
+<span class="fc" id="L348">                EnumSet.of(DsqkjhColumn.TYEN_YMD),</span>
+                new DsqkjhSihKiyUpdateKey(sihKiyNo, skno),
+                auditContext);
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L352">            throw createPaymentMethodUpdateException(</span>
+<span class="fc" id="L353">                    dsqkjhDataAccess.tableName(),</span>
+<span class="fc" id="L354">                    DsqkjhDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+                    sihKiyNo,
+                    skno,
+                    tyenYmd,
+                    decodedOriginFunctionId);
+        }
+<span class="fc" id="L360">    }</span>
+
+    /**
+     * 支払契約更新失敗時のデータ不整合例外を生成する。
+     */
+    private RuntimeException createSihakyUpdateException(
+            Long sihKiyNo,
+            Integer skno,
+            Integer recUpdJnjNo,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L371">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L372">                sihakyDataAccess.tableName(),</span>
+<span class="fc" id="L373">                SihakyDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L375">                        .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L376">                        .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L377">                        .put(&quot;recUpdJnjNo&quot;, recUpdJnjNo)</span>
+<span class="fc" id="L378">                        .put(&quot;tyenYmd&quot;, tyenYmd)</span>
+<span class="fc" id="L379">                        .put(&quot;sihKiyJtkb&quot;, paymentContractApplicableEnds)</span>
+<span class="fc" id="L380">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L381">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    /**
+     * 支払方法別更新失敗時のデータ不整合例外を生成する。
+     */
+    private RuntimeException createPaymentMethodUpdateException(
+            String tableName,
+            String daIdentifier,
+            Long sihKiyNo,
+            Integer skno,
+            LocalDate tyenYmd,
+            String decodedOriginFunctionId) {
+<span class="fc" id="L394">        return DataInconsistencySupport.create(</span>
+                tableName,
+                daIdentifier,
+                new FlatJsonBuilder()
+<span class="fc" id="L398">                        .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="fc" id="L399">                        .put(&quot;sihKiySkno&quot;, skno)</span>
+<span class="fc" id="L400">                        .put(&quot;tyenYmd&quot;, tyenYmd)</span>
+<span class="fc" id="L401">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L402">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractInfoUpdateWithAlternativeRetailAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractinfoupdatewithalternativeretailatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractInfoUpdateWithAlternativeRetailAtOpeningImpl.java</span></div><h1>ContractInfoUpdateWithAlternativeRetailAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.SihtkskDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.write.SihtkskWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoUpdateWithAlternativeRetailAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoUpdateWithAlternativeRetailAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoUpdateWithAlternativeRetailAtOpeningSihakyKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoUpdateWithAlternativeRetailAtOpeningSvckyaKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoUpdateWithAlternativeRetailAtOpeningSvsihkrKktInf;
+
+/**
+ * 概要: SV-225（開栓時契約情報更新処理（代替あり）（小売））の実装。
+ * 主な仕様:
+ * - 開栓時の確定契約情報をもとに SVMSTKR、SVCKYA、SVSIHKR、SIHAKY、HRIKMI、SIHTKSK を登録する。
+ * - 報告システム種別は RequestContext から復号して監査用の updKtnKinoId として使用する。
+ * - public メソッド引数の null チェックは追加せず、上位層の責務とする。
+ * 既知の制約:
+ * - 監査値の復号には報告システム種別のみを使用するが、execute 冒頭で RequestContext の必須値を検証する。
+ * - CIRIUS 定数はコンストラクタ初期化時に fail-fast で解決する。
+ */
+public final class ContractInfoUpdateWithAlternativeRetailAtOpeningImpl
+        implements ContractInfoUpdateWithAlternativeRetailAtOpening {
+
+    private static final String SERVICE_USER_ID = &quot;KHSS225&quot;;
+
+    private static final int INITIAL_SKNO = 1;
+
+    private static final long INITIAL_GROUP_NO = 1L;
+
+    private static final long INITIAL_REFERENCE_SERVICE_CONTRACT_NO = 0L;
+
+    private static final long INITIAL_OTHER_PRODUCT_CONTRACT_ID = 0L;
+
+    private static final long INITIAL_BILL_DISPLAY_CONTROL_NO = 0L;
+
+    private static final int INITIAL_BILL_CYCLE_NO = 0;
+
+<span class="fc" id="L56">    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final HrikmiDataAccess hrikmiDataAccess;
+
+    private final SihtkskDataAccess sihtkskDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String nonComprehensive;
+
+    private final String relatedValid;
+
+    private final String serviceContractStatusUnderContract;
+
+    private final String serviceContractStartReasonNew;
+
+    private final String contractTypeApplicableReasonNewContract;
+
+    private final String gasProduct;
+
+    private final String generalContract;
+
+    private final String contractManagementDepartmentGeneral;
+
+    private final String otherThanCompanyUse;
+
+    private final String paymentContractStatusApplying;
+
+    private final String singleBillingPartyTotal;
+
+    private final String immediateBilling;
+
+    private final String paymentMethod;
+
+    private final String nextMonthCarryOver;
+
+    private final String automaticCancellationNone;
+
+    private final String paymentFormShippingGeneral;
+
+    private final String paymentFormStandard;
+
+    private final String normalReminder;
+
+    private final String batchIssueTarget;
+
+    /**
+     * 概要: SV-225 の依存関係と必須定数を初期化する。
+     * 主な仕様:
+     * - 6 本の DA、RequestContext、開閉栓定数サービスを保持する。
+     * - 登録に必要な CIRIUS 定数を初期化時点で解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが不足している場合は NullPointerException を送出する。
+     * - 必須定数が不足している場合はコンストラクタ初期化時点で失敗する。
+     */
+    public ContractInfoUpdateWithAlternativeRetailAtOpeningImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            HrikmiDataAccess hrikmiDataAccess,
+            SihtkskDataAccess sihtkskDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L130">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L131">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L132">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L133">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L134">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L135">        this.hrikmiDataAccess = Objects.requireNonNull(hrikmiDataAccess, &quot;hrikmiDataAccess&quot;);</span>
+<span class="fc" id="L136">        this.sihtkskDataAccess = Objects.requireNonNull(sihtkskDataAccess, &quot;sihtkskDataAccess&quot;);</span>
+<span class="fc" id="L137">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L138">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L139">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L140">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L141">        this.nonComprehensive = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.General.TYPE,
+                ConstantLookupKeys.Cirius.General.NON_COMPREHENSIVE);
+<span class="fc" id="L145">        this.relatedValid = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L149">        this.serviceContractStatusUnderContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L153">        this.serviceContractStartReasonNew = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.NEW);
+<span class="fc" id="L157">        this.contractTypeApplicableReasonNewContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractTypeApplicableReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ContractTypeApplicableReasonType.NEW_CONTRACT);
+<span class="fc" id="L161">        this.gasProduct = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.Unnamed__N4.TYPE,
+                ConstantLookupKeys.Cirius.Unnamed__N4.GAS);
+<span class="fc" id="L165">        this.generalContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractType.TYPE,
+                ConstantLookupKeys.Cirius.ContractType.GENERAL_CONTRACT);
+<span class="fc" id="L169">        this.contractManagementDepartmentGeneral = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractManagementDepartmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ContractManagementDepartmentCode.GENERAL);
+<span class="fc" id="L173">        this.otherThanCompanyUse = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.OTHER_THAN_COMPANY_USE);
+<span class="fc" id="L177">        this.paymentContractStatusApplying = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L181">        this.singleBillingPartyTotal = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TYPE,
+                ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TOTAL);
+<span class="fc" id="L185">        this.immediateBilling = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingTimingType.TYPE,
+                ConstantLookupKeys.Cirius.BillingTimingType.IMMEDIATE_BILLING);
+<span class="fc" id="L189">        this.paymentMethod = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.PAYMENT);
+<span class="fc" id="L193">        this.nextMonthCarryOver = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.NextMonthTotalApplicationType.TYPE,
+                ConstantLookupKeys.Cirius.NextMonthTotalApplicationType.CAN_BE_CARRIED_OVER);
+<span class="fc" id="L197">        this.automaticCancellationNone = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.AutomaticCancellationType.TYPE,
+                ConstantLookupKeys.Cirius.AutomaticCancellationType.NONE);
+<span class="fc" id="L201">        this.paymentFormShippingGeneral = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentFormShippingMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentFormShippingMethodType.GENERAL_SHIPPING);
+<span class="fc" id="L205">        this.paymentFormStandard = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentForm.TYPE,
+                ConstantLookupKeys.Cirius.PaymentForm.PAYMENT_SLIP_STANDARD);
+<span class="fc" id="L209">        this.normalReminder = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.DunningMethodType.TYPE,
+                ConstantLookupKeys.Cirius.DunningMethodType.NORMAL_REMINDER);
+<span class="fc" id="L213">        this.batchIssueTarget = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingManagementLevel.TYPE,
+                ConstantLookupKeys.Cirius.BillingManagementLevel.BATCH_ISSUE_TARGET);
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * 概要: 開栓時代替ありの小売契約情報を登録し、確定値を返却する。
+     * 主な仕様:
+     * - 設計書どおり 6 件の DA insert を順番に実行する。
+     * - 報告システム種別の復号値を監査コンテキストの kinoId に設定する。
+     * - 戻り値は入力値・定数値・固定値から組み立てる。
+     * - 確定適用終了年月日は source 入力互換のため受け取るが、各 DA の終了日は補助シートどおり最大日付固定とする。
+     */
+    @Override
+    public ContractInfoUpdateWithAlternativeRetailAtOpeningOutput execute(
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            LocalDate kktTyenYmd,
+            LocalDate kktTkysYmd,
+            Long kktSvkyNo,
+            Long kktSihKiyNo,
+            String kktSqtiKiyNo,
+            Long kktSikKrno,
+            Long kktSyoKyoTrno,
+            String kktSvckyaGasYtCd,
+            String kktSziKziKbn) {
+<span class="fc" id="L240">        requireRequestContext();</span>
+<span class="fc" id="L241">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L242">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+        // source 設計の入力互換のため kktTyenYmd は受け取るが、各 DA 補助シートでは終了日は最大日付固定。
+<span class="fc" id="L244">        LocalDate applicableEndDate = MAX_DATE;</span>
+<span class="fc" id="L245">        SvmstkrWriteRecord svmstkrWriteRecord = new SvmstkrWriteRecord(</span>
+                gasMtstNo,
+                kktSvkyNo,
+<span class="fc" id="L248">                INITIAL_SKNO,</span>
+                nonComprehensive,
+                Boolean.FALSE,
+                relatedValid,
+                kktTkysYmd,
+                applicableEndDate,
+                null);
+<span class="fc" id="L255">        SvckyaWriteRecord svckyaWriteRecord = new SvckyaWriteRecord(</span>
+                kktSvkyNo,
+<span class="fc" id="L257">                INITIAL_SKNO,</span>
+<span class="fc" id="L258">                INITIAL_SKNO,</span>
+<span class="fc" id="L259">                INITIAL_SKNO,</span>
+                serviceContractStatusUnderContract,
+                serviceContractStartReasonNew,
+                contractTypeApplicableReasonNewContract,
+                null,
+                kktTkysYmd,
+                applicableEndDate,
+                kktTkysYmd,
+                applicableEndDate,
+                kktTkysYmd,
+                applicableEndDate,
+                null,
+                kktTkysYmd,
+                kktTkysYmd,
+                kktTkysYmd,
+                kasgYmd,
+                kktSqtiKiyNo,
+                kktSyoKyoTrno,
+                kktSyoKyoTrno,
+                Boolean.FALSE,
+                gasProduct,
+                generalContract,
+                kktSvckyaGasYtCd,
+                kktSziKziKbn,
+                Boolean.FALSE,
+                null,
+                contractManagementDepartmentGeneral,
+                otherThanCompanyUse,
+<span class="fc" id="L287">                INITIAL_OTHER_PRODUCT_CONTRACT_ID,</span>
+                null);
+<span class="fc" id="L289">        SvsihkrWriteRecord svsihkrWriteRecord = new SvsihkrWriteRecord(</span>
+                kktSihKiyNo,
+                kktSvkyNo,
+<span class="fc" id="L292">                INITIAL_SKNO,</span>
+                kktTkysYmd,
+                applicableEndDate,
+                paymentContractStatusApplying,
+<span class="fc" id="L296">                INITIAL_REFERENCE_SERVICE_CONTRACT_NO,</span>
+                null,
+                null,
+<span class="fc" id="L299">                INITIAL_GROUP_NO,</span>
+                singleBillingPartyTotal,
+                Boolean.TRUE,
+                null,
+                immediateBilling,
+                gasProduct);
+<span class="fc" id="L305">        SihakyWriteRecord sihakyWriteRecord = new SihakyWriteRecord(</span>
+                kktSihKiyNo,
+<span class="fc" id="L307">                INITIAL_SKNO,</span>
+                kktTkysYmd,
+                applicableEndDate,
+                paymentContractStatusApplying,
+                paymentMethod,
+                null,
+                null,
+                nextMonthCarryOver,
+                null,
+<span class="fc" id="L316">                INITIAL_BILL_CYCLE_NO,</span>
+                kktSikKrno,
+                null,
+                automaticCancellationNone,
+                null,
+                kktSyoKyoTrno,
+                Boolean.FALSE,
+<span class="fc" id="L323">                INITIAL_BILL_DISPLAY_CONTROL_NO);</span>
+<span class="fc" id="L324">        HrikmiWriteRecord hrikmiWriteRecord = new HrikmiWriteRecord(</span>
+                kktSihKiyNo,
+<span class="fc" id="L326">                INITIAL_SKNO,</span>
+                kktTkysYmd,
+                applicableEndDate,
+                paymentFormShippingGeneral,
+                paymentFormStandard,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+<span class="fc" id="L337">        SihtkskWriteRecord sihtkskWriteRecord = new SihtkskWriteRecord(</span>
+                kktSihKiyNo,
+                normalReminder,
+                batchIssueTarget);
+
+<span class="fc" id="L342">        svmstkrDataAccess.insert(svmstkrWriteRecord, auditContext);</span>
+
+<span class="fc" id="L344">        svckyaDataAccess.insert(svckyaWriteRecord, auditContext);</span>
+
+<span class="fc" id="L346">        svsihkrDataAccess.insert(svsihkrWriteRecord, auditContext);</span>
+
+<span class="fc" id="L348">        sihakyDataAccess.insert(sihakyWriteRecord, auditContext);</span>
+
+<span class="fc" id="L350">        hrikmiDataAccess.insert(hrikmiWriteRecord, auditContext);</span>
+
+<span class="fc" id="L352">        sihtkskDataAccess.insert(sihtkskWriteRecord, auditContext);</span>
+
+<span class="fc" id="L354">        return new ContractInfoUpdateWithAlternativeRetailAtOpeningOutput(</span>
+<span class="fc" id="L355">                toSvckyaKktInf(svckyaWriteRecord),</span>
+<span class="fc" id="L356">                toSvsihkrKktInf(svsihkrWriteRecord),</span>
+<span class="fc" id="L357">                toSihakyKktInf(sihakyWriteRecord));</span>
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+     * 主な仕様:
+     * - correlationId、hukkSysShbt、systemDatetime の存在を確認する。
+     * - 欠落がある場合は最初に検出した項目で処理を中断する。
+     */
+    private void requireRequestContext() {
+<span class="fc" id="L367">        requestContext.getCorrelationId()</span>
+<span class="fc" id="L368">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.correlationId is required&quot;));</span>
+<span class="fc" id="L369">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L370">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L371">        requestContext.getSystemDatetime()</span>
+<span class="fc" id="L372">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L373">    }</span>
+
+    private ContractInfoUpdateWithAlternativeRetailAtOpeningSvckyaKktInf toSvckyaKktInf(
+            SvckyaWriteRecord writeRecord) {
+<span class="fc" id="L377">        return new ContractInfoUpdateWithAlternativeRetailAtOpeningSvckyaKktInf(</span>
+<span class="fc" id="L378">                writeRecord.svkyNo(),</span>
+<span class="fc" id="L379">                writeRecord.skno(),</span>
+<span class="fc" id="L380">                writeRecord.kyttSkno(),</span>
+<span class="fc" id="L381">                writeRecord.kyttTsno(),</span>
+<span class="fc" id="L382">                writeRecord.svkyJtkb(),</span>
+<span class="fc" id="L383">                writeRecord.svkySttJysb(),</span>
+<span class="fc" id="L384">                writeRecord.ksbTkyJysb(),</span>
+<span class="fc" id="L385">                writeRecord.svkyEndJysb(),</span>
+<span class="fc" id="L386">                writeRecord.rkkiSttYmd(),</span>
+<span class="fc" id="L387">                writeRecord.rkkiEndYmd(),</span>
+<span class="fc" id="L388">                writeRecord.ksbSttYmd(),</span>
+<span class="fc" id="L389">                writeRecord.ksbEndYmd(),</span>
+<span class="fc" id="L390">                writeRecord.ksbStytYmd(),</span>
+<span class="fc" id="L391">                writeRecord.ksbEnytYmd(),</span>
+<span class="fc" id="L392">                writeRecord.kykYtiYmd(),</span>
+<span class="fc" id="L393">                writeRecord.svcRyksYmd(),</span>
+<span class="fc" id="L394">                writeRecord.svkyTiktYmd(),</span>
+<span class="fc" id="L395">                writeRecord.ksbTiktYmd(),</span>
+<span class="fc" id="L396">                writeRecord.szirHtyoYmd(),</span>
+<span class="fc" id="L397">                writeRecord.sqtiKiyNo(),</span>
+<span class="fc" id="L398">                writeRecord.syoKyoTrno(),</span>
+<span class="fc" id="L399">                writeRecord.kysKyoTrno(),</span>
+<span class="fc" id="L400">                writeRecord.byssUmFlg(),</span>
+<span class="fc" id="L401">                writeRecord.shziKbn(),</span>
+<span class="fc" id="L402">                writeRecord.kiyShbt(),</span>
+<span class="fc" id="L403">                writeRecord.gasYtCd(),</span>
+<span class="fc" id="L404">                writeRecord.sziKziKbn(),</span>
+<span class="fc" id="L405">                writeRecord.rknKhumFlg(),</span>
+<span class="fc" id="L406">                writeRecord.kkysSisnJtkb(),</span>
+<span class="fc" id="L407">                writeRecord.kiyKnrkCd(),</span>
+<span class="fc" id="L408">                writeRecord.syaKbn(),</span>
+<span class="fc" id="L409">                writeRecord.tsziKysbNo(),</span>
+<span class="fc" id="L410">                writeRecord.recUpdJnjNo());</span>
+    }
+
+    private ContractInfoUpdateWithAlternativeRetailAtOpeningSvsihkrKktInf toSvsihkrKktInf(
+            SvsihkrWriteRecord writeRecord) {
+<span class="fc" id="L415">        return new ContractInfoUpdateWithAlternativeRetailAtOpeningSvsihkrKktInf(</span>
+<span class="fc" id="L416">                writeRecord.sihKiyNo(),</span>
+<span class="fc" id="L417">                writeRecord.svkyNo(),</span>
+<span class="fc" id="L418">                writeRecord.skno(),</span>
+<span class="fc" id="L419">                writeRecord.tkysYmd(),</span>
+<span class="fc" id="L420">                writeRecord.tyenYmd(),</span>
+<span class="fc" id="L421">                writeRecord.sihKiyJtkb(),</span>
+<span class="fc" id="L422">                writeRecord.snskSvkyNo(),</span>
+<span class="fc" id="L423">                writeRecord.ikskSttYm(),</span>
+<span class="fc" id="L424">                writeRecord.ikskEndYm(),</span>
+<span class="fc" id="L425">                writeRecord.ikskGrpNo(),</span>
+<span class="fc" id="L426">                writeRecord.tdssSbtShbt(),</span>
+<span class="fc" id="L427">                writeRecord.gsnKhFlg(),</span>
+<span class="fc" id="L428">                writeRecord.gsptShbt(),</span>
+<span class="fc" id="L429">                writeRecord.sikTmngShbt(),</span>
+<span class="fc" id="L430">                writeRecord.shziKbn());</span>
+    }
+
+    private ContractInfoUpdateWithAlternativeRetailAtOpeningSihakyKktInf toSihakyKktInf(
+            SihakyWriteRecord writeRecord) {
+<span class="fc" id="L435">        return new ContractInfoUpdateWithAlternativeRetailAtOpeningSihakyKktInf(</span>
+<span class="fc" id="L436">                writeRecord.sihKiyNo(),</span>
+<span class="fc" id="L437">                writeRecord.skno(),</span>
+<span class="fc" id="L438">                writeRecord.tkysYmd(),</span>
+<span class="fc" id="L439">                writeRecord.tyenYmd(),</span>
+<span class="fc" id="L440">                writeRecord.sihKiyJtkb(),</span>
+<span class="fc" id="L441">                writeRecord.sihHuhuShbt(),</span>
+<span class="fc" id="L442">                writeRecord.sikSvcShbt(),</span>
+<span class="fc" id="L443">                writeRecord.sikKibNo(),</span>
+<span class="fc" id="L444">                writeRecord.yggsTkyShbt(),</span>
+<span class="fc" id="L445">                writeRecord.thsCdNo(),</span>
+<span class="fc" id="L446">                writeRecord.sikCycsNo(),</span>
+<span class="fc" id="L447">                writeRecord.sikKrno(),</span>
+<span class="fc" id="L448">                writeRecord.shtiSqddKbn(),</span>
+<span class="fc" id="L449">                writeRecord.jduKykShbt(),</span>
+<span class="fc" id="L450">                writeRecord.jduKykYmd(),</span>
+<span class="fc" id="L451">                writeRecord.shsyKyoTrno(),</span>
+<span class="fc" id="L452">                writeRecord.byssUmFlg(),</span>
+<span class="fc" id="L453">                writeRecord.skshHyjsKrno());</span>
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別を監査用機能 ID に復号する。
+     * 主な仕様:
+     * - hukkSysShbt は requireRequestContext で検証済みである前提で取得する。
+     * - 開閉栓定数サービスを用いて名称へ変換する。
+     * - 定数定義が未解決の場合は定数サービス側の例外をそのまま伝播する。
+     *
+     * @return 監査用の最終更新起点機能ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L466">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L468">                requestContext.getHukkSysShbt().get());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

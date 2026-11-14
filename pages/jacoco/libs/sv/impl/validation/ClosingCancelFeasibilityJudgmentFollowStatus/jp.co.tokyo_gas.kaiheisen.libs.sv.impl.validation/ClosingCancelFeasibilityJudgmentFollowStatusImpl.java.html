@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentFollowStatusImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmentfollowstatus</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentFollowStatusImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentFollowStatusImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hsefl.HseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatus;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentFollowStatusOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.HseflInf;
+
+/**
+ * 概要: SV-096（閉栓取消実施可否判定：フォロー状態コード）のサービス実装。
+ * 主な仕様:
+ * - 処理区分に応じて HSEFL 検索先を切り替える。
+ * - 取得したフォローステータスコードと RequestContext の値から閉栓取消可否を判定する。
+ * - 業務条件に応じて業務エラー 020000041 / 020000064 / 020000066 を送出する。
+ * 既知の制約:
+ * - 実行時には RequestContext の hukkSysShbt と systemDatetime が必須である。
+ * - HSEFL 検索結果は先頭 1 件を判定対象として扱う。
+ */
+public class ClosingCancelFeasibilityJudgmentFollowStatusImpl
+        implements ClosingCancelFeasibilityJudgmentFollowStatus {
+
+    private static final String NOT_YET_STARTED_KBN = &quot;1&quot;;
+
+    private static final String OTHER_KBN = &quot;0&quot;;
+
+    private final HseflDataAccess hseflDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String reportingSystemTypeLivalit;
+
+    private final String followStatusNotYetStarted;
+
+    private final String followStatusCompletedNoFollowRequired;
+
+    private final String followStatusCompletedFollowCompleted;
+
+    /**
+     * 概要: 必要な依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - HSEFL 参照、RequestContext、定数サービスを保持する。
+     * - 判定に必要なフォローステータスコード定数を初期化時に解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須 CIRIUS 定数が不足している場合は初期化時点で失敗する。
+     *
+     * @param hseflDataAccess HSEFL データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public ClosingCancelFeasibilityJudgmentFollowStatusImpl(
+            HseflDataAccess hseflDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L68">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L69">        this.hseflDataAccess = Objects.requireNonNull(hseflDataAccess, &quot;hseflDataAccess&quot;);</span>
+<span class="fc" id="L70">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L71">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+            kaiheisenConstantService,
+            &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L74">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L75">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L76">        this.reportingSystemTypeLivalit = RequiredConstantResolver.requireKaiheisenConstant(</span>
+            resolvedKaiheisenConstantService,
+            ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+            ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT);
+<span class="fc" id="L80">        this.followStatusNotYetStarted = RequiredConstantResolver.requireCiriusConstant(</span>
+            resolvedCiriusConstantService,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.NOT_YET_STARTED);
+<span class="fc" id="L84">        this.followStatusCompletedNoFollowRequired = RequiredConstantResolver.requireCiriusConstant(</span>
+            resolvedCiriusConstantService,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_NO_FOLLOW_REQUIRED);
+<span class="fc" id="L88">        this.followStatusCompletedFollowCompleted = RequiredConstantResolver.requireCiriusConstant(</span>
+            resolvedCiriusConstantService,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+            ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_FOLLOW_COMPLETED);
+<span class="fc" id="L92">    }</span>
+
+    /**
+     * 概要: 閉栓エラーフォロー件名の状態から閉栓取消可否を判定する。
+     * 主な仕様:
+     * - 処理区分に応じて HSEFL を検索する。
+     * - 取消対象業務コードと報告システム種別に応じて 4.a 系 / 4.b 系の判定を実施する。
+     * - 戻り値には派生した未着手区分と必要時のみ HSEFL 情報を設定する。
+     *
+     * @param trkTishGmCd 取消対象業務コード
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @param shrKbn 処理区分
+     * @return 判定結果
+     */
+    @Override
+    public ClosingCancelFeasibilityJudgmentFollowStatusOutput execute(
+            String trkTishGmCd,
+            Long gasMtstNo,
+            LocalDate trkKnsYmd,
+            String shrKbn) {
+<span class="fc" id="L113">        LocalDateTime systemDatetime = requireRequestContext();</span>
+<span class="fc" id="L114">        Optional&lt;HseflRecord&gt; targetRecordOpt = findTargetRecord(gasMtstNo, trkKnsYmd, shrKbn);</span>
+<span class="fc" id="L115">        String hseflFlwMcksKbn = deriveNotStartedFlag(targetRecordOpt);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (isReportDateValidationTarget(trkTishGmCd)) {</span>
+<span class="fc" id="L117">            return evaluateClosingReportDateValidation(</span>
+            targetRecordOpt,
+                hseflFlwMcksKbn,
+<span class="fc" id="L120">                systemDatetime.toLocalDate());</span>
+        }
+<span class="fc" id="L122">        return evaluateFollowCompletionDateValidation(</span>
+            targetRecordOpt,
+            hseflFlwMcksKbn,
+<span class="fc" id="L125">            systemDatetime.toLocalDate());</span>
+    }
+
+    /**
+     * 概要: 処理区分に応じて HSEFL を検索する。
+     * 主な仕様:
+     * - `shrKbn=1` は DA-141-R005、`shrKbn=2` は DA-141-R006 を使用する。
+     * - それ以外の処理区分は検索せず未取得扱いとする。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @param shrKbn 処理区分
+     * @return 判定対象レコード
+     */
+    private Optional&lt;HseflRecord&gt; findTargetRecord(Long gasMtstNo, LocalDate trkKnsYmd, String shrKbn) {
+        List&lt;HseflRecord&gt; records;
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (&quot;1&quot;.equals(shrKbn)) {</span>
+<span class="fc" id="L142">            records = hseflDataAccess.findAllByGasMtstNoAndTsigHesnSgyYmd(gasMtstNo, trkKnsYmd);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        } else if (&quot;2&quot;.equals(shrKbn)) {</span>
+<span class="fc" id="L144">            records = hseflDataAccess.findAllByGasMtstNoAndHssgYmd(gasMtstNo, trkKnsYmd);</span>
+        } else {
+<span class="fc" id="L146">            records = List.of();</span>
+        }
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if (records.isEmpty()) {</span>
+<span class="fc" id="L149">            return Optional.empty();</span>
+        }
+<span class="fc" id="L151">        return Optional.of(records.getFirst());</span>
+    }
+
+    /**
+     * 概要: 未着手区分の派生値を求める。
+     * 主な仕様:
+     * - HSEFL 未取得または未着手以外のフォローステータスでは `0` を返す。
+     * - HSEFL 取得済みかつ未着手の場合のみ `1` を返す。
+     *
+     * @param targetRecordOpt 判定対象レコード
+     * @return 派生した未着手区分
+     */
+    private String deriveNotStartedFlag(Optional&lt;HseflRecord&gt; targetRecordOpt) {
+<span class="fc" id="L164">        if (targetRecordOpt.map(HseflRecord::flwStCd)</span>
+<span class="fc" id="L165">                .filter(followStatusNotYetStarted::equals)</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">                .isPresent()) {</span>
+<span class="fc" id="L167">            return NOT_YET_STARTED_KBN;</span>
+        }
+<span class="fc" id="L169">        return OTHER_KBN;</span>
+    }
+
+    /**
+     * 概要: 報告年月日判定系の対象業務かを判定する。
+     * 主な仕様:
+     * - `CCBG63` は常に 4.a 系とする。
+     * - `CCBG84` は RequestContext の報告システム種別が LIVALIT の場合のみ 4.a 系とする。
+     *
+     * @param trkTishGmCd 取消対象業務コード
+     * @return 4.a 系なら true
+     */
+    private boolean isReportDateValidationTarget(String trkTishGmCd) {
+<span class="fc" id="L182">        boolean isClosingRegistration =</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION
+<span class="fc" id="L184">                        .equals(trkTishGmCd);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (isClosingRegistration) {</span>
+<span class="fc" id="L186">            return true;</span>
+        }
+<span class="fc" id="L188">        boolean isRetailSupplyOutage =</span>
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL
+<span class="fc" id="L190">                        .equals(trkTishGmCd);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (!isRetailSupplyOutage) {</span>
+<span class="fc" id="L192">            return false;</span>
+        }
+<span class="fc" id="L194">        return reportingSystemTypeLivalit.equals(requireHukkSysShbt());</span>
+    }
+
+    /**
+    * 概要: 閉栓報告年月日ベースの判定を行う。
+     * 主な仕様:
+     * - 未着手かつ当日報告なら正常終了し HSEFL 情報を返す。
+     * - 完了系ステータスは業務エラーへ変換する。
+     * - 上記以外は HSEFL 情報を返さず派生区分のみ返す。
+     *
+     * @param targetRecordOpt 判定対象レコード
+     * @param hseflFlwMcksKbn 派生した未着手区分
+     * @param systemDate システム日付
+     * @return 判定結果
+     */
+    private ClosingCancelFeasibilityJudgmentFollowStatusOutput evaluateClosingReportDateValidation(
+            Optional&lt;HseflRecord&gt; targetRecordOpt,
+            String hseflFlwMcksKbn,
+            LocalDate systemDate) {
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (targetRecordOpt.isEmpty()) {</span>
+<span class="nc" id="L214">            return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(hseflFlwMcksKbn, null);</span>
+        }
+<span class="fc" id="L216">        HseflRecord targetRecord = targetRecordOpt.orElseThrow();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (followStatusNotYetStarted.equals(targetRecord.flwStCd())) {</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            if (Objects.equals(targetRecord.hesnHukkYmd(), systemDate)) {</span>
+<span class="fc" id="L219">                return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(</span>
+                        hseflFlwMcksKbn,
+<span class="fc" id="L221">                        toHseflInf(targetRecord));</span>
+            }
+<span class="fc" id="L223">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000041);</span>
+        }
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        if (followStatusCompletedFollowCompleted.equals(targetRecord.flwStCd())) {</span>
+<span class="fc" id="L226">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000064);</span>
+        }
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (followStatusCompletedNoFollowRequired.equals(targetRecord.flwStCd())) {</span>
+<span class="fc" id="L229">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000066);</span>
+        }
+<span class="fc" id="L231">        return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(hseflFlwMcksKbn, null);</span>
+    }
+
+    /**
+    * 概要: フォロー対応完了年月日ベースの判定を行う。
+     * 主な仕様:
+     * - フォロー完了かつ当日報告なら正常終了し HSEFL 情報を返す。
+     * - フォロー完了で当日報告以外なら業務エラー 020000041 を送出する。
+     * - 上記以外は取得した HSEFL 情報をそのまま返す。
+     *
+     * @param targetRecordOpt 判定対象レコード
+     * @param hseflFlwMcksKbn 派生した未着手区分
+     * @param systemDate システム日付
+     * @return 判定結果
+     */
+    private ClosingCancelFeasibilityJudgmentFollowStatusOutput evaluateFollowCompletionDateValidation(
+            Optional&lt;HseflRecord&gt; targetRecordOpt,
+            String hseflFlwMcksKbn,
+            LocalDate systemDate) {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (targetRecordOpt.isEmpty()) {</span>
+<span class="fc" id="L251">            return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(hseflFlwMcksKbn, null);</span>
+        }
+<span class="fc" id="L253">        HseflRecord targetRecord = targetRecordOpt.orElseThrow();</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (followStatusCompletedFollowCompleted.equals(targetRecord.flwStCd())) {</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            if (Objects.equals(targetRecord.fltkYmd(), systemDate)) {</span>
+<span class="fc" id="L256">                return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(</span>
+                        hseflFlwMcksKbn,
+<span class="fc" id="L258">                        toHseflInf(targetRecord));</span>
+            }
+<span class="fc" id="L260">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000041);</span>
+        }
+<span class="fc" id="L262">        return new ClosingCancelFeasibilityJudgmentFollowStatusOutput(</span>
+                hseflFlwMcksKbn,
+<span class="fc" id="L264">                toHseflInf(targetRecord));</span>
+    }
+
+    /**
+     * 概要: HSEFL レコードを API 出力モデルへ変換する。
+        * 主な仕様:
+        * - SV の戻り値設計で定義された 20 項目へ HSEFL レコードを写像する。
+        * - 下位 DA レコードをそのまま公開せず API モデルへ詰め替える。
+        * 既知の制約:
+        * - SV-096 の出力設計で未使用の HSEFL 項目は写像対象外とする。
+     *
+     * @param record HSEFL レコード
+     * @return API 出力モデル
+     */
+    private HseflInf toHseflInf(HseflRecord record) {
+<span class="fc" id="L279">        return new HseflInf(</span>
+<span class="fc" id="L280">                record.flttCktkCd(),</span>
+<span class="fc" id="L281">                record.gasMtstNo(),</span>
+<span class="fc" id="L282">                record.hssgYmd(),</span>
+<span class="fc" id="L283">                record.hesnHukkYmd(),</span>
+<span class="fc" id="L284">                toApiRegTsno(record.regTsno()),</span>
+<span class="fc" id="L285">                record.sgyAnknNo(),</span>
+<span class="fc" id="L286">                record.syoKyoTrno(),</span>
+<span class="fc" id="L287">                record.hesnJysb(),</span>
+<span class="fc" id="L288">                record.hssgNwkCd(),</span>
+<span class="fc" id="L289">                record.sgytSinNo(),</span>
+<span class="fc" id="L290">                record.sgytSinnKj(),</span>
+<span class="fc" id="L291">                record.hsnjGmsSu(),</span>
+<span class="fc" id="L292">                record.hsnjGasSyry(),</span>
+<span class="fc" id="L293">                record.sjskKbn(),</span>
+<span class="fc" id="L294">                record.rshhSjsb(),</span>
+<span class="fc" id="L295">                record.hkshHshhShbt(),</span>
+<span class="fc" id="L296">                record.utidxNo(),</span>
+<span class="fc" id="L297">                record.sihKiyNo(),</span>
+<span class="fc" id="L298">                record.svkyNo(),</span>
+<span class="fc" id="L299">                record.recUpdJnjNo());</span>
+    }
+
+    private Long toApiRegTsno(Integer regTsno) {
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">        return regTsno == null ? null : regTsno.longValue();</span>
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext の必須値を検証する。
+        * 主な仕様:
+        * - `hukkSysShbt` と `systemDatetime` の存在を fail-fast で検証する。
+        * - 戻り値として検証済みのシステム日時を返却する。
+        * 既知の制約:
+        * - 未設定時は項目名付きの IllegalStateException を送出する。
+     *
+     * @return システム日時
+     */
+    private LocalDateTime requireRequestContext() {
+<span class="fc" id="L317">        requireHukkSysShbt();</span>
+<span class="fc" id="L318">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L319">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別を取得する。
+        * 主な仕様:
+        * - `RequestContext.hukkSysShbt` を取得する。
+        * - 未設定時は fail-fast で異常終了する。
+        * 既知の制約:
+        * - null や空値の補完は行わない。
+     *
+     * @return 報告システム種別
+     */
+    private String requireHukkSysShbt() {
+<span class="fc" id="L333">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L334">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

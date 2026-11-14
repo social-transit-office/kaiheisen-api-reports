@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VariableUsageCheckPipelineImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-variableusagecheckpipeline</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">VariableUsageCheckPipelineImpl.java</span></div><h1>VariableUsageCheckPipelineImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageAmountUsageDaysCalculation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageAmountUsageDaysCalculationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheck;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckPipeline;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.VariableUsageCheckPipelineOutput;
+
+/**
+ * 概要: SV-291（変動使用量チェック（導管））の実装クラス.
+ * 主な仕様:
+ * - 報告システム種別が CIRIUS の場合のみ、SV-285 を今回検針日と前年同月日で実行し、
+ *   取得した使用量/使用日数を SV-304 へ連携する。
+ * - 報告システム種別が CIRIUS 以外の場合は、号数超過エラー有無フラグへ false を設定する。
+ * - ＧＨＰ直列グループ内使用量エラー種別は J0631 のエラーなしを返却する。
+ * - マイナス使用量エラー有無フラグは、SV-304 の判定結果とは独立に
+ *   入力使用量の符号で判定する。
+ */
+public final class VariableUsageCheckPipelineImpl
+        implements VariableUsageCheckPipeline {
+
+    /** 数値比較用のゼロ. */
+<span class="fc" id="L33">    private static final BigDecimal ZERO = BigDecimal.ZERO;</span>
+
+    /** 使用量・使用日数算出サービス. */
+    private final UsageAmountUsageDaysCalculation usageAmountUsageDaysCalculation;
+
+    /** 変動使用量チェックサービス. */
+    private final VariableUsageCheck variableUsageCheck;
+
+    /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 報告システム種別: CIRIUS. */
+    private final String reportingSystemTypeCirius;
+
+    /** ＧＨＰ直列グループ内使用量エラー種別: エラーなし. */
+    private final String ghpSerialGroupUsageNoErrors;
+
+    /** 初回検針適用コード: 初回検針適用済. */
+    private final String initialMeterReadingAppliedCode;
+
+    /**
+     * 概要: 必須依存と定数を注入するコンストラクタ.
+     *
+     * @param usageAmountUsageDaysCalculationService SV-285
+     * @param variableUsageCheckService SV-304
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓API独自コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public VariableUsageCheckPipelineImpl(
+            final UsageAmountUsageDaysCalculation usageAmountUsageDaysCalculationService,
+            final VariableUsageCheck variableUsageCheckService,
+            final RequestContext requestContext,
+            final KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L68">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L69">        this.usageAmountUsageDaysCalculation = Objects.requireNonNull(</span>
+                usageAmountUsageDaysCalculationService,
+                &quot;usageAmountUsageDaysCalculationService&quot;);
+<span class="fc" id="L72">        this.variableUsageCheck = Objects.requireNonNull(</span>
+                variableUsageCheckService,
+                &quot;variableUsageCheckService&quot;);
+<span class="fc" id="L75">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L76">        final KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L77">                Objects.requireNonNull(</span>
+                        kaiheisenConstantService,
+                        &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L80">        final CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L81">                Objects.requireNonNull(</span>
+                        ciriusConstantService,
+                        &quot;ciriusConstantService&quot;);
+<span class="fc" id="L84">        this.reportingSystemTypeCirius = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.CIRIUS);
+<span class="fc" id="L88">        this.ghpSerialGroupUsageNoErrors = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.GhpSerialGroupUsageErrorType.TYPE,
+                ConstantLookupKeys.Cirius.GhpSerialGroupUsageErrorType.NO_ERRORS);
+<span class="fc" id="L92">        this.initialMeterReadingAppliedCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.TYPE,
+                ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.INITIAL_METER_READING_APPLIED);
+<span class="fc" id="L96">    }</span>
+
+    @Override
+    public VariableUsageCheckPipelineOutput execute(
+            final Long gasMtstNo,
+            final String gmtKhsJtkb,
+            final BigDecimal gmtGusu,
+            final Long tksuSvkyNo,
+            final LocalDate kokiKnsYmd,
+            final BigDecimal gasSyry,
+            final Integer shyDdsu) {
+<span class="fc" id="L107">        final boolean negativeUsage = isNegative(gasSyry);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (!reportingSystemTypeCirius.equals(requireHukkSysShbt())) {</span>
+<span class="fc" id="L109">            return new VariableUsageCheckPipelineOutput(</span>
+                    ghpSerialGroupUsageNoErrors,
+<span class="fc" id="L111">                    false,</span>
+<span class="fc" id="L112">                    negativeUsage);</span>
+        }
+
+<span class="fc" id="L115">        final UsageAmountUsageDaysCalculationOutput previousUsage =</span>
+<span class="fc" id="L116">                usageAmountUsageDaysCalculation.execute(</span>
+                        gasMtstNo,
+                        kokiKnsYmd,
+                        tksuSvkyNo);
+<span class="fc" id="L120">        final UsageAmountUsageDaysCalculationOutput yearAgoUsage =</span>
+<span class="fc" id="L121">                usageAmountUsageDaysCalculation.execute(</span>
+                        gasMtstNo,
+<span class="fc" id="L123">                        kokiKnsYmd.minusYears(1),</span>
+                        tksuSvkyNo);
+<span class="fc" id="L125">        final VariableUsageCheckOutput variableUsageCheckOutput =</span>
+<span class="fc" id="L126">                variableUsageCheck.execute(</span>
+                        gmtKhsJtkb,
+                        gmtGusu,
+                        shyDdsu,
+                        gasSyry,
+<span class="fc" id="L131">                        previousUsage.shyDdsu(),</span>
+<span class="fc" id="L132">                        previousUsage.syry(),</span>
+<span class="fc" id="L133">                        yearAgoUsage.shyDdsu(),</span>
+<span class="fc" id="L134">                        yearAgoUsage.syry(),</span>
+                        initialMeterReadingAppliedCode,
+                        kokiKnsYmd);
+
+<span class="fc" id="L138">        return new VariableUsageCheckPipelineOutput(</span>
+                ghpSerialGroupUsageNoErrors,
+<span class="fc" id="L140">                variableUsageCheckOutput.hdsrErrUmFlg(),</span>
+<span class="fc" id="L141">                negativeUsage);</span>
+    }
+
+    private String requireHukkSysShbt() {
+<span class="fc" id="L145">        return requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L146">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 入力使用量が負値か判定する.
+     * 主な仕様:
+     * - 入力使用量が 0 未満の場合に true を返却する。
+     * - 入力使用量が 0 以上の場合に false を返却する。
+     * 既知の制約:
+     * - null は許容せず、compareTo 呼出し時に例外化される。
+     *
+     * @param usageAmount 判定対象の使用量
+     * @return 入力使用量が負値の場合は true、それ以外は false
+     */
+    private boolean isNegative(final BigDecimal usageAmount) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        return usageAmount.compareTo(ZERO) &lt; 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

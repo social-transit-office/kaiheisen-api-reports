@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxExemptContractUpdateForTerminationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-taxexemptcontractupdatefortermination</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">TaxExemptContractUpdateForTerminationImpl.java</span></div><h1>TaxExemptContractUpdateForTerminationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TaxExemptContractAddUpdateDelete;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TaxExemptContractUpdateForTermination;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.MnzkiyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TaxExemptContractSvckyaInf;
+
+/**
+ * 概要: SV-029（免税契約更新（契約終了））サービス実装。
+ * 主な仕様:
+ * - 消費税課税区分が免税の場合に、解約日時点で有効な免税契約情報を更新し、先日付分の免税契約情報を削除する。
+ * - 更新と削除本体は SV-071 へ委譲する。
+ * - 適用終了年月日が未指定の場合は RequestContext.systemDatetime から補完する。
+ * 既知の制約:
+ * - public メソッド引数の null 検証は追加しない。
+ */
+public class TaxExemptContractUpdateForTerminationImpl
+        implements TaxExemptContractUpdateForTermination {
+
+<span class="fc" id="L29">    private static final MnzkiyInf EMPTY_MNZKIY_INF = new MnzkiyInf(</span>
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    private final MnzkiyDataAccess mnzkiyDataAccess;
+
+    private final TaxExemptContractAddUpdateDelete taxExemptContractAddUpdateDelete;
+
+    private final RequestContext requestContext;
+
+    private final String dutyFreeConsumptionTax;
+
+    private final String alternativeEndProcessingDivision;
+
+    private final String deleteProcessingDivision;
+
+    /**
+     * 概要: SV-029 の依存と必須定数を初期化する。
+     * 主な仕様:
+     * - MNZKIY データアクセス、SV-071、RequestContext、定数サービスを保持する。
+     * - 免税判定と SV-071 呼出しに必要な定数の存在を初期化時に検証する。
+     * 既知の制約:
+     * - 依存が null の場合は初期化時点で NullPointerException を送出する。
+     * - 必須定数が不足している場合はコンストラクタ初期化時点で失敗する。
+     *
+     * @param mnzkiyDataAccess MNZKIY データアクセス
+     * @param taxExemptContractAddUpdateDelete SV-071
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public TaxExemptContractUpdateForTerminationImpl(
+            MnzkiyDataAccess mnzkiyDataAccess,
+            TaxExemptContractAddUpdateDelete taxExemptContractAddUpdateDelete,
+            RequestContext requestContext,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L71">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L72">        this.mnzkiyDataAccess = Objects.requireNonNull(mnzkiyDataAccess, &quot;mnzkiyDataAccess&quot;);</span>
+<span class="fc" id="L73">        this.taxExemptContractAddUpdateDelete = Objects.requireNonNull(</span>
+                taxExemptContractAddUpdateDelete,
+                &quot;taxExemptContractAddUpdateDelete&quot;);
+<span class="fc" id="L76">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L77">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L80">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L83">        this.dutyFreeConsumptionTax = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsumptionTax.TYPE,
+                ConstantLookupKeys.Cirius.ConsumptionTax.DUTY_FREE);
+<span class="fc" id="L87">        this.alternativeEndProcessingDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TaxExemptionContractInformationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.TaxExemptionContractInformationProcessing.ALTERNATIVE_END);
+<span class="fc" id="L91">        this.deleteProcessingDivision = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.TaxExemptionContractInformationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.TaxExemptionContractInformationProcessing.DELETE);
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * 概要: 免税契約更新（契約終了）を実行する。
+     * 主な仕様:
+     * - 消費税課税区分が免税以外の場合は何もせず正常終了する。
+     * - 解約日時点で有効な免税契約情報が存在する場合は代替終了更新を実行する。
+     * - 先日付分の免税契約情報が存在する場合は削除を実行する。
+     * - 適用終了年月日が未指定の場合は RequestContext.systemDatetime から補完する。
+     *
+     * @param tyenYmd 適用終了年月日
+     * @param svckyaInf サービス契約情報
+     * @param sziKziKbn 消費税課税区分
+     */
+    @Override
+    public void execute(
+            LocalDate tyenYmd,
+            TaxExemptContractSvckyaInf svckyaInf,
+            String sziKziKbn) {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (!dutyFreeConsumptionTax.equals(sziKziKbn)) {</span>
+<span class="fc" id="L115">            return;</span>
+        }
+
+<span class="fc" id="L118">        LocalDate effectiveEndDate = resolveEffectiveEndDate(tyenYmd);</span>
+<span class="fc" id="L119">        Long svkyNo = svckyaInf.svkyNo();</span>
+
+<span class="fc" id="L121">        mnzkiyDataAccess.findBySvkyNoAndMnziTkysYmdAndMnziTyenYmd(svkyNo, effectiveEndDate)</span>
+<span class="fc" id="L122">                .ifPresent(record -&gt; executeUpdate(svkyNo, record, effectiveEndDate));</span>
+<span class="fc" id="L123">        mnzkiyDataAccess.findBySvkyNoAndMnziTkysYmdGreaterThan(svkyNo, effectiveEndDate)</span>
+<span class="fc" id="L124">                .ifPresent(record -&gt; executeDelete(record));</span>
+<span class="fc" id="L125">    }</span>
+
+    private void executeUpdate(Long svkyNo, MnzkiyRecord record, LocalDate effectiveEndDate) {
+<span class="fc" id="L128">        taxExemptContractAddUpdateDelete.execute(</span>
+                alternativeEndProcessingDivision,
+                svkyNo,
+<span class="fc" id="L131">                record.mnziTkysYmd(),</span>
+                effectiveEndDate,
+                EMPTY_MNZKIY_INF);
+<span class="fc" id="L134">    }</span>
+
+    private void executeDelete(MnzkiyRecord record) {
+<span class="fc" id="L137">        taxExemptContractAddUpdateDelete.execute(</span>
+                deleteProcessingDivision,
+<span class="fc" id="L139">                record.svkyNo(),</span>
+<span class="fc" id="L140">                record.mnziTkysYmd(),</span>
+                null,
+                EMPTY_MNZKIY_INF);
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * 概要: 実際に使用する適用終了年月日を解決する。
+     * 主な仕様:
+     * - 引数の適用終了年月日が指定されている場合はその値を返却する。
+     * - 未指定の場合は RequestContext.systemDatetime の年月日を返却する。
+     * - systemDatetime が未設定の場合は IllegalStateException を送出する。
+     *
+     * @param tyenYmd 適用終了年月日
+     * @return 解決した適用終了年月日
+     */
+    private LocalDate resolveEffectiveEndDate(LocalDate tyenYmd) {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (tyenYmd != null) {</span>
+<span class="fc" id="L157">            return tyenYmd;</span>
+        }
+<span class="fc" id="L159">        return requireSystemDatetime().toLocalDate();</span>
+    }
+
+    private java.time.LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L163">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L164">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
