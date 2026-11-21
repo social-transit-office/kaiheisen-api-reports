@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeemedMeterReadingRegistrationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-deemedmeterreadingregistration</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">DeemedMeterReadingRegistrationImpl.java</span></div><h1>DeemedMeterReadingRegistrationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.DeemedMeterReadingRegistration;
+
+/**
+ * みなし検針登録サービス実装。
+ */
+public class DeemedMeterReadingRegistrationImpl implements DeemedMeterReadingRegistration {
+
+    static final String SERVICE_USER_ID = &quot;KHSS015&quot;;
+
+    private static final String DEEMED_METER_READING_REQUIRED = &quot;1&quot;;
+
+<span class="fc" id="L32">    private static final Integer DEEMED_METER_READING_LOOKUP_SEQUENCE = null;</span>
+
+<span class="fc" id="L34">    private static final Integer DEEMED_METER_READING_INSERT_SEQUENCE = 0;</span>
+
+    private final DktksryDataAccess dktksryDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String noAdjustmentRequired;
+
+    private final String meterReadingWithoutTransferAcceptance;
+
+    private final String indicatedNumberRegressionNone;
+
+    private final String firstMeterReadingRequired;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param dktksryDataAccess 導管通知確定使用量データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    public DeemedMeterReadingRegistrationImpl(
+            DktksryDataAccess dktksryDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L62">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L63">        this.dktksryDataAccess = Objects.requireNonNull(dktksryDataAccess, &quot;dktksryDataAccess&quot;);</span>
+<span class="fc" id="L64">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L65">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L66">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L67">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L68">        this.noAdjustmentRequired = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.AdjustedUsageCalculationRequestStatus.TYPE,
+                ConstantLookupKeys.Cirius.AdjustedUsageCalculationRequestStatus.NO_ADJUSTMENT_REQUIRED);
+<span class="fc" id="L72">        this.meterReadingWithoutTransferAcceptance = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.METER_READING_WITHOUT_TRANSFER_ACCEPTANCE);
+<span class="fc" id="L76">        this.indicatedNumberRegressionNone = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.TYPE,
+                ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.NONE);
+<span class="fc" id="L80">        this.firstMeterReadingRequired = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.TYPE,
+                ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.INITIAL_METER_READING_REQUIRED);
+<span class="fc" id="L84">    }</span>
+
+    @Override
+        public void execute(
+            String mnsKnsnYhCd,
+            LocalDate knsYmd,
+            Long gasMtstNo,
+            Integer knsKkaTsno,
+            Long svkyNo,
+            String gmtKhsJtkb) {
+<span class="fc" id="L94">        LocalDate resolvedKnsYmd = resolveKnsYmd(knsYmd);</span>
+<span class="fc" id="L95">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L96">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (DEEMED_METER_READING_REQUIRED.equals(mnsKnsnYhCd)) {</span>
+<span class="fc" id="L99">            List&lt;DktksryRecord&gt; currentRecords =</span>
+<span class="fc" id="L100">                    dktksryDataAccess.findAll(gasMtstNo, resolvedKnsYmd, DEEMED_METER_READING_LOOKUP_SEQUENCE);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (currentRecords.isEmpty()) {</span>
+<span class="fc" id="L102">                dktksryDataAccess.insert(</span>
+<span class="fc" id="L103">                        buildInsertRecord(gasMtstNo, resolvedKnsYmd, svkyNo, gmtKhsJtkb),</span>
+                        auditContext);
+            } else {
+<span class="fc" id="L106">                update(</span>
+                        gasMtstNo,
+                        resolvedKnsYmd,
+                        DEEMED_METER_READING_LOOKUP_SEQUENCE,
+                        svkyNo,
+                        auditContext);
+            }
+<span class="fc" id="L113">            return;</span>
+        }
+
+<span class="fc" id="L116">        update(gasMtstNo, resolvedKnsYmd, knsKkaTsno, svkyNo, auditContext);</span>
+<span class="fc" id="L117">    }</span>
+
+    private void update(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Integer knsKkaTsno,
+            Long svkyNo,
+            AuditContext auditContext) {
+<span class="fc" id="L125">        int updatedCount = dktksryDataAccess.updateByGasMtstNoAndKnsYmdAndKnsKkaTsno(</span>
+<span class="fc" id="L126">                buildUpdateRecord(gasMtstNo, knsYmd, knsKkaTsno, svkyNo),</span>
+<span class="fc" id="L127">                Set.of(DktksryColumn.SVKY_NO),</span>
+                new DktksryUpdateKey(gasMtstNo, knsYmd, knsKkaTsno),
+                auditContext);
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L131">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L132">                    dktksryDataAccess.tableName(),</span>
+<span class="fc" id="L133">                    DktksryDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO.identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L135">                            .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L136">                            .put(&quot;knsYmd&quot;, knsYmd)</span>
+<span class="fc" id="L137">                            .put(&quot;knsKkaTsno&quot;, knsKkaTsno)</span>
+<span class="fc" id="L138">                            .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L139">                            .put(&quot;updUsrId&quot;, auditContext.userId())</span>
+<span class="fc" id="L140">                            .put(&quot;updKtnKinoId&quot;, auditContext.kinoId()));</span>
+        }
+<span class="fc" id="L142">    }</span>
+
+    private DktksryWriteRecord buildInsertRecord(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long svkyNo,
+            String gmtKhsJtkb) {
+<span class="fc" id="L149">        return new DktksryWriteRecord(</span>
+                gasMtstNo,
+                knsYmd,
+                DEEMED_METER_READING_INSERT_SEQUENCE,
+                svkyNo,
+                null,
+                null,
+                null,
+                noAdjustmentRequired,
+                null,
+                null,
+                null,
+                meterReadingWithoutTransferAcceptance,
+                null,
+                null,
+                null,
+                indicatedNumberRegressionNone,
+                firstMeterReadingRequired,
+                gmtKhsJtkb,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private DktksryWriteRecord buildUpdateRecord(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Integer knsKkaTsno,
+            Long svkyNo) {
+<span class="fc" id="L189">        return new DktksryWriteRecord(</span>
+                gasMtstNo,
+                knsYmd,
+                knsKkaTsno,
+                svkyNo,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private LocalDate resolveKnsYmd(LocalDate knsYmd) {
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        return knsYmd != null ? knsYmd : requireSystemDatetime().toLocalDate();</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L229">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L230">                                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L234">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L236">                                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L237">                                                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

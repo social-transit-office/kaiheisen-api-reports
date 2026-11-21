@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WriteColumnResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.core</a> &gt; <span class="el_source">WriteColumnResolver.java</span></div><h1>WriteColumnResolver.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.core;
+
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * write 列メタ情報を扱う共通ユーティリティ。
+ *
+ * &lt;p&gt;主な責務:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;write record から列値マップの抽出&lt;/li&gt;
+ *   &lt;li&gt;対象列集合の更新可能列照合と列挙順解決&lt;/li&gt;
+ *   &lt;li&gt;公開列と managed 列の結合&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+public final class WriteColumnResolver {
+
+    private WriteColumnResolver() {
+    }
+
+    /**
+     * write record から列値マップを抽出する。
+     *
+     * @param definition テーブル定義
+     * @param record write record
+     * @param &lt;TRecord&gt; write record 型
+     * @param &lt;TColumn&gt; 列型
+     * @return 列値マップ
+     */
+    public static &lt;
+            TRecord,
+            TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn
+            &gt; EnumMap&lt;TColumn, Object&gt; extractValues(
+            TableWriteDefinition&lt;TRecord, TColumn&gt; definition,
+            TRecord record
+    ) {
+<span class="fc" id="L41">        Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+<span class="fc" id="L42">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L43">        EnumMap&lt;TColumn, Object&gt; values = Objects.requireNonNull(</span>
+<span class="fc" id="L44">                definition.extractValues(record),</span>
+                &quot;definition.extractValues(record)&quot;
+        );
+<span class="fc" id="L47">        return new EnumMap&lt;&gt;(values);</span>
+    }
+
+    /**
+     * 対象列集合を更新可能列と照合し、列挙順で解決する。
+     *
+     * @param definition テーブル定義
+     * @param targetColumns 対象列集合
+     * @param requireNonEmpty 空集合を禁止する場合は true
+     * @param &lt;TRecord&gt; write record 型
+     * @param &lt;TColumn&gt; 列型
+     * @return 列挙順の対象列リスト
+     */
+    public static &lt;
+            TRecord,
+            TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn
+            &gt; List&lt;TColumn&gt; resolveUpdatableColumns(
+            TableWriteDefinition&lt;TRecord, TColumn&gt; definition,
+            Set&lt;TColumn&gt; targetColumns,
+            boolean requireNonEmpty
+    ) {
+<span class="fc" id="L68">        Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+
+<span class="fc" id="L70">        Set&lt;TColumn&gt; updatable = definition.updatableColumns();</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (targetColumns != null) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            for (TColumn col : targetColumns) {</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                if (!updatable.contains(col)) {</span>
+<span class="nc" id="L74">                    throw new IllegalArgumentException(&quot;Column is not updatable: &quot; + col);</span>
+                }
+<span class="fc" id="L76">            }</span>
+        }
+<span class="fc" id="L78">        return normalizeColumns(targetColumns, requireNonEmpty);</span>
+    }
+
+    /**
+     * 公開列と managed 列を結合して重複を除去した順序付きリストを返す。
+     *
+     * &lt;p&gt;公開列を先頭に配置し、managed 列のうち公開列に含まれないものを末尾に追加する。
+     * 同一列名が既に存在する場合は先着を優先する。&lt;/p&gt;
+     *
+     * @param orderedPublicColumns 公開列（順序保持）
+     * @param managedColumns managed 列
+     * @param &lt;T&gt; 列型
+     * @return 結合後の列リスト
+     */
+    public static &lt;T extends DataAccessColumn&gt; List&lt;T&gt; effectiveColumns(
+            List&lt;? extends T&gt; orderedPublicColumns,
+            List&lt;? extends T&gt; managedColumns
+    ) {
+<span class="nc" id="L96">        Objects.requireNonNull(orderedPublicColumns, &quot;orderedPublicColumns&quot;);</span>
+<span class="nc" id="L97">        Objects.requireNonNull(managedColumns, &quot;managedColumns&quot;);</span>
+<span class="nc" id="L98">        LinkedHashMap&lt;String, T&gt; columnsByName = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        for (T publicColumn : orderedPublicColumns) {</span>
+<span class="nc" id="L100">            T nonNull = Objects.requireNonNull(publicColumn, &quot;orderedPublicColumns contains null&quot;);</span>
+<span class="nc" id="L101">            columnsByName.put(nonNull.columnName(), nonNull);</span>
+<span class="nc" id="L102">        }</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        for (T managedColumn : managedColumns) {</span>
+<span class="nc" id="L104">            T nonNull = Objects.requireNonNull(managedColumn, &quot;managedColumns contains null&quot;);</span>
+<span class="nc" id="L105">            columnsByName.putIfAbsent(nonNull.columnName(), nonNull);</span>
+<span class="nc" id="L106">        }</span>
+<span class="nc" id="L107">        return List.copyOf(columnsByName.values());</span>
+    }
+
+    /**
+     * 対象列集合を列挙順のリストへ正規化する。
+     *
+     * @param targetColumns 対象列集合
+     * @param requireNonEmpty 空集合を禁止する場合は true
+     * @param &lt;TColumn&gt; 列挙型
+     * @return 列挙順の対象列リスト
+     */
+    private static &lt;TColumn extends Enum&lt;TColumn&gt;&gt; List&lt;TColumn&gt; normalizeColumns(
+            Set&lt;TColumn&gt; targetColumns,
+            boolean requireNonEmpty
+    ) {
+<span class="fc" id="L122">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (targetColumns.stream().anyMatch(Objects::isNull)) {</span>
+<span class="nc" id="L124">            throw new NullPointerException(&quot;targetColumns contains null&quot;);</span>
+        }
+<span class="pc bpc" id="L126" title="3 of 4 branches missed.">        if (requireNonEmpty &amp;&amp; targetColumns.isEmpty()) {</span>
+<span class="nc" id="L127">            throw new IllegalArgumentException(&quot;targetColumns must not be empty&quot;);</span>
+        }
+<span class="fc" id="L129">        return targetColumns.stream()</span>
+<span class="fc" id="L130">                .sorted(Comparator.comparingInt(Enum::ordinal))</span>
+<span class="fc" id="L131">                .toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

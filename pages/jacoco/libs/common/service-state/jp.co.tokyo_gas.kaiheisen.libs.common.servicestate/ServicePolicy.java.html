@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServicePolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">common-service-state</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.servicestate</a> &gt; <span class="el_source">ServicePolicy.java</span></div><h1>ServicePolicy.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.servicestate;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/** The calendar is immutable deployment configuration. Manual modes always take precedence. */
+public record ServicePolicy(
+        LocalTime openTime,
+        LocalTime closeTime,
+        Set&lt;DayOfWeek&gt; closedWeekdays,
+        Set&lt;LocalDate&gt; closedDates) {
+    /** Validate the configured business interval and immutable calendar sets. */
+<span class="fc" id="L20">    public ServicePolicy {</span>
+<span class="pc bpc" id="L21" title="2 of 4 branches missed.">        if (openTime == null</span>
+                || closeTime == null
+<span class="fc bfc" id="L23" title="All 2 branches covered.">                || !openTime.isBefore(closeTime)</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">                || openTime.getSecond() != 0</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">                || closeTime.getSecond() != 0</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">                || openTime.getNano() != 0</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                || closeTime.getNano() != 0) {</span>
+<span class="fc" id="L28">            throw new IllegalArgumentException(&quot;INVALID_SERVICE_HOURS&quot;);</span>
+        }
+<span class="fc" id="L30">        closedWeekdays = Set.copyOf(closedWeekdays);</span>
+<span class="fc" id="L31">        closedDates = Set.copyOf(closedDates);</span>
+<span class="fc" id="L32">    }</span>
+
+    /** Parse release configuration; malformed dates, weekdays and intervals are rejected. */
+    public static ServicePolicy parse(String open, String close, String weekdays, String dates) {
+<span class="fc" id="L36">        return new ServicePolicy(</span>
+<span class="fc" id="L37">                LocalTime.parse(open),</span>
+<span class="fc" id="L38">                LocalTime.parse(close),</span>
+<span class="fc" id="L39">                csv(weekdays, DayOfWeek::valueOf),</span>
+<span class="fc" id="L40">                csv(dates, LocalDate::parse));</span>
+    }
+
+    private static &lt;T&gt; Set&lt;T&gt; csv(String value, Function&lt;String, T&gt; parser) {
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L45">            return Set.of();</span>
+        }
+<span class="fc" id="L47">        return Arrays.stream(value.split(&quot;,&quot;, -1))</span>
+<span class="fc" id="L48">                .map(String::strip)</span>
+<span class="fc" id="L49">                .map(parser)</span>
+<span class="fc" id="L50">                .collect(Collectors.toUnmodifiableSet());</span>
+    }
+
+    /** Evaluate the supplied JST date and time against the business calendar. */
+    public boolean open(ZonedDateTime now) {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        return !closedWeekdays.contains(now.getDayOfWeek())</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                &amp;&amp; !closedDates.contains(now.toLocalDate())</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                &amp;&amp; !now.toLocalTime().isBefore(openTime)</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                &amp;&amp; now.toLocalTime().isBefore(closeTime);</span>
+    }
+
+    /** Format the fixed service-hours error using the configured interval. */
+    public String message() {
+<span class="fc" id="L63">        var format = java.time.format.DateTimeFormatter.ofPattern(&quot;H:mm&quot;);</span>
+<span class="fc" id="L64">        return &quot;サービス時間（&quot;</span>
+<span class="fc" id="L65">                + openTime.format(format)</span>
+                + &quot;～&quot;
+<span class="fc" id="L67">                + closeTime.format(format)</span>
+                + &quot;）外のため使用できません。&quot;;
+    }
+
+    /** Expose this Pod's current configuration and diagnostic state. */
+    public Map&lt;String, Object&gt; view() {
+<span class="fc" id="L73">        return Map.of(</span>
+                &quot;timeZone&quot;,
+                &quot;Asia/Tokyo&quot;,
+                &quot;openTime&quot;,
+<span class="fc" id="L77">                openTime.toString(),</span>
+                &quot;closeTime&quot;,
+<span class="fc" id="L79">                closeTime.toString(),</span>
+                &quot;closedWeekdays&quot;,
+<span class="fc" id="L81">                closedWeekdays.stream().map(Enum::name).sorted().toList(),</span>
+                &quot;closedDates&quot;,
+<span class="fc" id="L83">                closedDates.stream().map(LocalDate::toString).sorted().toList());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

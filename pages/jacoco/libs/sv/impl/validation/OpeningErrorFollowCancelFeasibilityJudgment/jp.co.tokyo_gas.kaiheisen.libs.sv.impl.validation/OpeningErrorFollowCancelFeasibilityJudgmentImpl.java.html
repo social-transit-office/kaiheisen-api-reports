@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningErrorFollowCancelFeasibilityJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-openingerrorfollowcancelfeasibilityjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">OpeningErrorFollowCancelFeasibilityJudgmentImpl.java</span></div><h1>OpeningErrorFollowCancelFeasibilityJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningErrorFollowCancelFeasibilityJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningErrorFollowCancelFeasibilityJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KseflInf;
+
+/**
+ * 概要: SV-052（開栓エラーフォロー取消実施可否判定）のサービス実装。
+ * 主な仕様:
+ * - DA-110-R002 でガスメーター社番を取得し、0件時は業務エラー 020000039 を送出する。
+ * - DA-139-R003 でフォロー完了データを取得し、0件時は業務エラー 020000040 を送出する。
+ * - フォロー対応完了年月日とシステム日付が不一致の場合は業務エラー 020000041 を送出する。
+ * 既知の制約:
+ * - 検索結果が複数件の場合は先頭1件を判定対象とする。
+ * - システム日時は RequestContext から取得し、未設定時は fail-fast する。
+ */
+public class OpeningErrorFollowCancelFeasibilityJudgmentImpl
+        implements OpeningErrorFollowCancelFeasibilityJudgment {
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final KseflDataAccess kseflDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String followStatusCompleted;
+
+    /**
+     * 概要: 必須依存と定数を初期化する。
+     *
+     * @param gasmtrdDataAccess ガスメーター＜導管＞データアクセス
+     * @param kseflDataAccess 開栓エラーフォロー件名データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public OpeningErrorFollowCancelFeasibilityJudgmentImpl(
+            GasmtrdDataAccess gasmtrdDataAccess,
+            KseflDataAccess kseflDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L54">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L55">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L56">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L57">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L58">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L59">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L60">        this.followStatusCompleted = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_FOLLOW_COMPLETED);
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * 概要: 開栓エラーフォロー取消実施可否を判定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 判定結果
+     */
+    @Override
+    public OpeningErrorFollowCancelFeasibilityJudgmentOutput execute(Long gasMtstNo, LocalDate trkKnsYmd) {
+<span class="fc" id="L75">        LocalDate systemDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L76">        List&lt;GasmtrdRecord&gt; gasmtrdRecords =</span>
+<span class="fc" id="L77">                gasmtrdDataAccess.findAllByTtkGmsbNoAndGmtThkgYmd(</span>
+                        gasMtstNo,
+                null);
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        if (gasmtrdRecords.isEmpty()) {</span>
+<span class="fc" id="L81">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000039);</span>
+        }
+
+<span class="fc" id="L84">        String gmb = gasmtrdRecords.getFirst().gmb();</span>
+<span class="fc" id="L85">        List&lt;KseflRecord&gt; kseflRecords = kseflDataAccess.findAllByGmbAndFlwStCdAndKasgYmdAndTsigKasgYmd(</span>
+                gmb,
+                followStatusCompleted,
+                trkKnsYmd,
+                trkKnsYmd);
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (kseflRecords.isEmpty()) {</span>
+<span class="fc" id="L91">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000040);</span>
+        }
+
+<span class="fc" id="L94">        KseflRecord target = kseflRecords.getFirst();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (!Objects.equals(target.fltkYmd(), systemDate)) {</span>
+<span class="fc" id="L96">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000041);</span>
+        }
+
+<span class="fc" id="L99">        return new OpeningErrorFollowCancelFeasibilityJudgmentOutput(</span>
+                gmb,
+<span class="fc" id="L101">                toKseflInf(target));</span>
+    }
+
+    private KseflInf toKseflInf(KseflRecord record) {
+<span class="fc" id="L105">        return new KseflInf(</span>
+<span class="fc" id="L106">                record.kasgYmd(),</span>
+<span class="fc" id="L107">                record.kasHukkYmd(),</span>
+<span class="fc" id="L108">                record.hukkSysShbt(),</span>
+<span class="fc" id="L109">                record.sgyAnknNo(),</span>
+<span class="fc" id="L110">                record.kasJysb(),</span>
+<span class="fc" id="L111">                record.kasgNwkCd(),</span>
+<span class="fc" id="L112">                record.sgytSinNo(),</span>
+<span class="fc" id="L113">                record.sgytSinnKj(),</span>
+<span class="fc" id="L114">                record.utidxNo(),</span>
+<span class="fc" id="L115">                record.recUpdJnjNo());</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L119">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L120">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

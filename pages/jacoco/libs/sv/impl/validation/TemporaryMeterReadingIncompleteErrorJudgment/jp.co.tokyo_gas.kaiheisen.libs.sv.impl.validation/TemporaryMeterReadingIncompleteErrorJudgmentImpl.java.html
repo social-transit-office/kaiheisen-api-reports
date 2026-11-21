@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TemporaryMeterReadingIncompleteErrorJudgmentImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-temporarymeterreadingincompleteerrorjudgment</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">TemporaryMeterReadingIncompleteErrorJudgmentImpl.java</span></div><h1>TemporaryMeterReadingIncompleteErrorJudgmentImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasFeeContractTypeSortingContentAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GrkKsbHnsb;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GrkKsbHwsb;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.TemporaryMeterReadingIncompleteErrorJudgment;
+
+/**
+ * 概要: SV-147（臨時検針未済エラー判定）の実装クラス。
+ * 主な仕様:
+ * - 条件成立時のみ SV-259 を呼び出し、閉栓時解約対象の振分内容を判定する。
+ * - 振分内容が対象外の場合に業務エラー `020200047` を送出する。
+ * 既知の制約:
+ * - `systemDatetime` は RequestContext から取得し、検索基準年月日に変換して SV-259 へ渡す。
+ * - public 引数の null ガードは追加せず、上位層のバリデーション済み前提とする。
+ */
+public final class TemporaryMeterReadingIncompleteErrorJudgmentImpl
+        implements TemporaryMeterReadingIncompleteErrorJudgment {
+
+    private final GasFeeContractTypeSortingContentAcquisition
+            gasFeeContractTypeSortingContentAcquisition;
+
+    private final RequestContext requestContext;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String closingCancellationTargetDistributionContent;
+
+    private final List&lt;GrkKsbHwsb&gt; closingCancellationTargetList;
+
+    /**
+     * 概要: 必須依存と判定用 CIRIUS 定数を解決して初期化する。
+     * 主な仕様:
+     * - 直列ガスメーター設置状態区分の専用ガスメーター値を解決する。
+     * - 閉栓時解約対象判定用の振分種別と振分内容種別を解決する。
+     * 既知の制約:
+     * - 依存サービスと RequestContext の null は許容しない。
+     * - 必須定数が未登録の場合はコンストラクタ初期化時点で fail-fast する。
+     *
+     * @param sortingContentAcquisition SV-259 ガス料金契約種別振分内容取得
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    @Inject
+    public TemporaryMeterReadingIncompleteErrorJudgmentImpl(
+            final GasFeeContractTypeSortingContentAcquisition sortingContentAcquisition,
+            final CiriusConstantService ciriusConstantService,
+<span class="fc" id="L60">            final RequestContext requestContext) {</span>
+<span class="fc" id="L61">        this.gasFeeContractTypeSortingContentAcquisition = Objects.requireNonNull(</span>
+                sortingContentAcquisition,
+                &quot;gasFeeContractTypeSortingContentAcquisition&quot;);
+<span class="fc" id="L64">        CiriusConstantService resolvedService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L67">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L68">        this.dedicatedGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L72">        String closingCancellationTargetDistributionType =</span>
+<span class="fc" id="L73">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType.TYPE,
+                        ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionType
+                                .SUBJECT_TO_CANCELLATION_WHEN_THE_CAP_IS_CLOSED);
+<span class="fc" id="L78">        this.closingCancellationTargetDistributionContent =</span>
+<span class="fc" id="L79">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType.TYPE,
+                        ConstantLookupKeys.Cirius.GasFeeContractTypeDistributionContentType
+                                .CANCELLATION_WHEN_CLOSED_TARGET);
+<span class="fc" id="L84">        this.closingCancellationTargetList = List.of(</span>
+                new GrkKsbHwsb(closingCancellationTargetDistributionType, null));
+<span class="fc" id="L86">    }</span>
+
+    /**
+     * 概要: 臨時検針未済エラー判定を実行する。
+     * 主な仕様:
+     * - 各 guard 条件を順に評価し、不成立時は何も返さず正常終了する。
+     * - 条件成立時のみ SV-259 を呼び出し、対象外なら業務エラー `020200047` を送出する。
+     * 既知の制約:
+     * - `ksbStytYmd` または `hssgYmd` が null の場合、比較時に実行時例外となる。
+     *
+     * @param svckyaMchUmuFlg サービス契約適用待ち有無フラグ
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param svmstkrUmFlg サービス契約・メーター設置場所関連有無フラグ
+     * @param hsnjKytgFlg 閉栓時解約対象フラグ
+     * @param ksbStytYmd 契約種別開始予定日
+     * @param hssgYmd 閉栓作業年月日
+     * @param kiyShbt 契約種別
+     */
+    @Override
+    public void execute(
+            final Boolean svckyaMchUmuFlg,
+            final String ckrtGmscJtkb,
+            final Boolean svmstkrUmFlg,
+            final Boolean hsnjKytgFlg,
+            final LocalDate ksbStytYmd,
+            final LocalDate hssgYmd,
+            final String kiyShbt) {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(svckyaMchUmuFlg)) {</span>
+<span class="fc" id="L114">            return;</span>
+        }
+
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (!shouldEvaluateClosingCancellationTarget(ckrtGmscJtkb, svmstkrUmFlg)) {</span>
+<span class="fc" id="L118">            return;</span>
+        }
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (!Boolean.TRUE.equals(hsnjKytgFlg)) {</span>
+<span class="fc" id="L122">            return;</span>
+        }
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (ksbStytYmd.isAfter(hssgYmd)) {</span>
+<span class="fc" id="L126">            return;</span>
+        }
+
+<span class="fc" id="L129">        GasFeeContractTypeSortingContentAcquisitionOutput sortingResult =</span>
+<span class="fc" id="L130">                gasFeeContractTypeSortingContentAcquisition.execute(</span>
+                        kiyShbt,
+                        closingCancellationTargetList,
+<span class="fc" id="L133">                        resolveBaseDate());</span>
+
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (!isClosingCancellationTarget(sortingResult.grkKsbHnsbList())) {</span>
+<span class="fc" id="L136">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200047);</span>
+        }
+<span class="fc" id="L138">    }</span>
+
+    private boolean shouldEvaluateClosingCancellationTarget(
+            final String ckrtGmscJtkb,
+            final Boolean svmstkrUmFlg) {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        return !dedicatedGasMeterStatus.equals(ckrtGmscJtkb)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                || Boolean.TRUE.equals(svmstkrUmFlg);</span>
+    }
+
+    private boolean isClosingCancellationTarget(final List&lt;GrkKsbHnsb&gt; grkKsbHnsbList) {
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        return !grkKsbHnsbList.isEmpty()</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                &amp;&amp; closingCancellationTargetDistributionContent.equals(</span>
+<span class="fc" id="L150">                        grkKsbHnsbList.get(0).grkKsbHnsb());</span>
+    }
+
+    private LocalDate resolveBaseDate() {
+<span class="fc" id="L154">        return requireSystemDatetime().toLocalDate();</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L158">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L159">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

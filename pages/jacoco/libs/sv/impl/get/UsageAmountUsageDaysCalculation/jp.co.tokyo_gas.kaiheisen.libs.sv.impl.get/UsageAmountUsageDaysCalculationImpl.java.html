@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UsageAmountUsageDaysCalculationImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-usageamountusagedayscalculation</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">UsageAmountUsageDaysCalculationImpl.java</span></div><h1>UsageAmountUsageDaysCalculationImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageAmountUsageDaysCalculation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.UsageAmountUsageDaysCalculationOutput;
+
+/**
+ * 使用量・使用日数算出サービス実装。
+ */
+public final class UsageAmountUsageDaysCalculationImpl
+        implements UsageAmountUsageDaysCalculation {
+
+    private static final String METER_READING_REASON_TYPE =
+            ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE;
+
+    private static final String GAS_METER_STATUS_TYPE =
+            ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final Set&lt;String&gt; closureReasonTypes;
+
+    private final Set&lt;String&gt; regularReasonTypes;
+
+    private final String openingStatus;
+
+    /**
+     * 概要: 判定に必要な DA と定数を解決してインスタンスを初期化する。
+     * 主な仕様:
+     * - DA-027-R004 の呼出し先データアクセスを保持する。
+     * - 閉栓系事由、定例系事由、開栓中状態区分を必須定数として解決する。
+     * 既知の制約:
+     * - 必須依存や必須定数が不足している場合は遅延評価せず、コンストラクタ時点で fail-fast とする。
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞データアクセス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public UsageAmountUsageDaysCalculationImpl(
+            GmkskkdDataAccess gmkskkdDataAccess,
+<span class="fc" id="L49">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L50">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L51">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L52">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L53">        this.closureReasonTypes =</span>
+<span class="fc" id="L54">                Set.of(</span>
+<span class="fc" id="L55">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .RELOCATION_CLOSURE),
+<span class="fc" id="L59">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .UNUSED_CLOSURE),
+<span class="fc" id="L63">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .TEMPORARY),
+<span class="fc" id="L67">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .TEMPORARY_SW_CANCELLATION),
+<span class="fc" id="L71">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .SUPPLY_OUTAGE),
+<span class="fc" id="L75">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .FIRED_AND_LOST_CAP));
+<span class="fc" id="L79">        this.regularReasonTypes =</span>
+<span class="fc" id="L80">                Set.of(</span>
+<span class="fc" id="L81">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .REGULAR),
+<span class="fc" id="L85">                        requireReason(</span>
+                                resolvedConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                        .REGULAR_SW_CANCELLATION));
+<span class="fc" id="L89">        this.openingStatus =</span>
+<span class="fc" id="L90">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        GAS_METER_STATUS_TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * 概要: 検針結果一覧から使用量・使用日数を算出して返却する。
+     * 主な仕様:
+     * - DA-027-R004 が 0 件の場合は使用量 0、使用日数 0 を返却する。
+     * - 最初の対象レコードで初期値を設定し、以後は次の対象レコードを見つけるまで加算する。
+     * - 返却順に依存しないよう、検針年月日降順・検針結果通し番号降順に並べ替えてから集計する。
+     * - DA の null 戻り値は契約違反として fail-fast で検知する。
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @return 使用量・使用日数算出結果
+     */
+    @Override
+    public UsageAmountUsageDaysCalculationOutput execute(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long tksuSvkyNo) {
+<span class="fc" id="L113">        List&lt;GmkskkdRecord&gt; records =</span>
+<span class="fc" id="L114">                gmkskkdDataAccess.findAllByGasMtstNoAndKnsYmdAndTksuSvkyNo(</span>
+                        gasMtstNo,
+                        knsYmd,
+                        tksuSvkyNo);
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (records == null) {</span>
+<span class="fc" id="L119">            throw new IllegalStateException(</span>
+<span class="fc" id="L120">                    GmkskkdDataAccess.CallSpecs.FIND_ALL_BY_GAS_MTST_NO_AND_KNS_YMD_AND_TKSU_SVKY_NO.identifier()</span>
+                            + &quot; returned null&quot;);
+        }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (records.isEmpty()) {</span>
+<span class="fc" id="L124">            return zeroOutput();</span>
+        }
+
+<span class="fc" id="L127">        List&lt;GmkskkdRecord&gt; sortedRecords =</span>
+<span class="fc" id="L128">                records.stream()</span>
+<span class="fc" id="L129">                        .sorted(</span>
+<span class="fc" id="L130">                                Comparator.comparing(</span>
+                                                GmkskkdRecord::knsYmd,
+<span class="fc" id="L132">                                                Comparator.nullsLast(Comparator.reverseOrder()))</span>
+<span class="fc" id="L133">                                        .thenComparing(</span>
+                                                GmkskkdRecord::knsKkaTsno,
+<span class="fc" id="L135">                                                Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L136">                        .toList();</span>
+
+<span class="fc" id="L138">        boolean previousResultFound = false;</span>
+<span class="fc" id="L139">        BigDecimal usage = BigDecimal.ZERO;</span>
+<span class="fc" id="L140">        int usageDays = 0;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (GmkskkdRecord record : sortedRecords) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (!previousResultFound) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (isTargetRecord(record)) {</span>
+<span class="fc" id="L144">                    previousResultFound = true;</span>
+<span class="fc" id="L145">                    usage = resolveUsage(record);</span>
+<span class="fc" id="L146">                    usageDays = resolveUsageDays(record);</span>
+                }
+                continue;
+            }
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (isTargetRecord(record)) {</span>
+<span class="fc" id="L151">                break;</span>
+            }
+<span class="fc" id="L153">            usage = usage.add(resolveUsage(record));</span>
+<span class="fc" id="L154">            usageDays += resolveUsageDays(record);</span>
+<span class="fc" id="L155">        }</span>
+<span class="fc" id="L156">        return new UsageAmountUsageDaysCalculationOutput(usage, usageDays);</span>
+    }
+
+    private String requireReason(CiriusConstantService ciriusConstantService, String code) {
+<span class="fc" id="L160">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                METER_READING_REASON_TYPE,
+                code);
+    }
+
+    private boolean isTargetRecord(GmkskkdRecord record) {
+<span class="fc" id="L167">        String reasonType = record.knkkSksiJysb();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        return closureReasonTypes.contains(reasonType)</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                || (regularReasonTypes.contains(reasonType)</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                &amp;&amp; openingStatus.equals(record.gmtKhsJtkb()));</span>
+    }
+
+    private BigDecimal resolveUsage(GmkskkdRecord record) {
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">        return record.gasSyry() == null ? BigDecimal.ZERO : record.gasSyry();</span>
+    }
+
+    private int resolveUsageDays(GmkskkdRecord record) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        return record.shyDdsu() == null ? 0 : record.shyDdsu().intValue();</span>
+    }
+
+    private UsageAmountUsageDaysCalculationOutput zeroOutput() {
+<span class="fc" id="L182">        return new UsageAmountUsageDaysCalculationOutput(BigDecimal.ZERO, 0);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

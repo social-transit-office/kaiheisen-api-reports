@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HrikmiDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-hrikmi</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.hrikmi</a> &gt; <span class="el_source">HrikmiDataAccessImpl.java</span></div><h1>HrikmiDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.hrikmi;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.SqlCapture;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaAuditColumnAccessBinder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaBind;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.PreparedWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** HRIKMI データアクセスの JPA 実装。 */
+public class HrikmiDataAccessImpl extends DataAccessBase implements HrikmiDataAccess {
+
+    private static final String TABLE_NAME = &quot;HRIKMI&quot;;
+
+    private static final String UPDATE_WHERE_CLAUSE = &quot;SIH_KIY_NO = ? AND SIH_KIY_SKNO = ?&quot;;
+
+<span class="fc" id="L39">    private static final ReflectiveRecordEntityMapper&lt;HrikmiRecord, HrikmiEntity&gt; READ_MAPPER =</span>
+<span class="fc" id="L40">            ReflectiveRecordEntityMapper.create(HrikmiRecord.class, HrikmiEntity.class);</span>
+
+<span class="fc" id="L42">    private static final ReflectiveRecordEntityMapper&lt;HrikmiWriteRecord, HrikmiEntity&gt; WRITE_MAPPER =</span>
+<span class="fc" id="L43">            ReflectiveRecordEntityMapper.create(HrikmiWriteRecord.class, HrikmiEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    private final SystemDateTimeProvider clock;
+
+    private final JpaAuditColumnAccessBinder&lt;HrikmiEntity&gt; auditColumnAccessBinder;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final JpaInsertSupport&lt;HrikmiWriteRecord, HrikmiEntity, HrikmiColumn&gt; insertSupport;
+
+    private final JpaTargetColumnUpdateSupport&lt;HrikmiWriteRecord, HrikmiEntity, HrikmiColumn&gt;
+            updateSupport;
+
+    /**
+     * 標準依存で初期化する。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public HrikmiDataAccessImpl(
+            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {
+<span class="fc" id="L68">        this(</span>
+                entityManager,
+                criteriaBuilderFactory,
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L73">    }</span>
+
+    /**
+     * テスト差し替え用の依存を含めて初期化する。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     * @param clock システム時刻プロバイダ
+     * @param auditColumnAutoSetter 監査項目自動設定
+     */
+    HrikmiDataAccessImpl(
+            EntityManager entityManager,
+            CriteriaBuilderFactory criteriaBuilderFactory,
+            SystemDateTimeProvider clock,
+<span class="fc" id="L87">            CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L88">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L89">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L90">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L91">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L92">        this.auditColumnAccessBinder = new JpaAuditColumnAccessBinder&lt;&gt;(HrikmiEntity.class);</span>
+<span class="fc" id="L93">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L94">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L95">        this.insertSupport =</span>
+                new JpaInsertSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        HrikmiWriteDefinition.INSTANCE,
+                        HrikmiEntity.class,
+<span class="fc" id="L101">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L102">        this.updateSupport =</span>
+                new JpaTargetColumnUpdateSupport&lt;&gt;(
+                        this.entityManager,
+                        TABLE_NAME,
+                        HrikmiWriteDefinition.INSTANCE,
+                        HrikmiEntity.class,
+<span class="fc" id="L108">                        WRITE_MAPPER::toEntity);</span>
+<span class="fc" id="L109">    }</span>
+
+    @Override
+    public int insert(HrikmiWriteRecord record, AuditContext context) {
+<span class="fc" id="L113">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L114">        return insertSupport.insert(</span>
+                record,
+                entity -&gt;
+<span class="fc" id="L117">                        auditColumnAutoSetter.applyForInsert(</span>
+<span class="fc" id="L118">                                auditColumnAccessBinder.bind(entity), context, clock));</span>
+    }
+
+    @Override
+    public int deleteBySihKiyNoAndSihKiySkno(Long sihKiyNo, Integer sihKiySkno, Integer recUpdJnjNo) {
+<span class="fc" id="L123">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L124">        BigDecimal safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L125">        return new JpaOptimisticDeleteSupport(entityManager, TABLE_NAME)</span>
+<span class="fc" id="L126">                .delete(</span>
+<span class="fc" id="L127">                        PreparedWhere.of(</span>
+                                UPDATE_WHERE_CLAUSE,
+                                (query, startIndex) -&gt; {
+<span class="fc" id="L130">                                    int nextIndex = JpaBind.set(query, startIndex, safeSihKiyNo);</span>
+<span class="fc" id="L131">                                    return JpaBind.set(query, nextIndex, safeSihKiySkno);</span>
+                                },
+                                safeSihKiyNo,
+                                safeSihKiySkno),
+                        recUpdJnjNo,
+                        HrikmiDataAccess.Identifiers.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO);
+    }
+
+    @Override
+    public Optional&lt;HrikmiRecord&gt; findBySihKiyNoAndSihKiySkno(Long sihKiyNo, Integer sihKiySkno) {
+<span class="fc" id="L141">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L142">        BigDecimal safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L143">        SqlCapture.set(</span>
+                &quot;SELECT * FROM HRIKMI WHERE SIH_KIY_NO = :sihKiyNo AND SIH_KIY_SKNO = :sihKiySkno&quot;);
+<span class="fc" id="L145">        var builder = criteriaBuilderFactory.create(entityManager, HrikmiEntity.class);</span>
+<span class="fc" id="L146">        builder.where(&quot;sihKiyNo&quot;).eq(safeSihKiyNo).where(&quot;sihKiySkno&quot;).eq(safeSihKiySkno);</span>
+<span class="fc" id="L147">        return builder.getResultList().stream().map(READ_MAPPER::toRecord).findFirst();</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySkno(
+            HrikmiWriteRecord record,
+            Set&lt;HrikmiColumn&gt; targetColumns,
+            HrikmiSihKiyUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L156">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L157">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L158">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L159">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L163">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L164">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L168">                preparedWhere(updateKey.sihKiyNo(), updateKey.sihKiySkno()),</span>
+<span class="fc" id="L169">                updateKey.recUpdJnjNo(),</span>
+                HrikmiDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO);
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySknoAndRecUpdJnjNo(
+            HrikmiWriteRecord record,
+            Set&lt;HrikmiColumn&gt; targetColumns,
+            HrikmiSihKiyJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L179">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L180">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L181">        Integer currentRecUpdJnjNo = Objects.requireNonNullElse(updateKey.recUpdJnjNo(), 0);</span>
+<span class="fc" id="L182">        return updateSupport.update(</span>
+                record,
+                targetColumns,
+                (entity, ignoredColumns) -&gt;
+<span class="fc" id="L186">                        auditColumnAutoSetter.applyForUpdate(</span>
+<span class="fc" id="L187">                                auditColumnAccessBinder.bind(entity),</span>
+                                context,
+                                clock,
+                                currentRecUpdJnjNo),
+<span class="fc" id="L191">                preparedWhere(updateKey.sihKiyNo(), updateKey.sihKiySkno()),</span>
+<span class="fc" id="L192">                updateKey.recUpdJnjNo(),</span>
+                HrikmiDataAccess.Identifiers.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO_AND_REC_UPD_JNJ_NO);
+    }
+
+    private PreparedWhere preparedWhere(Long sihKiyNo, Integer sihKiySkno) {
+<span class="fc" id="L197">        BigDecimal safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L198">        BigDecimal safeSihKiySkno = safeInt(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L199">        return PreparedWhere.of(</span>
+                UPDATE_WHERE_CLAUSE,
+                (query, startIndex) -&gt; {
+<span class="fc" id="L202">                    int nextIndex = JpaBind.set(query, startIndex, safeSihKiyNo);</span>
+<span class="fc" id="L203">                    return JpaBind.set(query, nextIndex, safeSihKiySkno);</span>
+                },
+                safeSihKiyNo,
+                safeSihKiySkno);
+    }
+
+    private static BigDecimal safeLong(Long value, String paramName) {
+<span class="fc" id="L210">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L211">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+
+    private static BigDecimal safeInt(Integer value, String paramName) {
+<span class="fc" id="L215">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L216">                JpaDbWriteValues.bigDecimal(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

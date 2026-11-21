@@ -1,0 +1,691 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PostClosingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.post_closing</a> &gt; <span class="el_source">PostClosingService.java</span></div><h1>PostClosingService.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.post_closing;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.post_closing.PostClosingRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.post_closing.PostClosingResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonForceOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonNormalOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_other.ClosingCommonNormalOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonForceTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonNormalTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonNormalTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonSupplyStopRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.ClosingCommonSupplyStopResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TkssvkyInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TskgmstInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_common_force_other_retail.ClosingCommonForceOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_common_force_tg_retail.ClosingCommonForceTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_common_normal_other_retail.ClosingCommonNormalOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_common_normal_tg_retail.ClosingCommonNormalTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_common_supply_stop_tg_retail.ClosingCommonSupplyStopTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.retail_division.RetailDivisionMaAdapter;
+
+/**
+ * BFF-004 LIVALIT閉栓落成のアプリケーションサービス。
+ */
+@ApplicationScoped
+public class PostClosingService {
+
+    private static final String PROCESS_UPDATE = &quot;2&quot;;
+
+    private static final String PROCESS_FORCE = &quot;3&quot;;
+
+    private static final String CLOSING_REASON_SUPPLY_STOP = ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE;
+
+    private final RequestContext requestContext;
+
+    private final RetailDivisionMaAdapter retailDivisionMaAdapter;
+
+    private final ClosingCommonSupplyStopTgRetailMaAdapter closingCommonSupplyStopTgRetailMaAdapter;
+
+    private final ClosingCommonNormalTgRetailMaAdapter closingCommonNormalTgRetailMaAdapter;
+
+    private final ClosingCommonNormalOtherRetailMaAdapter closingCommonNormalOtherRetailMaAdapter;
+
+    private final ClosingCommonForceTgRetailMaAdapter closingCommonForceTgRetailMaAdapter;
+
+    private final ClosingCommonForceOtherRetailMaAdapter closingCommonForceOtherRetailMaAdapter;
+
+    private final SystemDateTimeProvider clock;
+
+    private final String closingRegistrationWorkCode;
+
+    private final String supplyOutageReportRetailWorkCode;
+
+    private final String relocationClosureConduitWorkDetailCode;
+
+    private final String unusedClosureConduitWorkDetailCode;
+
+    private final String supplyOutageConduitWorkDetailCode;
+
+    private final String closingRegistrationBusinessCodeRetail;
+
+    private final String supplyOutageBusinessCodeRetail;
+
+    private final String relocationClosureRetailWorkDetailCode;
+
+    private final String unusedClosureRetailWorkDetailCode;
+
+    private final String supplyOutageRetailWorkDetailCode;
+
+    private final String transferWorkHistoryReportingRouteOnlineReportingUsually;
+
+    private final String transferWorkHistoryReportingRouteOtherSystems;
+
+    private final String reportingSystemType;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param retailDivisionMaAdapter MA-107 adapter
+     * @param closingCommonSupplyStopTgRetailMaAdapter MA-067 adapter
+     * @param closingCommonNormalTgRetailMaAdapter MA-059 adapter
+     * @param closingCommonNormalOtherRetailMaAdapter MA-068 adapter
+     * @param closingCommonForceTgRetailMaAdapter MA-061 adapter
+     * @param closingCommonForceOtherRetailMaAdapter MA-069 adapter
+     * @param clock システム日時プロバイダ
+     * @param ciriusConstantService CIRIUSコンスタント取得サービス
+     * @param kaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    @Inject
+    public PostClosingService(
+            RequestContext requestContext,
+            RetailDivisionMaAdapter retailDivisionMaAdapter,
+            ClosingCommonSupplyStopTgRetailMaAdapter closingCommonSupplyStopTgRetailMaAdapter,
+            ClosingCommonNormalTgRetailMaAdapter closingCommonNormalTgRetailMaAdapter,
+            ClosingCommonNormalOtherRetailMaAdapter closingCommonNormalOtherRetailMaAdapter,
+            ClosingCommonForceTgRetailMaAdapter closingCommonForceTgRetailMaAdapter,
+            ClosingCommonForceOtherRetailMaAdapter closingCommonForceOtherRetailMaAdapter,
+            SystemDateTimeProvider clock,
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L125">            KaiheisenConstantService kaiheisenConstantService) {</span>
+<span class="fc" id="L126">        this.requestContext = requestContext;</span>
+<span class="fc" id="L127">        this.retailDivisionMaAdapter = retailDivisionMaAdapter;</span>
+<span class="fc" id="L128">        this.closingCommonSupplyStopTgRetailMaAdapter = closingCommonSupplyStopTgRetailMaAdapter;</span>
+<span class="fc" id="L129">        this.closingCommonNormalTgRetailMaAdapter = closingCommonNormalTgRetailMaAdapter;</span>
+<span class="fc" id="L130">        this.closingCommonNormalOtherRetailMaAdapter = closingCommonNormalOtherRetailMaAdapter;</span>
+<span class="fc" id="L131">        this.closingCommonForceTgRetailMaAdapter = closingCommonForceTgRetailMaAdapter;</span>
+<span class="fc" id="L132">        this.closingCommonForceOtherRetailMaAdapter = closingCommonForceOtherRetailMaAdapter;</span>
+<span class="fc" id="L133">        this.clock = clock;</span>
+<span class="fc" id="L134">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L137">        KaiheisenConstantService resolvedKaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L140">        this.closingRegistrationWorkCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.CLOSING_REGISTRATION);
+<span class="fc" id="L144">        this.supplyOutageReportRetailWorkCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L148">        this.relocationClosureConduitWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.RELOCATION_CLOSURE_CCJG0701);
+<span class="fc" id="L152">        this.unusedClosureConduitWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.UNUSED_CLOSURE_CCJG0702);
+<span class="fc" id="L156">        this.supplyOutageConduitWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailsCodeConduit.SUPPLY_OUTAGE_CCJG1301);
+<span class="fc" id="L160">        this.closingRegistrationBusinessCodeRetail = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION);
+<span class="fc" id="L164">        this.supplyOutageBusinessCodeRetail = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L168">        this.relocationClosureRetailWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.RELOCATION_CLOSURE_CCBG6301);
+<span class="fc" id="L172">        this.unusedClosureRetailWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.UNUSED_CLOSURE_CCBG6302);
+<span class="fc" id="L176">        this.supplyOutageRetailWorkDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.SUPPLY_OUTAGE_CCBG8401);
+<span class="fc" id="L180">        this.transferWorkHistoryReportingRouteOnlineReportingUsually = RequiredConstantResolver.requireCiriusConstant(</span>
+            resolvedCiriusConstantService,
+            ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+            ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.ONLINE_REPORTING_USUALLY);
+<span class="fc" id="L184">        this.transferWorkHistoryReportingRouteOtherSystems = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryReportingRoute.OTHER_SYSTEMS);
+<span class="fc" id="L188">        this.reportingSystemType = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                resolvedKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT);
+<span class="fc" id="L192">    }</span>
+
+    /**
+     * BFF-004 の閉栓落成を処理する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    public PostClosingResponse handle(PostClosingRequest request) {
+<span class="fc" id="L201">        LocalDateTime systemDatetime = requestContext.getSystemDatetime().orElseGet(clock::currentDateTime);</span>
+<span class="fc" id="L202">        String downstreamSystemDatetime = resolveSystemDatetimeForDownstream(request, systemDatetime);</span>
+<span class="fc" id="L203">        String searchDate = resolveRetailDivisionSearchDate(request, systemDatetime);</span>
+
+<span class="fc" id="L205">        RetailDivisionResponse retailDivisionResponse = retailDivisionMaAdapter.invoke(new RetailDivisionRequest(</span>
+                &quot;3&quot;,
+<span class="fc" id="L207">                request.gasMtstNo(),</span>
+                searchDate,
+                reportingSystemType,
+                downstreamSystemDatetime));
+
+<span class="fc" id="L212">        String retailDivision = retailDivisionResponse.kuHntKbn();</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (PROCESS_UPDATE.equals(request.syoriKbn())) {</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">            if (RetailTypeJudgmentCode.TOKYO_GAS.code().equals(retailDivision)) {</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                if (CLOSING_REASON_SUPPLY_STOP.equals(request.hesnJysb())) {</span>
+<span class="fc" id="L216">                    ClosingCommonSupplyStopResponse response = closingCommonSupplyStopTgRetailMaAdapter.invoke(</span>
+<span class="fc" id="L217">                            buildSupplyStopTgRetailRequest(request, downstreamSystemDatetime));</span>
+<span class="fc" id="L218">                    return mapTgSupplyStopResponse(response);</span>
+                }
+<span class="fc" id="L220">                ClosingCommonNormalTgRetailResponse response = closingCommonNormalTgRetailMaAdapter.invoke(</span>
+<span class="fc" id="L221">                        buildNormalTgRetailRequest(request, retailDivisionResponse, downstreamSystemDatetime));</span>
+<span class="fc" id="L222">                return mapNormalTgResponse(response);</span>
+            }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">            if (RetailTypeJudgmentCode.OTHER.code().equals(retailDivision)) {</span>
+<span class="fc" id="L225">                return handleUpdateOtherRetail(request, retailDivisionResponse, downstreamSystemDatetime);</span>
+            }
+<span class="fc" id="L227">            throw new KaiheisenException(&quot;小売判定区分の値が不正のため、処理を終了しました&quot;);</span>
+        }
+
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (PROCESS_FORCE.equals(request.syoriKbn())) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">            if (RetailTypeJudgmentCode.TOKYO_GAS.code().equals(retailDivision)) {</span>
+<span class="fc" id="L232">                ClosingCommonForceTgRetailResponse response = closingCommonForceTgRetailMaAdapter.invoke(</span>
+<span class="fc" id="L233">                        buildForceTgRetailRequest(request, downstreamSystemDatetime));</span>
+<span class="fc" id="L234">                return toForceResponse(response.correlationId());</span>
+            }
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">            if (RetailTypeJudgmentCode.OTHER.code().equals(retailDivision)) {</span>
+<span class="fc" id="L237">                ClosingCommonForceOtherRetailResponse response = closingCommonForceOtherRetailMaAdapter.invoke(</span>
+<span class="fc" id="L238">                        buildForceOtherRetailRequest(request, downstreamSystemDatetime));</span>
+<span class="fc" id="L239">                return toForceResponse(response.correlationId());</span>
+            }
+<span class="nc" id="L241">            throw new KaiheisenException(&quot;小売判定区分の値が不正のため、処理を終了しました&quot;);</span>
+        }
+
+<span class="nc" id="L244">        throw new KaiheisenException(&quot;処理区分の値が不正のため、処理を終了しました&quot;);</span>
+    }
+
+    private String resolveSystemDatetimeForDownstream(
+            PostClosingRequest request,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L250">        String requestedSystemDatetime = normalizeOptional(request.systemDatetime());</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (requestedSystemDatetime != null) {</span>
+<span class="fc" id="L252">            return toRfc3339DateTimeText(requestedSystemDatetime);</span>
+        }
+<span class="fc" id="L254">        return systemDatetime</span>
+<span class="fc" id="L255">                .atOffset(ZoneOffset.UTC)</span>
+<span class="fc" id="L256">                .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L257">                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+    }
+
+    private PostClosingResponse handleUpdateOtherRetail(
+            PostClosingRequest request,
+            RetailDivisionResponse retailDivisionResponse,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L264">        ClosingCommonNormalOtherRetailResponse response = closingCommonNormalOtherRetailMaAdapter.invoke(</span>
+<span class="fc" id="L265">                buildNormalOtherRetailRequest(request, retailDivisionResponse, downstreamSystemDatetime));</span>
+<span class="fc" id="L266">        return mapNormalOtherRetailResponse(response);</span>
+    }
+
+    private ClosingCommonSupplyStopRequest buildSupplyStopTgRetailRequest(
+            PostClosingRequest request,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L272">        return new ClosingCommonSupplyStopRequest(</span>
+                supplyOutageReportRetailWorkCode,
+                supplyOutageConduitWorkDetailCode,
+                supplyOutageBusinessCodeRetail,
+                supplyOutageRetailWorkDetailCode,
+                transferWorkHistoryReportingRouteOnlineReportingUsually,
+<span class="fc" id="L278">                request.sgyAnknNo(),</span>
+<span class="fc" id="L279">                toRfc3339DateText(request.hsenHkkYmd()),</span>
+<span class="fc" id="L280">                toRfc3339DateText(request.hssgYmd()),</span>
+<span class="fc" id="L281">                request.gasMtstNo(),</span>
+<span class="fc" id="L282">                format11Digits(request.syoKyoTrno()),</span>
+<span class="fc" id="L283">                request.gmb(),</span>
+<span class="fc" id="L284">                request.hesnJysb(),</span>
+<span class="fc" id="L285">                stringify(request.gmtShjSu()),</span>
+<span class="fc" id="L286">                formatDecimal(request.gasSyry()),</span>
+<span class="fc" id="L287">                request.sjskKbn(),</span>
+<span class="fc" id="L288">                request.hesnSdnShbt(),</span>
+                null,
+                null,
+<span class="fc" id="L291">                request.hukkUsrId(),</span>
+<span class="fc" id="L292">                request.hukkUnmKj(),</span>
+<span class="fc" id="L293">                request.sgytNwkCd(),</span>
+<span class="fc" id="L294">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L295">                request.sagyTntEmpNmKj(),</span>
+                null,
+<span class="fc" id="L297">                new ClosingCommonSupplyStopRequest.WarnKknInf(false, false),</span>
+                new ClosingCommonSupplyStopRequest.HseflKeyInf(null, null, null, null),
+                null,
+                reportingSystemType,
+                downstreamSystemDatetime);
+    }
+
+    private String toRfc3339DateTimeText(String rawDateTime) {
+        try {
+<span class="fc" id="L306">            return OffsetDateTime.parse(rawDateTime)</span>
+<span class="fc" id="L307">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L308">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+<span class="nc" id="L309">        } catch (DateTimeParseException exception) {</span>
+<span class="nc" id="L310">            return LocalDateTime.parse(rawDateTime)</span>
+<span class="nc" id="L311">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="nc" id="L312">                    .atOffset(ZoneOffset.UTC)</span>
+<span class="nc" id="L313">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+        }
+    }
+
+    private ClosingCommonNormalTgRetailRequest buildNormalTgRetailRequest(
+            PostClosingRequest request,
+            RetailDivisionResponse retailDivisionResponse,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L321">        TskgmstInfoResponse tskgmstInfo = requiredTskgmstInfo(retailDivisionResponse);</span>
+<span class="fc" id="L322">        TkssvkyInfoResponse tkssvkyInfo = requiredTkssvkyInfo(retailDivisionResponse);</span>
+<span class="fc" id="L323">        String paymentInstruction = normalizeOptional(request.rshhSjsb());</span>
+<span class="fc" id="L324">        return new ClosingCommonNormalTgRetailRequest(</span>
+                closingRegistrationWorkCode,
+<span class="fc" id="L326">                resolveNormalTgDuknIsrsCd(request.hesnJysb()),</span>
+                closingRegistrationBusinessCodeRetail,
+<span class="fc" id="L328">                resolveNormalTgIsrrGmssCd(request.hesnJysb()),</span>
+                transferWorkHistoryReportingRouteOtherSystems,
+<span class="fc" id="L330">                request.sgyAnknNo(),</span>
+<span class="fc" id="L331">                toRfc3339DateText(request.hsenHkkYmd()),</span>
+<span class="fc" id="L332">                toRfc3339DateText(request.hssgYmd()),</span>
+<span class="fc" id="L333">                request.gasMtstNo(),</span>
+<span class="fc" id="L334">                format11Digits(request.syoKyoTrno()),</span>
+<span class="fc" id="L335">                request.gmb(),</span>
+<span class="fc" id="L336">                request.hesnJysb(),</span>
+<span class="fc" id="L337">                stringify(request.gmtShjSu()),</span>
+<span class="fc" id="L338">                formatDecimal(request.gasSyry()),</span>
+<span class="fc" id="L339">                request.sjskKbn(),</span>
+                paymentInstruction,
+<span class="fc" id="L341">                resolvePaymentNoticeMethod(paymentInstruction),</span>
+<span class="fc" id="L342">                request.utidxNo(),</span>
+<span class="fc" id="L343">                request.hukkUsrId(),</span>
+<span class="fc" id="L344">                request.hukkUnmKj(),</span>
+<span class="fc" id="L345">                request.sgytNwkCd(),</span>
+<span class="fc" id="L346">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L347">                request.sagyTntEmpNmKj(),</span>
+                null,
+<span class="fc" id="L349">                new ClosingCommonNormalTgRetailRequest.WarnKknInf(false),</span>
+                new ClosingCommonNormalTgRetailRequest.HseflKeyInf(null, null, null, null),
+                null,
+                new ClosingCommonNormalTgRetailRequest.TskgmstInf(
+<span class="fc" id="L353">                        nullable11Digits(tskgmstInfo.tksuSvkyNo()),</span>
+<span class="fc" id="L354">                        nullable11Digits(tskgmstInfo.skno()),</span>
+<span class="fc" id="L355">                        nullable11Digits(tskgmstInfo.recUpdJnjNo())),</span>
+                new ClosingCommonNormalTgRetailRequest.TkssvkyInf(
+<span class="fc" id="L357">                        nullable11Digits(tkssvkyInfo.tksuSvkyNo()),</span>
+<span class="fc" id="L358">                        nullable11Digits(tkssvkyInfo.skno()),</span>
+<span class="fc" id="L359">                        tkssvkyInfo.tksuKijsCd(),</span>
+<span class="fc" id="L360">                        nullable11Digits(tkssvkyInfo.recUpdJnjNo())),</span>
+                reportingSystemType,
+                downstreamSystemDatetime);
+    }
+
+    private ClosingCommonNormalOtherRetailRequest buildNormalOtherRetailRequest(
+            PostClosingRequest request,
+            RetailDivisionResponse retailDivisionResponse,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L369">        TskgmstInfoResponse tskgmstInfo = requiredTskgmstInfo(retailDivisionResponse);</span>
+<span class="fc" id="L370">        TkssvkyInfoResponse tkssvkyInfo = requiredTkssvkyInfo(retailDivisionResponse);</span>
+<span class="fc" id="L371">        return new ClosingCommonNormalOtherRetailRequest(</span>
+                closingRegistrationWorkCode,
+                relocationClosureConduitWorkDetailCode,
+                closingRegistrationBusinessCodeRetail,
+                relocationClosureRetailWorkDetailCode,
+                transferWorkHistoryReportingRouteOtherSystems,
+                &quot;2&quot;,
+<span class="fc" id="L378">                request.sgyAnknNo(),</span>
+<span class="fc" id="L379">                toRfc3339DateText(request.hsenHkkYmd()),</span>
+<span class="fc" id="L380">                toRfc3339DateText(request.hssgYmd()),</span>
+<span class="fc" id="L381">                parseRequiredLong(request.gasMtstNo(), &quot;ガスメーター設置場所番号&quot;),</span>
+<span class="fc" id="L382">                request.syoKyoTrno(),</span>
+<span class="fc" id="L383">                request.gmb(),</span>
+<span class="fc" id="L384">                request.hesnJysb(),</span>
+<span class="fc" id="L385">                request.gmtShjSu(),</span>
+<span class="fc" id="L386">                request.gasSyry(),</span>
+<span class="fc" id="L387">                request.sjskKbn(),</span>
+<span class="fc" id="L388">                request.utidxNo(),</span>
+<span class="fc" id="L389">                request.hukkUsrId(),</span>
+<span class="fc" id="L390">                request.hukkUnmKj(),</span>
+<span class="fc" id="L391">                request.sgytNwkCd(),</span>
+<span class="fc" id="L392">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L393">                request.sagyTntEmpNmKj(),</span>
+                null,
+<span class="fc" id="L395">                new ClosingCommonNormalOtherRetailRequest.WarningConfirmationInfo(false, false),</span>
+                new ClosingCommonNormalOtherRetailRequest.ClosingErrorFollowKeyInfo(null, null, null, null),
+                null,
+                new ClosingCommonNormalOtherRetailRequest.TskgmstInfo(
+<span class="fc" id="L399">                        tskgmstInfo.tksuSvkyNo(),</span>
+<span class="fc" id="L400">                        tskgmstInfo.skno(),</span>
+<span class="fc" id="L401">                        tskgmstInfo.recUpdJnjNo()),</span>
+                new ClosingCommonNormalOtherRetailRequest.TkssvkyInfo(
+<span class="fc" id="L403">                        tkssvkyInfo.tksuSvkyNo(),</span>
+<span class="fc" id="L404">                        tkssvkyInfo.skno(),</span>
+<span class="fc" id="L405">                        tkssvkyInfo.tksuKijsCd(),</span>
+<span class="fc" id="L406">                        tkssvkyInfo.recUpdJnjNo(),</span>
+<span class="fc" id="L407">                        tkssvkyInfo.syoKyoTrno()),</span>
+                reportingSystemType,
+                downstreamSystemDatetime);
+    }
+
+    private ClosingCommonForceTgRetailRequest buildForceTgRetailRequest(
+            PostClosingRequest request,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L415">        String paymentInstruction = normalizeOptional(request.rshhSjsb());</span>
+<span class="fc" id="L416">        String acceptanceIndex = normalizeOptional(request.utidxNo());</span>
+<span class="fc" id="L417">        return new ClosingCommonForceTgRetailRequest(</span>
+<span class="fc" id="L418">                resolveForceTgDuknIsrgCd(request.hesnJysb()),</span>
+<span class="fc" id="L419">                resolveForceTgDuknIsrsCd(request.hesnJysb()),</span>
+<span class="fc" id="L420">                resolveForceTgIsrrGymCd(request.hesnJysb()),</span>
+<span class="fc" id="L421">                resolveForceTgIsrrGmssCd(request.hesnJysb()),</span>
+                transferWorkHistoryReportingRouteOtherSystems,
+<span class="fc" id="L423">                request.sgyAnknNo(),</span>
+<span class="fc" id="L424">                toRfc3339DateText(request.hsenHkkYmd()),</span>
+<span class="fc" id="L425">                toRfc3339DateText(request.hssgYmd()),</span>
+<span class="fc" id="L426">                request.gasMtstNo(),</span>
+<span class="fc" id="L427">                format11Digits(request.syoKyoTrno()),</span>
+<span class="fc" id="L428">                request.gmb(),</span>
+<span class="fc" id="L429">                request.hesnJysb(),</span>
+<span class="fc" id="L430">                stringify(request.gmtShjSu()),</span>
+<span class="fc" id="L431">                formatDecimal(request.gasSyry()),</span>
+<span class="fc" id="L432">                request.sjskKbn(),</span>
+                paymentInstruction,
+<span class="fc" id="L434">                resolvePaymentNoticeMethod(paymentInstruction),</span>
+<span class="fc bfc" id="L435" title="All 2 branches covered.">                CLOSING_REASON_SUPPLY_STOP.equals(request.hesnJysb()) ? request.hesnSdnShbt() : null,</span>
+                acceptanceIndex,
+<span class="fc" id="L437">                request.hukkUsrId(),</span>
+<span class="fc" id="L438">                request.hukkUnmKj(),</span>
+<span class="fc" id="L439">                request.sgytNwkCd(),</span>
+<span class="fc" id="L440">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L441">                request.sagyTntEmpNmKj(),</span>
+<span class="fc" id="L442">                request.hsenErrRyCd(),</span>
+                reportingSystemType,
+                downstreamSystemDatetime);
+    }
+
+    private ClosingCommonForceOtherRetailRequest buildForceOtherRetailRequest(
+            PostClosingRequest request,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L450">        return new ClosingCommonForceOtherRetailRequest(</span>
+                closingRegistrationWorkCode,
+                relocationClosureConduitWorkDetailCode,
+                closingRegistrationBusinessCodeRetail,
+                relocationClosureRetailWorkDetailCode,
+                transferWorkHistoryReportingRouteOtherSystems,
+<span class="fc" id="L456">                request.sgyAnknNo(),</span>
+<span class="fc" id="L457">                toRfc3339DateText(request.hsenHkkYmd()),</span>
+<span class="fc" id="L458">                toRfc3339DateText(request.hssgYmd()),</span>
+<span class="fc" id="L459">                request.gasMtstNo(),</span>
+<span class="fc" id="L460">                format11Digits(request.syoKyoTrno()),</span>
+<span class="fc" id="L461">                stripTrailingSpaces(request.gmb()),</span>
+<span class="fc" id="L462">                request.hesnJysb(),</span>
+<span class="fc" id="L463">                stringify(request.gmtShjSu()),</span>
+<span class="fc" id="L464">                formatDecimal(request.gasSyry()),</span>
+<span class="fc" id="L465">                request.sjskKbn(),</span>
+<span class="fc" id="L466">                request.utidxNo(),</span>
+<span class="fc" id="L467">                request.hukkUsrId(),</span>
+<span class="fc" id="L468">                request.hukkUnmKj(),</span>
+<span class="fc" id="L469">                request.sgytNwkCd(),</span>
+<span class="fc" id="L470">                request.sagyTntEmpId(),</span>
+<span class="fc" id="L471">                request.sagyTntEmpNmKj(),</span>
+<span class="fc" id="L472">                request.hsenErrRyCd(),</span>
+                reportingSystemType,
+                downstreamSystemDatetime);
+    }
+
+    private PostClosingResponse mapTgSupplyStopResponse(ClosingCommonSupplyStopResponse response) {
+<span class="fc" id="L478">        return new PostClosingResponse(</span>
+<span class="fc" id="L479">                response.hsenErrRyCd(),</span>
+<span class="fc" id="L480">                resolveCorrelationId(response.correlationId()),</span>
+<span class="fc" id="L481">                response.errorCode(),</span>
+<span class="fc" id="L482">                response.errorDescription(),</span>
+<span class="fc" id="L483">                copyOrNull(response.errorDetailList()));</span>
+    }
+
+    private PostClosingResponse mapNormalTgResponse(ClosingCommonNormalTgRetailResponse response) {
+<span class="fc" id="L487">        return new PostClosingResponse(</span>
+<span class="fc" id="L488">                response.hsenErrRyCd(),</span>
+<span class="fc" id="L489">                resolveCorrelationId(response.correlationId()),</span>
+<span class="fc" id="L490">                response.errorCode(),</span>
+<span class="fc" id="L491">                response.errorDescription(),</span>
+<span class="fc" id="L492">                copyOrNull(response.errorDetailList()));</span>
+    }
+
+    private PostClosingResponse mapNormalOtherRetailResponse(ClosingCommonNormalOtherRetailResponse response) {
+<span class="fc" id="L496">        return new PostClosingResponse(</span>
+<span class="fc" id="L497">                response.hsenErrRyCd(),</span>
+<span class="fc" id="L498">                resolveCorrelationId(response.correlationId()),</span>
+<span class="fc" id="L499">                response.errorCode(),</span>
+<span class="fc" id="L500">                response.errorDescription(),</span>
+<span class="fc" id="L501">                copyOrNull(response.errorDetailList()));</span>
+    }
+
+    private PostClosingResponse toForceResponse(
+            String responseCorrelationId) {
+<span class="fc" id="L506">        return new PostClosingResponse(</span>
+                null,
+<span class="fc" id="L508">                resolveCorrelationId(responseCorrelationId),</span>
+                null,
+                null,
+                null);
+    }
+
+    private TskgmstInfoResponse requiredTskgmstInfo(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L515">        TskgmstInfoResponse response = retailDivisionResponse.tskgmstInf();</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">        if (response == null) {</span>
+<span class="fc" id="L517">            throw new KaiheisenException(&quot;MA-107 応答に託送サービス契約・ガスメーター設置場所関連情報がありません&quot;);</span>
+        }
+<span class="fc" id="L519">        return response;</span>
+    }
+
+    private TkssvkyInfoResponse requiredTkssvkyInfo(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L523">        TkssvkyInfoResponse response = retailDivisionResponse.tkssvkyInf();</span>
+<span class="pc bpc" id="L524" title="1 of 2 branches missed.">        if (response == null) {</span>
+<span class="nc" id="L525">            throw new KaiheisenException(&quot;MA-107 応答に託送サービス契約情報がありません&quot;);</span>
+        }
+<span class="fc" id="L527">        return response;</span>
+    }
+
+    private String resolveRetailDivisionSearchDate(PostClosingRequest request, LocalDateTime systemDatetime) {
+<span class="fc" id="L531">        String requestedSystemDatetime = normalizeOptional(request.systemDatetime());</span>
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (requestedSystemDatetime != null) {</span>
+<span class="fc" id="L533">            return toRfc3339DateText(requestedSystemDatetime);</span>
+        }
+<span class="fc" id="L535">        return systemDatetime.toLocalDate().toString();</span>
+    }
+
+    private String resolveCorrelationId(String responseCorrelationId) {
+<span class="fc" id="L539">        String requestCorrelationId = requestContext.getCorrelationId().orElse(null);</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        if (requestCorrelationId != null) {</span>
+<span class="fc" id="L541">            return requestCorrelationId;</span>
+        }
+<span class="nc" id="L543">        String normalizedResponseCorrelationId = normalizeOptional(responseCorrelationId);</span>
+<span class="nc bnc" id="L544" title="All 2 branches missed.">        if (normalizedResponseCorrelationId != null) {</span>
+<span class="nc" id="L545">            return normalizedResponseCorrelationId;</span>
+        }
+<span class="nc" id="L547">        return null;</span>
+    }
+
+    private String resolveNormalTgDuknIsrsCd(String hesnJysb) {
+<span class="pc bpc" id="L551" title="1 of 3 branches missed.">        return switch (hesnJysb) {</span>
+<span class="fc" id="L552">            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE -&gt; relocationClosureConduitWorkDetailCode;</span>
+<span class="fc" id="L553">            case ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; unusedClosureConduitWorkDetailCode;</span>
+<span class="nc" id="L554">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolveNormalTgIsrrGmssCd(String hesnJysb) {
+<span class="pc bpc" id="L559" title="1 of 3 branches missed.">        return switch (hesnJysb) {</span>
+<span class="fc" id="L560">            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE -&gt; relocationClosureRetailWorkDetailCode;</span>
+<span class="fc" id="L561">            case ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; unusedClosureRetailWorkDetailCode;</span>
+<span class="nc" id="L562">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolveForceTgDuknIsrgCd(String hesnJysb) {
+<span class="pc bpc" id="L567" title="1 of 3 branches missed.">        return switch (hesnJysb) {</span>
+            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE,
+<span class="fc" id="L569">                    ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; closingRegistrationWorkCode;</span>
+<span class="fc" id="L570">            case ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE -&gt; supplyOutageReportRetailWorkCode;</span>
+<span class="nc" id="L571">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolveForceTgDuknIsrsCd(String hesnJysb) {
+<span class="pc bpc" id="L576" title="1 of 4 branches missed.">        return switch (hesnJysb) {</span>
+<span class="fc" id="L577">            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE -&gt; relocationClosureConduitWorkDetailCode;</span>
+<span class="fc" id="L578">            case ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; unusedClosureConduitWorkDetailCode;</span>
+<span class="fc" id="L579">            case ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE -&gt; supplyOutageConduitWorkDetailCode;</span>
+<span class="nc" id="L580">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolveForceTgIsrrGymCd(String hesnJysb) {
+<span class="pc bpc" id="L585" title="1 of 3 branches missed.">        return switch (hesnJysb) {</span>
+            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE,
+<span class="fc" id="L587">                    ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; closingRegistrationBusinessCodeRetail;</span>
+<span class="fc" id="L588">            case ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE -&gt; supplyOutageBusinessCodeRetail;</span>
+<span class="nc" id="L589">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolveForceTgIsrrGmssCd(String hesnJysb) {
+<span class="pc bpc" id="L594" title="1 of 4 branches missed.">        return switch (hesnJysb) {</span>
+<span class="fc" id="L595">            case ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE -&gt; relocationClosureRetailWorkDetailCode;</span>
+<span class="fc" id="L596">            case ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE -&gt; unusedClosureRetailWorkDetailCode;</span>
+<span class="fc" id="L597">            case ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE -&gt; supplyOutageRetailWorkDetailCode;</span>
+<span class="nc" id="L598">            default -&gt; throw new KaiheisenException(&quot;閉栓事由種別の値が不正のため、処理を終了しました&quot;);</span>
+        };
+    }
+
+    private String resolvePaymentNoticeMethod(String rshhSjsb) {
+<span class="fc" id="L603">        return ConstantLookupKeys.Cirius.FeePaymentMethodInstructionCategory.PAYMENT</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">                .equals(normalizeOptional(rshhSjsb))</span>
+<span class="fc" id="L605">                ? ConstantLookupKeys.Cirius.PaymentFormShippingMethodType.LIFEBAL_RETURN</span>
+<span class="fc" id="L606">                : null;</span>
+    }
+
+    private String toRfc3339DateText(String rawDateTime) {
+        try {
+<span class="fc" id="L611">            return OffsetDateTime.parse(rawDateTime)</span>
+<span class="fc" id="L612">                    .toLocalDate()</span>
+<span class="fc" id="L613">                    .toString();</span>
+<span class="fc" id="L614">        } catch (DateTimeParseException exception) {</span>
+            try {
+<span class="nc" id="L616">                return LocalDateTime.parse(rawDateTime)</span>
+<span class="nc" id="L617">                        .toLocalDate()</span>
+<span class="nc" id="L618">                        .toString();</span>
+<span class="fc" id="L619">            } catch (DateTimeParseException ignored) {</span>
+<span class="fc" id="L620">                return LocalDate.parse(rawDateTime).toString();</span>
+            }
+        }
+    }
+
+    private String format11Digits(Long value) {
+<span class="pc bpc" id="L626" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L627">            throw new KaiheisenException(&quot;必須の11桁数値項目が取得できません&quot;);</span>
+        }
+<span class="fc" id="L629">        return String.format(&quot;%011d&quot;, value);</span>
+    }
+
+    private String nullable11Digits(Number value) {
+<span class="pc bpc" id="L633" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L634">            return null;</span>
+        }
+<span class="fc" id="L636">        return String.format(&quot;%011d&quot;, value.longValue());</span>
+    }
+
+    private String stringify(Long value) {
+<span class="pc bpc" id="L640" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L641">            throw new KaiheisenException(&quot;必須の数値項目が取得できません&quot;);</span>
+        }
+<span class="fc" id="L643">        return value.toString();</span>
+    }
+
+    private Long parseRequiredLong(String value, String fieldName) {
+<span class="fc" id="L647">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L648" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L649">            throw new KaiheisenException(&quot;必須の数値項目が取得できません: &quot; + fieldName);</span>
+        }
+        try {
+<span class="fc" id="L652">            return Long.valueOf(normalized);</span>
+<span class="nc" id="L653">        } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L654">            throw new KaiheisenException(&quot;数値項目の形式が不正です: &quot; + fieldName, exception);</span>
+        }
+    }
+
+    private String formatDecimal(BigDecimal value) {
+<span class="pc bpc" id="L659" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L660">            throw new KaiheisenException(&quot;必須の小数項目が取得できません&quot;);</span>
+        }
+<span class="fc" id="L662">        return value.stripTrailingZeros().toPlainString();</span>
+    }
+
+    private List&lt;String&gt; copyOrNull(List&lt;String&gt; values) {
+<span class="fc bfc" id="L666" title="All 2 branches covered.">        if (values == null) {</span>
+<span class="fc" id="L667">            return null;</span>
+        }
+<span class="fc" id="L669">        return List.copyOf(values);</span>
+    }
+
+    private String normalizeOptional(String value) {
+<span class="fc bfc" id="L673" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L674">            return null;</span>
+        }
+<span class="fc" id="L676">        String normalized = value.trim();</span>
+<span class="fc bfc" id="L677" title="All 2 branches covered.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+
+    private static String stripTrailingSpaces(String value) {
+<span class="pc bpc" id="L681" title="2 of 4 branches missed.">        if (value == null || value.isEmpty()) {</span>
+<span class="nc" id="L682">            return value;</span>
+        }
+<span class="fc" id="L684">        int endIndex = value.length();</span>
+<span class="pc bpc" id="L685" title="1 of 4 branches missed.">        while (endIndex &gt; 0 &amp;&amp; value.charAt(endIndex - 1) == ' ') {</span>
+<span class="fc" id="L686">            endIndex--;</span>
+        }
+<span class="fc" id="L688">        return value.substring(0, endIndex);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

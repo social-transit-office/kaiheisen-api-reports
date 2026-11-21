@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NwkseigDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-ciriusdb-cirius-nwkseig</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.nwkseig</a> &gt; <span class="el_source">NwkseigDataAccessImpl.java</span></div><h1>NwkseigDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.ciriusdb.cirius.nwkseig;
+
+import com.blazebit.persistence.CriteriaBuilderFactory;
+import jakarta.persistence.EntityManager;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.nwkseig.NwkseigDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.nwkseig.NwkseigRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaDbWriteValues;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.JpaWhere;
+import jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core.ReflectiveRecordEntityMapper;
+
+/** 営業情報ＮＷ箇所マスター（NWKSEIG）データアクセスの JPA 実装。 */
+public class NwkseigDataAccessImpl extends DataAccessBase implements NwkseigDataAccess {
+
+    private static final int NWK_CD_LENGTH = 7;
+
+<span class="fc" id="L22">    private static final ReflectiveRecordEntityMapper&lt;NwkseigRecord, NwkseigEntity&gt; MAPPER =</span>
+<span class="fc" id="L23">            ReflectiveRecordEntityMapper.create(NwkseigRecord.class, NwkseigEntity.class);</span>
+
+    private final EntityManager entityManager;
+
+    private final CriteriaBuilderFactory criteriaBuilderFactory;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param entityManager エンティティマネージャ
+     * @param criteriaBuilderFactory CriteriaBuilderFactory
+     */
+    public NwkseigDataAccessImpl(
+<span class="fc" id="L36">            EntityManager entityManager, CriteriaBuilderFactory criteriaBuilderFactory) {</span>
+<span class="fc" id="L37">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L38">        this.criteriaBuilderFactory =</span>
+<span class="fc" id="L39">                Objects.requireNonNull(criteriaBuilderFactory, &quot;criteriaBuilderFactory&quot;);</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    public Optional&lt;NwkseigRecord&gt; findByNwkCdAndTkysYmdAndTyenYmd(
+            String nwkCd, LocalDate knskKjnYmd) {
+<span class="fc" id="L45">        String safeNwkCd = safeNwkCd(nwkCd, &quot;nwkCd&quot;);</span>
+<span class="fc" id="L46">        BigDecimal safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+
+<span class="fc" id="L48">        var builder = criteriaBuilderFactory.create(entityManager, NwkseigEntity.class);</span>
+<span class="fc" id="L49">        JpaWhere.eq(builder, &quot;nwkCd&quot;, safeNwkCd);</span>
+<span class="fc" id="L50">        JpaWhere.le(builder, &quot;tkysYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L51">        JpaWhere.ge(builder, &quot;tyenYmd&quot;, safeKnskKjnYmd);</span>
+<span class="fc" id="L52">        builder.orderByDesc(&quot;tkysYmd&quot;);</span>
+<span class="fc" id="L53">        return builder.setMaxResults(1)</span>
+<span class="fc" id="L54">                .getResultList()</span>
+<span class="fc" id="L55">                .stream()</span>
+<span class="fc" id="L56">                .map(MAPPER::toRecord)</span>
+<span class="fc" id="L57">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;NwkseigRecord&gt; findByPK(String nwkCd, LocalDate tkysYmd) {
+<span class="fc" id="L62">        NwkseigId id = new NwkseigId(safeNwkCd(nwkCd, &quot;nwkCd&quot;), safeYmd(tkysYmd, &quot;tkysYmd&quot;));</span>
+<span class="fc" id="L63">        NwkseigEntity entity = entityManager.find(NwkseigEntity.class, id);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (entity == null) {</span>
+<span class="fc" id="L65">            return Optional.empty();</span>
+        }
+<span class="fc" id="L67">        return Optional.of(MAPPER.toRecord(entity));</span>
+    }
+
+    private static String safeNwkCd(String value, String paramName) {
+<span class="fc" id="L71">        return WhereParamGuard.fixedLengthNotNull(value, paramName, NWK_CD_LENGTH);</span>
+    }
+
+    private static BigDecimal safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L75">        return WhereParamGuard.complement(</span>
+<span class="fc" id="L76">                JpaDbWriteValues.ymd(value), paramName, BigDecimal.ZERO);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

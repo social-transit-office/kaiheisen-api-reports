@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LivalitOpeningPayerInfoGetResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-other</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.retail.retail_tg</a> &gt; <span class="el_source">LivalitOpeningPayerInfoGetResource.java</span></div><h1>LivalitOpeningPayerInfoGetResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_other.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.InterFieldValidation;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningPayerInfoGetEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningPayerInfoGetPayerBuildingInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningPayerInfoGetPayerTelephoneEntry;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningPayerInfoGetRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitOpeningPayerInfoGetResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.CorrelationIdResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.observability.filter.CorrelationIdFilter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.KasnhkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kasnhk.write.KasnhkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.HousingCategoryCodeAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.HousingCategoryCodeAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.KanjiFieldAvailabilityJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.KanjiFieldAvailabilityJudgmentOutput;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * MA-049 LIVALIT用開栓時支払者情報連携 API のリソース実装。
+ */
+@Path(LivalitOpeningPayerInfoGetEndpointContract.PATH)
+@Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(name = &quot;LIVALIT用開栓時支払者情報連携&quot;, description = &quot;MA-049 LIVALIT用開栓時支払者情報連携 API&quot;)
+@MainService(identifier = &quot;MA-049&quot;, name = &quot;LIVALIT用：開栓時支払者情報連携-小売-TG小売&quot;)
+public class LivalitOpeningPayerInfoGetResource extends BaseResource&lt;LivalitOpeningPayerInfoGetRequest&gt; {
+
+    static final String UPD_USER_ID = &quot;KHSM049&quot;;
+
+    static final String REQUIRED_ERROR_CODE = ErrorCodeConstants.ERROR_CODE_010000011;
+
+    private static final String CORRELATION_ID_PATTERN =
+            &quot;^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|[A-Za-z0-9_-]{1,20})$&quot;;
+
+    private static final String ARRAY_ERROR_CODE = ErrorCodeConstants.ERROR_CODE_010000014;
+
+    private final KasnhkDataAccess kasnhkDataAccess;
+
+    private final KanjiFieldAvailabilityJudgment kanjiFieldAvailabilityJudgment;
+
+    private final HousingCategoryCodeAcquisition housingCategoryCodeAcquisition;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String openingReportStatusReporting;
+
+    /**
+     * コンストラクタ。
+     */
+    @Inject
+    public LivalitOpeningPayerInfoGetResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            KasnhkDataAccess kasnhkDataAccess,
+            KanjiFieldAvailabilityJudgment kanjiFieldAvailabilityJudgment,
+            HousingCategoryCodeAcquisition housingCategoryCodeAcquisition,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L97">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L98">        this.kasnhkDataAccess = Objects.requireNonNull(kasnhkDataAccess, &quot;kasnhkDataAccess&quot;);</span>
+<span class="fc" id="L99">        this.kanjiFieldAvailabilityJudgment = Objects.requireNonNull(</span>
+                kanjiFieldAvailabilityJudgment,
+                &quot;kanjiFieldAvailabilityJudgment&quot;);
+<span class="fc" id="L102">        this.housingCategoryCodeAcquisition = Objects.requireNonNull(</span>
+                housingCategoryCodeAcquisition,
+                &quot;housingCategoryCodeAcquisition&quot;);
+<span class="fc" id="L105">        this.kaiheisenConstantService = Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L106">        this.openingReportStatusReporting = RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L107">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.OpeningReportStatus.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReportStatus.REPORTING_OPENING);
+<span class="fc" id="L110">    }</span>
+
+    @Override
+    protected InterFieldValidation&lt;LivalitOpeningPayerInfoGetRequest&gt; interFieldValidation() {
+<span class="fc" id="L114">        return request -&gt; {</span>
+<span class="fc" id="L115">            List&lt;ValidationError&gt; errors = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">            if (request == null || request.shrsTelnoInf() == null) {</span>
+<span class="fc" id="L117">                return errors;</span>
+            }
+
+<span class="fc" id="L120">            Integer telnoCnt = request.shrsTelnoInf().telnoCnt();</span>
+            List&lt;LivalitOpeningPayerInfoGetPayerTelephoneEntry&gt; entries =
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                    request.shrsTelnoInf().telnoInf() == null ? List.of() : request.shrsTelnoInf().telnoInf();</span>
+
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">            if (telnoCnt != null &amp;&amp; telnoCnt &gt; 2) {</span>
+<span class="fc" id="L125">                errors.add(ValidationError.ofField(ARRAY_ERROR_CODE, &quot;shrsTelnoInf.telnoCnt&quot;));</span>
+            }
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (entries.size() &gt; 2) {</span>
+<span class="fc" id="L128">                errors.add(ValidationError.ofField(ARRAY_ERROR_CODE, &quot;shrsTelnoInf.telnoInf&quot;));</span>
+            }
+<span class="fc bfc" id="L130" title="All 2 branches covered.">            if (!errors.isEmpty()) {</span>
+<span class="fc" id="L131">                return errors;</span>
+            }
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">            if (telnoCnt != null &amp;&amp; telnoCnt != entries.size()) {</span>
+<span class="nc" id="L134">                errors.add(ValidationError.ofField(ARRAY_ERROR_CODE, &quot;shrsTelnoInf.telnoCnt&quot;));</span>
+<span class="nc" id="L135">                return errors;</span>
+            }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            for (int index = 0; index &lt; entries.size(); index++) {</span>
+<span class="fc" id="L138">                LivalitOpeningPayerInfoGetPayerTelephoneEntry entry = entries.get(index);</span>
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">                if (entry == null || normalizeOptional(entry.shsyTelNo()) == null) {</span>
+<span class="nc" id="L140">                    continue;</span>
+                }
+<span class="fc" id="L142">                addRequiredTextError(errors, fieldName(index, &quot;shsyTelShbt&quot;), entry.shsyTelShbt());</span>
+<span class="fc" id="L143">                addRequiredTextError(errors, fieldName(index, &quot;shsyTrrsShbt&quot;), entry.shsyTrrsShbt());</span>
+<span class="fc" id="L144">                addRequiredTextError(errors, fieldName(index, &quot;shsyTknzShbt&quot;), entry.shsyTknzShbt());</span>
+<span class="fc" id="L145">                addRequiredTextError(errors, fieldName(index, &quot;shsyTssdShbt&quot;), entry.shsyTssdShbt());</span>
+<span class="fc" id="L146">                addRequiredTextError(errors, fieldName(index, &quot;shsyTstkYmd&quot;), entry.shsyTstkYmd());</span>
+<span class="fc" id="L147">                addRequiredTextError(errors, fieldName(index, &quot;shsyTtsnKj&quot;), entry.shsyTtsnKj());</span>
+<span class="fc" id="L148">                addRequiredTextError(errors, fieldName(index, &quot;shsyTezgShbt&quot;), entry.shsyTezgShbt());</span>
+            }
+<span class="fc" id="L150">            return errors;</span>
+        };
+    }
+
+    /**
+     * MA-049 を実行する。
+     */
+    @POST
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;LIVALIT用開栓時支払者情報連携&quot;,
+            description = &quot;DA-118 と SV-013/SV-077 を利用して開栓報告情報を再登録する。&quot;,
+            operationId = &quot;postLivalitOpeningPayerInfo&quot;)
+    @Parameter(
+            name = CorrelationIdFilter.HEADER_NAME,
+            in = ParameterIn.HEADER,
+            description = &quot;相関ID。未指定時はサーバで採番する。&quot;,
+            schema = @Schema(
+                type = SchemaType.STRING,
+                maxLength = 36,
+                pattern = CORRELATION_ID_PATTERN))
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;支払者情報連携完了&quot;,
+            headers = @Header(
+                name = CorrelationIdFilter.HEADER_NAME,
+                description = &quot;相関ID&quot;,
+                schema = @Schema(
+                    type = SchemaType.STRING,
+                    maxLength = 36,
+                    pattern = CORRELATION_ID_PATTERN)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = LivalitOpeningPayerInfoGetResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            headers = @Header(
+                name = CorrelationIdFilter.HEADER_NAME,
+                description = &quot;相関ID&quot;,
+                schema = @Schema(
+                    type = SchemaType.STRING,
+                    maxLength = 36,
+                    pattern = CORRELATION_ID_PATTERN)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = CommonErrorResponse.class)))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            headers = @Header(
+                name = CorrelationIdFilter.HEADER_NAME,
+                description = &quot;相関ID&quot;,
+                schema = @Schema(
+                    type = SchemaType.STRING,
+                    maxLength = 36,
+                    pattern = CORRELATION_ID_PATTERN)),
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public LivalitOpeningPayerInfoGetResponse endpoint(LivalitOpeningPayerInfoGetRequest request) {
+<span class="fc" id="L211">        bindCorrelationIdFromBodyIfPresent(request);</span>
+<span class="fc" id="L212">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    private void bindCorrelationIdFromBodyIfPresent(LivalitOpeningPayerInfoGetRequest request) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (request == null) {</span>
+<span class="nc" id="L217">            return;</span>
+        }
+<span class="fc" id="L219">        String correlationId = normalizeOptional(request.correlationId());</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (correlationId != null) {</span>
+<span class="fc" id="L221">            requestContext.setCorrelationId(CorrelationIdResolver.resolve(correlationId));</span>
+        }
+<span class="fc" id="L223">    }</span>
+
+    LivalitOpeningPayerInfoGetResponse handle(LivalitOpeningPayerInfoGetRequest request) {
+<span class="fc" id="L226">        LocalDate kasgYmd = parseRequestDate(request.kaisenUktkInf().kasgYmd());</span>
+<span class="fc" id="L227">        LocalDate kasHukkYmd = parseRequestDate(request.kaisenUktkInf().kasHukkYmd());</span>
+<span class="fc" id="L228">        String gmb = request.kaisenUktkInf().gmb();</span>
+<span class="fc" id="L229">        String sgyAnknNo = request.kaisenUktkInf().sgyAnknNo();</span>
+
+<span class="fc" id="L231">        kasnhkDataAccess.deleteByGmbAndKasgYmdAndKasHukkYmdAndLvltAnknNo(</span>
+                gmb,
+                kasgYmd,
+                kasHukkYmd,
+                sgyAnknNo,
+                null);
+
+<span class="fc" id="L238">        ResolvedKanjiFlags resolvedKanjiFlags = resolveKanjiFlags(request);</span>
+<span class="fc" id="L239">        String buildingNameKana = normalizeOptional(buildingInfo(request).sbdnKn());</span>
+<span class="fc" id="L240">        HousingCategoryCodeAcquisitionOutput housingCategory =</span>
+<span class="fc" id="L241">                housingCategoryCodeAcquisition.execute(buildingNameKana);</span>
+
+<span class="fc" id="L243">        String resolvedHukkSysShbt = normalizeOptional(request.hukkSysShbt());</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (resolvedHukkSysShbt == null) {</span>
+<span class="fc" id="L245">            resolvedHukkSysShbt = ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT;</span>
+        }
+
+<span class="fc" id="L248">        kasnhkDataAccess.insert(</span>
+<span class="fc" id="L249">                toKasnhkWriteRecord(</span>
+                        request,
+                        kasgYmd,
+                        kasHukkYmd,
+                        resolvedKanjiFlags,
+<span class="fc" id="L254">                        housingCategory.jutKbn()),</span>
+<span class="fc" id="L255">                AuditContext.of(UPD_USER_ID, decodeFunctionId(resolvedHukkSysShbt)));</span>
+<span class="fc" id="L256">        return new LivalitOpeningPayerInfoGetResponse(resolveResponseCorrelationId());</span>
+    }
+
+    private ResolvedKanjiFlags resolveKanjiFlags(LivalitOpeningPayerInfoGetRequest request) {
+<span class="fc" id="L260">        Boolean sonKjhkFlg = request.shrsCustmrInf().sonKjhkFlg();</span>
+<span class="fc" id="L261">        Boolean sbdnKjhkFlg = buildingInfo(request).sbdnKjhkFlg();</span>
+<span class="pc bpc" id="L262" title="1 of 4 branches missed.">        if (sonKjhkFlg != null &amp;&amp; sbdnKjhkFlg != null) {</span>
+<span class="fc" id="L263">            return new ResolvedKanjiFlags(sonKjhkFlg, sbdnKjhkFlg);</span>
+        }
+
+<span class="fc" id="L266">        KanjiFieldAvailabilityJudgmentOutput output = kanjiFieldAvailabilityJudgment.execute(</span>
+<span class="fc" id="L267">            request.shrsCustmrInf().sonKj1(),</span>
+<span class="fc" id="L268">            buildingInfo(request).sbdnKj(),</span>
+                null);
+
+<span class="fc" id="L271">        return new ResolvedKanjiFlags(</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                sonKjhkFlg != null ? sonKjhkFlg : output.khFlg1(),</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">                sbdnKjhkFlg != null ? sbdnKjhkFlg : output.khFlg2());</span>
+    }
+
+    private KasnhkWriteRecord toKasnhkWriteRecord(
+            LivalitOpeningPayerInfoGetRequest request,
+            LocalDate kasgYmd,
+            LocalDate kasHukkYmd,
+            ResolvedKanjiFlags resolvedKanjiFlags,
+            String jutKbn) {
+<span class="fc" id="L282">        var opening = request.kaisenUktkInf();</span>
+<span class="fc" id="L283">        var customer = request.shrsCustmrInf();</span>
+<span class="fc" id="L284">        var building = buildingInfo(request);</span>
+<span class="fc" id="L285">        PhoneSlot firstPhone = phoneSlot(request, 0);</span>
+<span class="fc" id="L286">        PhoneSlot secondPhone = phoneSlot(request, 1);</span>
+<span class="fc" id="L287">        String resolvedHukkSysShbt = normalizeOptional(request.hukkSysShbt());</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        if (resolvedHukkSysShbt == null) {</span>
+<span class="fc" id="L289">            resolvedHukkSysShbt = ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT;</span>
+        }
+
+<span class="fc" id="L292">        return new KasnhkWriteRecord(</span>
+<span class="fc" id="L293">                opening.gmb(),</span>
+                kasgYmd,
+                kasHukkYmd,
+                resolvedHukkSysShbt,
+<span class="fc" id="L297">                opening.sgyAnknNo(),</span>
+                openingReportStatusReporting,
+                null,
+                kasgYmd,
+<span class="fc" id="L301">                opening.kasgNwkCd(),</span>
+<span class="fc" id="L302">                opening.cktkCd(),</span>
+                null,
+<span class="fc" id="L304">                opening.gasMtstNo(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L311">                opening.ctnmKn1(),</span>
+<span class="fc" id="L312">                opening.ctnmKj1(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L319">                customer.sonKn1(),</span>
+<span class="fc" id="L320">                customer.sonKj1(),</span>
+                ConstantLookupKeys.Cirius.CorporateType.NO_LEGAL_TYPE,
+                ConstantLookupKeys.Cirius.DisplayPositionTypeByCorporationType.HIDDEN,
+<span class="fc" id="L323">                customer.sonKn2(),</span>
+<span class="fc" id="L324">                customer.sonKj2(),</span>
+                ConstantLookupKeys.Cirius.CorporateType.NO_LEGAL_TYPE,
+                ConstantLookupKeys.Cirius.DisplayPositionTypeByCorporationType.HIDDEN,
+<span class="fc" id="L327">                resolvedKanjiFlags.sonKjhkFlg(),</span>
+                ConstantLookupKeys.Cirius.InquiryLevelType.ALL_CAN_BE_QUERIED_AND_DISPLAYED,
+<span class="fc" id="L329">                customer.shsyYubnNo(),</span>
+<span class="fc" id="L330">                customer.shsyGkkCd(),</span>
+<span class="fc" id="L331">                customer.shsyMchCd(),</span>
+<span class="fc" id="L332">                customer.shsyCmazCd(),</span>
+<span class="fc" id="L333">                customer.shsyCbgSuj1(),</span>
+<span class="fc" id="L334">                customer.shsyCbgKn2(),</span>
+<span class="fc" id="L335">                customer.shsyCbgKn3(),</span>
+<span class="fc" id="L336">                customer.shsyCbgKn4(),</span>
+<span class="fc" id="L337">                building.sbdnKj(),</span>
+<span class="fc" id="L338">                building.sbdnKn(),</span>
+<span class="fc" id="L339">                resolvedKanjiFlags.sbdnKjhkFlg(),</span>
+                jutKbn,
+<span class="fc" id="L341">                customer.shsyTunoKn(),</span>
+<span class="fc" id="L342">                customer.shnoKn(),</span>
+<span class="fc" id="L343">                customer.shnoTrumFlg(),</span>
+<span class="fc" id="L344">                firstPhone.shsyTelNo(),</span>
+<span class="fc" id="L345">                firstPhone.shsyTelShbt(),</span>
+<span class="fc" id="L346">                firstPhone.shsyTrrsShbt(),</span>
+<span class="fc" id="L347">                firstPhone.shsyTknzShbt(),</span>
+<span class="fc" id="L348">                firstPhone.shsyTssdShbt(),</span>
+<span class="fc" id="L349">                firstPhone.shsyTstkYmd(),</span>
+<span class="fc" id="L350">                firstPhone.shsyTtsnKj(),</span>
+<span class="fc" id="L351">                firstPhone.shsyTezgShbt(),</span>
+<span class="fc" id="L352">                firstPhone.shsyTemdKbn(),</span>
+<span class="fc" id="L353">                secondPhone.shsyTelNo(),</span>
+<span class="fc" id="L354">                secondPhone.shsyTelShbt(),</span>
+<span class="fc" id="L355">                secondPhone.shsyTrrsShbt(),</span>
+<span class="fc" id="L356">                secondPhone.shsyTknzShbt(),</span>
+<span class="fc" id="L357">                secondPhone.shsyTssdShbt(),</span>
+<span class="fc" id="L358">                secondPhone.shsyTstkYmd(),</span>
+<span class="fc" id="L359">                secondPhone.shsyTtsnKj(),</span>
+<span class="fc" id="L360">                secondPhone.shsyTezgShbt(),</span>
+<span class="fc" id="L361">                secondPhone.shsyTemdKbn(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private PhoneSlot phoneSlot(LivalitOpeningPayerInfoGetRequest request, int index) {
+<span class="pc bpc" id="L376" title="2 of 4 branches missed.">        if (request.shrsTelnoInf() == null || request.shrsTelnoInf().telnoInf() == null) {</span>
+<span class="nc" id="L377">            return PhoneSlot.empty();</span>
+        }
+<span class="fc" id="L379">        List&lt;LivalitOpeningPayerInfoGetPayerTelephoneEntry&gt; entries = request.shrsTelnoInf().telnoInf();</span>
+<span class="pc bpc" id="L380" title="1 of 4 branches missed.">        if (index &gt;= entries.size() || entries.get(index) == null) {</span>
+<span class="fc" id="L381">            return PhoneSlot.empty();</span>
+        }
+<span class="fc" id="L383">        LivalitOpeningPayerInfoGetPayerTelephoneEntry entry = entries.get(index);</span>
+<span class="fc" id="L384">        String telNo = normalizeOptional(entry.shsyTelNo());</span>
+<span class="pc bpc" id="L385" title="1 of 2 branches missed.">        if (telNo == null) {</span>
+<span class="nc" id="L386">            return PhoneSlot.empty();</span>
+        }
+<span class="fc" id="L388">        return new PhoneSlot(</span>
+                telNo,
+<span class="fc" id="L390">                normalizeOptional(entry.shsyTelShbt()),</span>
+<span class="fc" id="L391">                normalizeOptional(entry.shsyTrrsShbt()),</span>
+<span class="fc" id="L392">                normalizeOptional(entry.shsyTknzShbt()),</span>
+<span class="fc" id="L393">                normalizeOptional(entry.shsyTssdShbt()),</span>
+<span class="fc" id="L394">                parseOptionalRequestDate(entry.shsyTstkYmd()),</span>
+<span class="fc" id="L395">                normalizeOptional(entry.shsyTtsnKj()),</span>
+<span class="fc" id="L396">                normalizeOptional(entry.shsyTezgShbt()),</span>
+<span class="fc" id="L397">                normalizeOptional(entry.shsyTemdKbn()));</span>
+    }
+
+    private String decodeFunctionId(String hukkSysShbt) {
+<span class="fc" id="L401">        String normalized = normalizeOptional(hukkSysShbt);</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L403">            return null;</span>
+        }
+<span class="fc" id="L405">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                normalized);
+    }
+
+    private String resolveResponseCorrelationId() {
+<span class="fc" id="L411">        return requestContext.getCorrelationId().orElseGet(() -&gt; {</span>
+<span class="nc" id="L412">            String generated = CorrelationIdResolver.resolve(null);</span>
+<span class="nc" id="L413">            requestContext.setCorrelationId(generated);</span>
+<span class="nc" id="L414">            return generated;</span>
+        });
+    }
+
+    private LocalDate parseRequestDate(String rawDate) {
+<span class="fc" id="L419">        String normalized = Objects.requireNonNull(normalizeOptional(rawDate), &quot;rawDate&quot;);</span>
+        try {
+<span class="fc" id="L421">            return LocalDate.parse(normalized);</span>
+<span class="nc" id="L422">        } catch (DateTimeParseException ignored) {</span>
+            try {
+<span class="nc" id="L424">                return OffsetDateTime.parse(normalized).toLocalDate();</span>
+<span class="nc" id="L425">            } catch (DateTimeParseException ex) {</span>
+<span class="nc" id="L426">                throw new IllegalArgumentException(&quot;date must follow RFC3339&quot;, ex);</span>
+            }
+        }
+    }
+
+    private LocalDate parseOptionalRequestDate(String rawDate) {
+<span class="fc" id="L432">        String normalized = normalizeOptional(rawDate);</span>
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        return normalized == null ? null : parseRequestDate(normalized);</span>
+    }
+
+    private static void addRequiredTextError(List&lt;ValidationError&gt; errors, String field, String value) {
+<span class="pc bpc" id="L437" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L438">            errors.add(ValidationError.ofField(REQUIRED_ERROR_CODE, field));</span>
+        }
+<span class="fc" id="L440">    }</span>
+
+    private static String fieldName(int index, String field) {
+<span class="fc" id="L443">        return &quot;shrsTelnoInf.telnoInf[&quot; + index + &quot;].&quot; + field;</span>
+    }
+
+    private static LivalitOpeningPayerInfoGetPayerBuildingInfo buildingInfo(LivalitOpeningPayerInfoGetRequest request) {
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">        return request.shrsTatemonInf() == null</span>
+<span class="nc" id="L448">                ? new LivalitOpeningPayerInfoGetPayerBuildingInfo(null, null, null)</span>
+<span class="fc" id="L449">                : request.shrsTatemonInf();</span>
+    }
+
+<span class="fc" id="L452">    private record ResolvedKanjiFlags(</span>
+            Boolean sonKjhkFlg,
+            Boolean sbdnKjhkFlg) {
+    }
+
+<span class="fc" id="L457">    private record PhoneSlot(</span>
+            String shsyTelNo,
+            String shsyTelShbt,
+            String shsyTrrsShbt,
+            String shsyTknzShbt,
+            String shsyTssdShbt,
+            LocalDate shsyTstkYmd,
+            String shsyTtsnKj,
+            String shsyTezgShbt,
+            String shsyTemdKbn) {
+
+        private static PhoneSlot empty() {
+<span class="fc" id="L469">            return new PhoneSlot(null, null, null, null, null, null, null, null, null);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransportServiceContractMeterLocationUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-transportservicecontractmeterlocationupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">TransportServiceContractMeterLocationUpdateForRevivalImpl.java</span></div><h1>TransportServiceContractMeterLocationUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess.CallSpecs.FIND_BY_TKSU_SVKY_NO_AND_KNSK_KJN_YMD_AND_TKSU_SVKY_JTKB_LIST;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess.CallSpecs.UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_TKSU_SVKK_JTKB;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess.CallSpecs.UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkySknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.write.TkssvkyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractMeterLocationUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.TransportServiceContractMeterLocationUpdateForRevivalOutput;
+
+/**
+ * 概要: 契約復活時に託送サービス契約と関連情報を更新する SV 実装.
+ * 主な仕様: 取消対象検針年月日時点で有効な関連情報と契約情報を順に取得し、
+ * 契約復活状態へ更新したうえで使用者契約お客さま登録番号を返却する.
+ * 既知の制約: recUpdJnjNo を指定しない非排他更新として扱うため、
+ * 更新件数 0 件時のデータ不整合判定は SV 側で実施する.
+ */
+public final class TransportServiceContractMeterLocationUpdateForRevivalImpl
+        implements TransportServiceContractMeterLocationUpdateForRevival {
+
+    /** 監査項目に設定する更新ユーザーID. */
+    static final String SERVICE_USER_ID = &quot;KHSS110&quot;;
+
+    /** 契約復活時に設定する終了年月日. */
+<span class="fc" id="L46">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    /** 関連更新用 DA 識別子. */
+<span class="fc" id="L49">    private static final String RELATION_UPDATE_DA_IDENTIFIER =</span>
+            UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L51">                    .identifier();</span>
+
+    /** 託送サービス契約・ガスメーター設置場所関連 DA. */
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    /** 託送サービス契約 DA. */
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    /** リクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+    /** 開閉栓定数取得サービス. */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /** 契約適用中の関連状態区分. */
+    private final String applyingRelationStatus;
+
+    /** 契約適用終了の関連状態区分. */
+    private final String applicableEndRelationStatus;
+
+    /** 契約中の契約状態区分. */
+    private final String underContractStatus;
+
+    /** 契約終了の契約状態区分. */
+    private final String endOfContractStatus;
+
+    /**
+     * 必須依存と定数を初期化する.
+     *
+     * @param relationDataAccess TSKGMST データアクセス
+     * @param contractDataAccess TKSSVKY データアクセス
+     * @param context リクエストコンテキスト
+     * @param constantService 開閉栓コンスタント取得サービス
+     * @param ciriusService CIRIUS コンスタント取得サービス
+     */
+    public TransportServiceContractMeterLocationUpdateForRevivalImpl(
+            final TskgmstDataAccess relationDataAccess,
+            final TkssvkyDataAccess contractDataAccess,
+            final RequestContext context,
+            final KaiheisenConstantService constantService,
+<span class="fc" id="L91">            final CiriusConstantService ciriusService) {</span>
+<span class="fc" id="L92">        String relationStatusType = ConstantLookupKeys.Cirius</span>
+                .TransportationServiceContractRelatedStatus.TYPE;
+<span class="fc" id="L94">        String contractStatusType = ConstantLookupKeys.Cirius</span>
+                .TransportationServiceContractStatus.TYPE;
+<span class="fc" id="L96">        this.tskgmstDataAccess = Objects.requireNonNull(</span>
+                relationDataAccess,
+                &quot;tskgmstDataAccess&quot;);
+<span class="fc" id="L99">        this.tkssvkyDataAccess = Objects.requireNonNull(</span>
+                contractDataAccess,
+                &quot;tkssvkyDataAccess&quot;);
+<span class="fc" id="L102">        this.requestContext = Objects.requireNonNull(context, &quot;requestContext&quot;);</span>
+<span class="fc" id="L103">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                constantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L106">        CiriusConstantService resolvedCiriusService =</span>
+<span class="fc" id="L107">                Objects.requireNonNull(ciriusService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L108">        this.applyingRelationStatus =</span>
+<span class="fc" id="L109">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusService,
+                        relationStatusType,
+                        ConstantLookupKeys.Cirius
+                                .TransportationServiceContractRelatedStatus
+                                .APPLYING);
+<span class="fc" id="L115">        this.applicableEndRelationStatus =</span>
+<span class="fc" id="L116">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusService,
+                        relationStatusType,
+                        ConstantLookupKeys.Cirius
+                                .TransportationServiceContractRelatedStatus
+                                .APPLICABLE_ENDS);
+<span class="fc" id="L122">        this.underContractStatus =</span>
+<span class="fc" id="L123">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusService,
+                        contractStatusType,
+                        ConstantLookupKeys.Cirius
+                                .TransportationServiceContractStatus
+                                .UNDER_CONTRACT);
+<span class="fc" id="L129">        this.endOfContractStatus =</span>
+<span class="fc" id="L130">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusService,
+                        contractStatusType,
+                        ConstantLookupKeys.Cirius
+                                .TransportationServiceContractStatus
+                                .END_OF_CONTRACT);
+<span class="fc" id="L136">    }</span>
+
+    @Override
+    public TransportServiceContractMeterLocationUpdateForRevivalOutput execute(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L142">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L143">        AuditContext auditContext = AuditContext.of(</span>
+                SERVICE_USER_ID,
+                decodedOriginFunctionId);
+
+<span class="fc" id="L147">        TskgmstRecord relationRecord = tskgmstDataAccess</span>
+<span class="fc" id="L148">                .findByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(</span>
+                        gasMtstNo,
+                        trkKnsYmd,
+<span class="fc" id="L151">                        relationStatuses())</span>
+<span class="fc" id="L152">                .orElseThrow(</span>
+<span class="fc" id="L153">                        () -&gt; createRelationMissingException(</span>
+                                gasMtstNo,
+                                trkKnsYmd));
+
+<span class="fc" id="L157">        TkssvkyRecord contractRecord = tkssvkyDataAccess</span>
+<span class="fc" id="L158">                .findByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkbList(</span>
+<span class="fc" id="L159">                        relationRecord.tksuSvkyNo(),</span>
+                        trkKnsYmd,
+<span class="fc" id="L161">                        contractStatuses())</span>
+<span class="fc" id="L162">                .orElseThrow(() -&gt; createContractMissingException(</span>
+<span class="fc" id="L163">                        relationRecord.tksuSvkyNo(),</span>
+                        trkKnsYmd));
+
+<span class="fc" id="L166">        int updatedContractCount =</span>
+<span class="fc" id="L167">                tkssvkyDataAccess.updateByTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+<span class="fc" id="L168">                        buildTkssvkyWriteRecord(contractRecord),</span>
+<span class="fc" id="L169">                        Set.of(</span>
+                                TkssvkyColumn.TKSU_SVKY_JTKB,
+                                TkssvkyColumn.TKSU_SVKE_JYSB,
+                                TkssvkyColumn.TYEN_YMD),
+                        new TkssvkySknoJnjUpdateKey(
+<span class="fc" id="L174">                                contractRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L175">                                contractRecord.skno()),</span>
+                        auditContext);
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (updatedContractCount == 0) {</span>
+<span class="fc" id="L178">            throw createContractUpdateException(</span>
+                    contractRecord,
+                    decodedOriginFunctionId);
+        }
+
+<span class="fc" id="L183">        int updatedRelationCount =</span>
+                tskgmstDataAccess
+<span class="fc" id="L185">                        .updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(</span>
+<span class="fc" id="L186">                                buildTskgmstWriteRecord(relationRecord),</span>
+<span class="fc" id="L187">                                Set.of(</span>
+                                        TskgmstColumn.TKSU_SVKK_JTKB,
+                                        TskgmstColumn.TYEN_YMD),
+                                new TskgmstUpdateKey(
+<span class="fc" id="L191">                                        relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L192">                                        relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L193">                                        relationRecord.skno()),</span>
+                                auditContext);
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (updatedRelationCount == 0) {</span>
+<span class="fc" id="L196">            throw createRelationUpdateException(</span>
+                    relationRecord,
+                    decodedOriginFunctionId);
+        }
+
+<span class="fc" id="L201">        return new TransportServiceContractMeterLocationUpdateForRevivalOutput(</span>
+<span class="fc" id="L202">                contractRecord.syoKyoTrno());</span>
+    }
+
+    /**
+     * 復活対象として許容する関連状態区分一覧を返す.
+     *
+     * @return 復活対象の関連状態区分一覧
+     */
+    private List&lt;String&gt; relationStatuses() {
+<span class="fc" id="L211">        return List.of(applyingRelationStatus, applicableEndRelationStatus);</span>
+    }
+
+    /**
+     * 復活対象として許容する契約状態区分一覧を返す.
+     *
+     * @return 復活対象の契約状態区分一覧
+     */
+    private List&lt;String&gt; contractStatuses() {
+<span class="fc" id="L220">        return List.of(underContractStatus, endOfContractStatus);</span>
+    }
+
+    /**
+     * リクエストコンテキストから更新機能IDを解決する.
+     *
+     * @return 更新機能ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L229">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L231">                requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L232">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.hukkSysShbt is required&quot;)));
+    }
+
+    /**
+     * 関連情報が存在しない場合のデータ不整合例外を生成する.
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 生成したデータ不整合例外
+     */
+    private RuntimeException createRelationMissingException(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L246">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L247">                tskgmstDataAccess.tableName(),</span>
+<span class="fc" id="L248">                relationFindDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L250">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L251">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L252">                        .put(</span>
+                                &quot;tksuSvkkJtkbList&quot;,
+<span class="fc" id="L254">                                relationStatuses()));</span>
+    }
+
+    /**
+     * 契約情報が存在しない場合のデータ不整合例外を生成する.
+     *
+     * @param tksuSvkyNo 託送サービス契約番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @return 生成したデータ不整合例外
+     */
+    private RuntimeException createContractMissingException(
+            final Long tksuSvkyNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L267">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L268">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L269">                contractFindDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L271">                        .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L272">                        .put(&quot;knskKjnYmd&quot;, trkKnsYmd)</span>
+<span class="fc" id="L273">                        .put(</span>
+                                &quot;tksuSvkyJtkbList&quot;,
+<span class="fc" id="L275">                                contractStatuses()));</span>
+    }
+
+    /**
+     * 契約更新件数が 0 件だった場合のデータ不整合例外を生成する.
+     *
+     * @param contractRecord 契約レコード
+     * @param decodedOriginFunctionId 更新機能ID
+     * @return 生成したデータ不整合例外
+     */
+    private RuntimeException createContractUpdateException(
+            final TkssvkyRecord contractRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L288">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L289">                tkssvkyDataAccess.tableName(),</span>
+<span class="fc" id="L290">                contractUpdateDaIdentifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L292">                        .put(&quot;tksuSvkyNo&quot;, contractRecord.tksuSvkyNo())</span>
+<span class="fc" id="L293">                        .put(&quot;skno&quot;, contractRecord.skno())</span>
+<span class="fc" id="L294">                        .put(&quot;tksuSvkyJtkb&quot;, underContractStatus)</span>
+<span class="fc" id="L295">                        .put(&quot;tksuSvkeJysb&quot;, null)</span>
+<span class="fc" id="L296">                        .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L297">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L298">                        .put(</span>
+                                &quot;updKtnKinoId&quot;,
+                                decodedOriginFunctionId));
+    }
+
+    /**
+     * 関連更新件数が 0 件だった場合のデータ不整合例外を生成する.
+     *
+     * @param relationRecord 関連レコード
+     * @param decodedOriginFunctionId 更新機能ID
+     * @return 生成したデータ不整合例外
+     */
+    private RuntimeException createRelationUpdateException(
+            final TskgmstRecord relationRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L313">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L314">                tskgmstDataAccess.tableName(),</span>
+                RELATION_UPDATE_DA_IDENTIFIER,
+                new FlatJsonBuilder()
+<span class="fc" id="L317">                        .put(&quot;gasMtstNo&quot;, relationRecord.gasMtstNo())</span>
+<span class="fc" id="L318">                        .put(&quot;tksuSvkyNo&quot;, relationRecord.tksuSvkyNo())</span>
+<span class="fc" id="L319">                        .put(&quot;skno&quot;, relationRecord.skno())</span>
+<span class="fc" id="L320">                        .put(&quot;tksuSvkkJtkb&quot;, applyingRelationStatus)</span>
+<span class="fc" id="L321">                        .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L322">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L323">                        .put(</span>
+                                &quot;updKtnKinoId&quot;,
+                                decodedOriginFunctionId));
+    }
+
+    /**
+     * 関連検索の DA 識別子を返す.
+     *
+     * @return 関連検索の DA 識別子
+     */
+    private String relationFindDaIdentifier() {
+<span class="fc" id="L334">        return FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_TKSU_SVKK_JTKB</span>
+<span class="fc" id="L335">                .identifier();</span>
+    }
+
+    /**
+     * 契約検索の DA 識別子を返す.
+     *
+     * @return 契約検索の DA 識別子
+     */
+    private String contractFindDaIdentifier() {
+<span class="fc" id="L344">        return FIND_BY_TKSU_SVKY_NO_AND_KNSK_KJN_YMD_AND_TKSU_SVKY_JTKB_LIST</span>
+<span class="fc" id="L345">                .identifier();</span>
+    }
+
+    /**
+     * 契約更新の DA 識別子を返す.
+     *
+     * @return 契約更新の DA 識別子
+     */
+    private String contractUpdateDaIdentifier() {
+<span class="fc" id="L354">        return UPDATE_BY_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO</span>
+<span class="fc" id="L355">                .identifier();</span>
+    }
+
+    /**
+     * 契約復活用の契約更新レコードを生成する.
+     *
+     * @param contractRecord 契約レコード
+     * @return 契約更新レコード
+     */
+    private TkssvkyWriteRecord buildTkssvkyWriteRecord(
+            final TkssvkyRecord contractRecord) {
+<span class="fc" id="L366">        return new TkssvkyWriteRecord(</span>
+<span class="fc" id="L367">                contractRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L368">                contractRecord.skno(),</span>
+                underContractStatus,
+<span class="fc" id="L370">                contractRecord.tksuSvksJysb(),</span>
+                null,
+<span class="fc" id="L372">                contractRecord.tkysYmd(),</span>
+                MAX_DATE,
+<span class="fc" id="L374">                contractRecord.hesnYtiYmd(),</span>
+<span class="fc" id="L375">                contractRecord.tkykShbt(),</span>
+<span class="fc" id="L376">                contractRecord.tksuKijsCd(),</span>
+<span class="fc" id="L377">                contractRecord.sutiKskhFlg(),</span>
+<span class="fc" id="L378">                contractRecord.syoKyoTrno());</span>
+    }
+
+    /**
+     * 契約復活用の関連更新レコードを生成する.
+     *
+     * @param relationRecord 関連レコード
+     * @return 関連更新レコード
+     */
+    private TskgmstWriteRecord buildTskgmstWriteRecord(
+            final TskgmstRecord relationRecord) {
+<span class="fc" id="L389">        return new TskgmstWriteRecord(</span>
+<span class="fc" id="L390">                relationRecord.gasMtstNo(),</span>
+<span class="fc" id="L391">                relationRecord.tksuSvkyNo(),</span>
+<span class="fc" id="L392">                relationRecord.skno(),</span>
+                applyingRelationStatus,
+<span class="fc" id="L394">                relationRecord.tkysYmd(),</span>
+                MAX_DATE);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

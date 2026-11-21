@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AgroalPerformanceInterceptor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.observability</a> &gt; <span class="el_source">AgroalPerformanceInterceptor.java</span></div><h1>AgroalPerformanceInterceptor.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.observability;
+
+import io.agroal.api.AgroalDataSource;
+import io.agroal.api.AgroalDataSourceMetrics;
+import io.agroal.api.AgroalPoolInterceptor;
+import io.quarkus.arc.Arc;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.sql.Connection;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.PerformanceObservabilitySettings;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+
+/**
+ * Agroal の接続生成・取得・返却・破棄とプール統計を記録する。
+ */
+@ApplicationScoped
+public class AgroalPerformanceInterceptor implements AgroalPoolInterceptor {
+
+    private final RequestContext requestContext;
+
+    private final Supplier&lt;AgroalDataSourceMetrics&gt; metricsSupplier;
+
+    private final StructuredLogger logger;
+
+    /**
+     * CDI 用コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     */
+    @Inject
+    public AgroalPerformanceInterceptor(final RequestContext requestContext) {
+<span class="nc" id="L39">        this(</span>
+                requestContext,
+                AgroalPerformanceInterceptor::currentMetrics,
+                new JbossStructuredLogger(AgroalPerformanceInterceptor.class));
+<span class="nc" id="L43">    }</span>
+
+    AgroalPerformanceInterceptor(
+            final RequestContext requestContext,
+            final Supplier&lt;AgroalDataSourceMetrics&gt; metricsSupplier,
+<span class="fc" id="L48">            final StructuredLogger logger) {</span>
+<span class="fc" id="L49">        this.requestContext = requestContext;</span>
+<span class="fc" id="L50">        this.metricsSupplier = metricsSupplier;</span>
+<span class="fc" id="L51">        this.logger = logger;</span>
+<span class="fc" id="L52">    }</span>
+
+    @Override
+    public void onConnectionCreate(final Connection connection) {
+<span class="nc" id="L56">        log(&quot;db.pool.connection.created&quot;, &quot;Agroal connection created&quot;);</span>
+<span class="nc" id="L57">    }</span>
+
+    @Override
+    public void onConnectionAcquire(final Connection connection) {
+<span class="fc" id="L61">        log(&quot;db.pool.connection.acquired&quot;, &quot;Agroal connection acquired&quot;);</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    public void onConnectionReturn(final Connection connection) {
+<span class="nc" id="L66">        log(&quot;db.pool.connection.returned&quot;, &quot;Agroal connection returned&quot;);</span>
+<span class="nc" id="L67">    }</span>
+
+    @Override
+    public void onConnectionDestroy(final Connection connection) {
+<span class="nc" id="L71">        log(&quot;db.pool.connection.destroyed&quot;, &quot;Agroal connection destroyed&quot;);</span>
+<span class="nc" id="L72">    }</span>
+
+    private void log(final String event, final String summary) {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (!PerformanceObservabilitySettings.isEnabled()) {</span>
+<span class="nc" id="L76">            return;</span>
+        }
+        Map&lt;String, Object&gt; attributes;
+        try {
+<span class="fc" id="L80">            attributes = new LinkedHashMap&lt;&gt;(</span>
+<span class="fc" id="L81">                    PerformanceLogSupport.poolContextAttributes(requestContext));</span>
+<span class="nc" id="L82">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L83">            attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L84">            attributes.put(PerformanceLogSupport.MEASUREMENT_UNAVAILABLE, true);</span>
+<span class="fc" id="L85">        }</span>
+        try {
+<span class="fc" id="L87">            appendMetrics(attributes, metricsSupplier.get());</span>
+<span class="nc" id="L88">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L89">            attributes.put(PerformanceLogSupport.MEASUREMENT_UNAVAILABLE, true);</span>
+<span class="fc" id="L90">        }</span>
+        try {
+<span class="fc" id="L92">            logger.info(new LogEvent(event, summary, LogLayer.DA, null, null, attributes));</span>
+<span class="nc" id="L93">        } catch (RuntimeException exception) {</span>
+            // 計測失敗は業務処理へ伝播させない
+<span class="fc" id="L95">        }</span>
+<span class="fc" id="L96">    }</span>
+
+    private static void appendMetrics(
+            final Map&lt;String, Object&gt; attributes,
+            final AgroalDataSourceMetrics metrics) {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (metrics == null) {</span>
+<span class="nc" id="L102">            attributes.put(PerformanceLogSupport.MEASUREMENT_UNAVAILABLE, true);</span>
+<span class="nc" id="L103">            return;</span>
+        }
+<span class="fc" id="L105">        attributes.put(&quot;pool.activeCount&quot;, metrics.activeCount());</span>
+<span class="fc" id="L106">        attributes.put(&quot;pool.availableCount&quot;, metrics.availableCount());</span>
+<span class="fc" id="L107">        attributes.put(&quot;pool.awaitingCount&quot;, metrics.awaitingCount());</span>
+<span class="fc" id="L108">        attributes.put(&quot;pool.acquireCount&quot;, metrics.acquireCount());</span>
+<span class="fc" id="L109">        attributes.put(&quot;pool.creationCount&quot;, metrics.creationCount());</span>
+<span class="fc" id="L110">        attributes.put(&quot;pool.maxUsedCount&quot;, metrics.maxUsedCount());</span>
+<span class="fc" id="L111">        attributes.put(&quot;pool.blockingTimeAverageMs&quot;, toMillis(metrics.blockingTimeAverage()));</span>
+<span class="fc" id="L112">        attributes.put(&quot;pool.blockingTimeMaxMs&quot;, toMillis(metrics.blockingTimeMax()));</span>
+<span class="fc" id="L113">        attributes.put(&quot;pool.creationTimeAverageMs&quot;, toMillis(metrics.creationTimeAverage()));</span>
+<span class="fc" id="L114">        attributes.put(&quot;pool.creationTimeMaxMs&quot;, toMillis(metrics.creationTimeMax()));</span>
+<span class="fc" id="L115">    }</span>
+
+    private static Long toMillis(final java.time.Duration duration) {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        return duration == null ? null : duration.toMillis();</span>
+    }
+
+    private static AgroalDataSourceMetrics currentMetrics() {
+<span class="nc" id="L122">        return Arc.container().instance(AgroalDataSource.class).get().getMetrics();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

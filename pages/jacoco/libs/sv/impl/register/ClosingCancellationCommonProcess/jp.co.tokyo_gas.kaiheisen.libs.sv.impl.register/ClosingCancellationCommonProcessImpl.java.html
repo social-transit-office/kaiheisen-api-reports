@@ -1,0 +1,703 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancellationCommonProcessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-closingcancellationcommonprocess</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">ClosingCancellationCommonProcessImpl.java</span></div><h1>ClosingCancellationCommonProcessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancellationCommonProcessBatchCommonTgRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancellationCommonProcessCommonOtherRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.CancellationCommonProcessCommonOtherTgRetail;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.ClosingCancellationCommonProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.ClosingCancellationGmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.ClosingCancellationSogoTmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.SihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.SnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.SvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.SvsihkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.TaksmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.TkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.closingcancellationcommonprocess.model.TskgmstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationCommonProcessCommonOtherRetailGmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationCommonProcessCommonOtherRetailSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationCommonProcessCommonOtherRetailTaksmtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationCommonProcessCommonOtherRetailTkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationCommonProcessCommonOtherRetailTskgmstInf;
+
+/**
+ * 概要: SV-156（閉栓用解約共通処理）のサービス実装。
+ * 主な仕様:
+ * - 閉栓事由種別を下位 SV 呼出し用の終了事由種別へ変換する。
+ * - 異動・作業履歴業務コードは引数値をそのまま下位 SV へ引き渡す。
+ * - 託送供給依頼事業者コードと請求サービス種別に応じて、SV-326 / SV-328 / SV-329 相当の処理を切り替える。
+ * - 下位呼出しに必要な `correlationId`、`hukkSysShbt`、`systemDatetime` は RequestContext で保持される前提とする。
+ * 既知の制約:
+ * - public メソッド引数の null / blank 妥当性は上位層責務とし、本実装では追加検証しない。
+ */
+public final class ClosingCancellationCommonProcessImpl implements ClosingCancellationCommonProcess {
+
+    private final String transferClosingReason;
+
+    private final String burnLostClosingReason;
+
+    private final String unusedClosingReason;
+
+    private final String transportTransferCancellationReason;
+
+    private final String transportUnusedCancellationReason;
+
+    private final String serviceTransferCancellationReason;
+
+    private final String serviceUnusedCancellationReason;
+
+    private final String tokyoGasCode;
+
+    private final String batchFinalCloseServiceType;
+
+    private final String batchNextThreeTemporaryServiceType;
+
+    private final String relatedEndStatus;
+
+    private final String temporaryCancellationStatus;
+
+    private final CancellationCommonProcessBatchCommonTgRetail sv326Process;
+
+    private final CancellationCommonProcessCommonOtherTgRetail sv328Process;
+
+    private final CancellationCommonProcessCommonOtherRetail sv329Process;
+
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: 閉栓用解約共通処理の依存オブジェクトを初期化する。
+     * 主な仕様:
+     * - SV-326 / SV-328 / SV-329 の API interface と RequestContext を保持する。
+     * - 設計書の `【】` 囲いで表現された CIRIUS 定数は CiriusConstantService で解決する。
+     * - 依存オブジェクトの null はコンストラクタ初期化時点で fail-fast とする。
+     *
+     * @param sv326Process SV-326 API
+     * @param sv328Process SV-328 API
+     * @param sv329Process SV-329 API
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    @SuppressWarnings(&quot;checkstyle:HiddenField&quot;)
+    public ClosingCancellationCommonProcessImpl(
+            final CancellationCommonProcessBatchCommonTgRetail sv326Process,
+            final CancellationCommonProcessCommonOtherTgRetail sv328Process,
+            final CancellationCommonProcessCommonOtherRetail sv329Process,
+            final CiriusConstantService ciriusConstantService,
+<span class="fc" id="L94">            final RequestContext requestContext) {</span>
+<span class="fc" id="L95">        this.sv326Process = Objects.requireNonNull(sv326Process, &quot;sv326Process&quot;);</span>
+<span class="fc" id="L96">        this.sv328Process = Objects.requireNonNull(sv328Process, &quot;sv328Process&quot;);</span>
+<span class="fc" id="L97">        this.sv329Process = Objects.requireNonNull(sv329Process, &quot;sv329Process&quot;);</span>
+<span class="fc" id="L98">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L100">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L101">        this.transferClosingReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.RELOCATION_CLOSURE);
+<span class="fc" id="L105">        this.burnLostClosingReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.FIRED_AND_LOST_CAP);
+<span class="fc" id="L109">        this.unusedClosingReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.UNUSED_CLOSURE);
+<span class="fc" id="L113">        this.transportTransferCancellationReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius
+                        .TypeOfReasonForTerminationOfTransportationServiceContract.TYPE,
+                ConstantLookupKeys.Cirius
+                        .TypeOfReasonForTerminationOfTransportationServiceContract
+                        .TRANSFER_CANCELLATION);
+<span class="fc" id="L120">        this.transportUnusedCancellationReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius
+                        .TypeOfReasonForTerminationOfTransportationServiceContract.TYPE,
+                ConstantLookupKeys.Cirius
+                        .TypeOfReasonForTerminationOfTransportationServiceContract
+                        .NON_USE_CANCELLATION);
+<span class="fc" id="L127">        this.serviceTransferCancellationReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractTerminationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractTerminationReasonType
+                        .TRANSFER_CANCELLATION);
+<span class="fc" id="L132">        this.serviceUnusedCancellationReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractTerminationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractTerminationReasonType
+                        .NON_USE_CANCELLATION);
+<span class="fc" id="L137">        this.tokyoGasCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L141">        this.batchFinalCloseServiceType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                ConstantLookupKeys.Cirius.BillingServiceType.ALL_AT_ONCE_FINAL_INSTALLMENT);
+<span class="fc" id="L145">        this.batchNextThreeTemporaryServiceType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingServiceType.TYPE,
+                ConstantLookupKeys.Cirius.BillingServiceType
+                        .ALL_AT_ONCE_NEXT_3RD_BUSINESS_YEAR_CLOSING_AVAILABLE_AT_SHORT_NOTICE);
+<span class="fc" id="L150">        this.relatedEndStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L154">        this.temporaryCancellationStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode
+                        .PROVISIONAL_CANCELLATION);
+<span class="fc" id="L159">    }</span>
+
+    /**
+     * 閉栓用解約共通処理の呼出し先を選択して必要な入力を引き渡す。
+     *
+     * &lt;p&gt;主な仕様:
+     * - 閉栓事由種別から終了事由種別を導出する。
+     * - 異動・作業履歴業務コードは引数値をそのまま下位 SV へ引き渡す。
+     * - 託送供給依頼事業者コードと請求サービス種別に応じて 1 つの dispatch 先のみを呼び出す。
+     */
+    @Override
+    @SuppressWarnings(&quot;checkstyle:ParameterNumber&quot;)
+    public void execute(
+            final Long gasMtstNo,
+            final LocalDate dgrpHsenYmd,
+            final String hesnJysb,
+            final ClosingCancellationGmtsetdInf gmtsetdInf,
+            final TskgmstInf tskgmstInf,
+            final TkssvkyInf tkssvkyInf,
+            final SvmstkrInf svmstkrInf,
+            final SvckyaInf svckyaInf,
+            final SvsihkrInf svsihkrInf,
+            final SihakyInf sihakyInf,
+            final String tkykJtCd,
+            final TaksmtrInf taksmtrInf,
+            final List&lt;SnyInf&gt; snyInfList,
+            final List&lt;ClosingCancellationSogoTmtrInf&gt; sgoTmtrInfList,
+            final String isrrGymCd,
+            final String hukkUsrId,
+            final String hukkUnmKj,
+            final String isrrHkkrKbn) {
+<span class="fc" id="L190">        requireRequestContext();</span>
+<span class="fc" id="L191">        TerminationReasonMapping terminationReasonMapping = mapTerminationReasons(hesnJysb);</span>
+<span class="fc" id="L192">        TaksmtrInf normalizedTaksmtrInf = normalizeTaksmtrInf(tkykJtCd, taksmtrInf);</span>
+<span class="fc" id="L193">        List&lt;SnyInf&gt; copiedSnyInfList = copyList(snyInfList);</span>
+<span class="fc" id="L194">        List&lt;ClosingCancellationSogoTmtrInf&gt; normalizedSgoTmtrInfList =</span>
+<span class="fc" id="L195">                normalizeSgoTmtrInfList(sgoTmtrInfList);</span>
+
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (tokyoGasCode.equals(tkssvkyInf.tksuKijsCd())) {</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (isBatchServiceType(sihakyInf.sikSvcShbt())) {</span>
+<span class="fc" id="L199">                executeSv326(</span>
+                        gasMtstNo,
+                        dgrpHsenYmd,
+                        hesnJysb,
+                        terminationReasonMapping,
+                        gmtsetdInf,
+                        tskgmstInf,
+                        tkssvkyInf,
+                        svmstkrInf,
+                        svckyaInf,
+                        svsihkrInf,
+                        sihakyInf,
+                        copiedSnyInfList,
+                        normalizedSgoTmtrInfList,
+                        isrrGymCd,
+                        hukkUsrId,
+                        hukkUnmKj,
+                        isrrHkkrKbn);
+<span class="fc" id="L217">                return;</span>
+            }
+
+<span class="fc" id="L220">            sv328Process.execute(</span>
+                    gasMtstNo,
+                    dgrpHsenYmd,
+                    hesnJysb,
+<span class="fc" id="L224">                    terminationReasonMapping.tksuSvkeJysb(),</span>
+<span class="fc" id="L225">                    terminationReasonMapping.svkyEndJysb(),</span>
+<span class="fc" id="L226">                    toSv328GmtsetdInf(gasMtstNo, gmtsetdInf),</span>
+<span class="fc" id="L227">                    toSv328TskgmstInf(tskgmstInf),</span>
+<span class="fc" id="L228">                    toSv328TkssvkyInf(tkssvkyInf),</span>
+<span class="fc" id="L229">                    toSv328SvmstkrInf(svmstkrInf),</span>
+<span class="fc" id="L230">                    toSv328SvckyaInf(svckyaInf),</span>
+<span class="fc" id="L231">                    toSv328SvsihkrInf(svsihkrInf),</span>
+<span class="fc" id="L232">                    toSv328SihakyInf(sihakyInf),</span>
+<span class="fc" id="L233">                    toSv328SnyInfList(copiedSnyInfList),</span>
+<span class="fc" id="L234">                    toSv328SogoTmtrInfList(normalizedSgoTmtrInfList),</span>
+                    isrrGymCd,
+                    hukkUsrId,
+                    hukkUnmKj,
+                    isrrHkkrKbn);
+<span class="fc" id="L239">            return;</span>
+        }
+
+<span class="fc" id="L242">        sv329Process.execute(</span>
+                gasMtstNo,
+                dgrpHsenYmd,
+<span class="fc" id="L245">                terminationReasonMapping.tksuSvkeJysb(),</span>
+<span class="fc" id="L246">                toSv329GmtsetdInf(gmtsetdInf),</span>
+<span class="fc" id="L247">                toSv329TskgmstInf(tskgmstInf),</span>
+<span class="fc" id="L248">                toSv329TkssvkyInf(tkssvkyInf),</span>
+<span class="fc" id="L249">                toSv329SnyInfList(copiedSnyInfList),</span>
+<span class="fc" id="L250">                toSv329TaksmtrInf(normalizedTaksmtrInf));</span>
+<span class="fc" id="L251">    }</span>
+
+    @SuppressWarnings(&quot;checkstyle:ParameterNumber&quot;)
+    private void executeSv326(
+            final Long gasMtstNo,
+            final LocalDate dgrpHsenYmd,
+            final String hesnJysb,
+            final TerminationReasonMapping terminationReasonMapping,
+            final ClosingCancellationGmtsetdInf gmtsetdInf,
+            final TskgmstInf tskgmstInf,
+            final TkssvkyInf tkssvkyInf,
+            final SvmstkrInf svmstkrInf,
+            final SvckyaInf svckyaInf,
+            final SvsihkrInf svsihkrInf,
+            final SihakyInf sihakyInf,
+            final List&lt;SnyInf&gt; snyInfList,
+            final List&lt;ClosingCancellationSogoTmtrInf&gt; sgoTmtrInfList,
+            final String isrrGymCd,
+            final String hukkUsrId,
+            final String hukkUnmKj,
+            final String isrrHkkrKbn) {
+<span class="fc" id="L272">        sv326Process.execute(</span>
+                gasMtstNo,
+                dgrpHsenYmd,
+                hesnJysb,
+<span class="fc" id="L276">                terminationReasonMapping.tksuSvkeJysb(),</span>
+<span class="fc" id="L277">                terminationReasonMapping.svkyEndJysb(),</span>
+<span class="fc" id="L278">                toSv326GmtsetdInf(gmtsetdInf),</span>
+<span class="fc" id="L279">                toSv326TskgmstInf(tskgmstInf),</span>
+<span class="fc" id="L280">                toSv326TkssvkyInf(tkssvkyInf),</span>
+<span class="fc" id="L281">                toSv326SvmstkrInf(svmstkrInf),</span>
+<span class="fc" id="L282">                toSv326SvckyaInf(svckyaInf),</span>
+<span class="fc" id="L283">                toSv326SvsihkrInf(svsihkrInf),</span>
+<span class="fc" id="L284">                toSv326SihakyInf(sihakyInf),</span>
+<span class="fc" id="L285">                toSv326SnyInfList(snyInfList),</span>
+<span class="fc" id="L286">                toSv326SogoTmtrInfList(sgoTmtrInfList),</span>
+                isrrGymCd,
+                hukkUsrId,
+                hukkUnmKj,
+                isrrHkkrKbn);
+<span class="fc" id="L291">    }</span>
+
+    private TerminationReasonMapping mapTerminationReasons(final String hesnJysb) {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (transferClosingReason.equals(hesnJysb)</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">                || burnLostClosingReason.equals(hesnJysb)) {</span>
+<span class="fc" id="L296">            return new TerminationReasonMapping(</span>
+                    transportTransferCancellationReason,
+                    serviceTransferCancellationReason);
+        }
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (unusedClosingReason.equals(hesnJysb)) {</span>
+<span class="fc" id="L301">            return new TerminationReasonMapping(</span>
+                    transportUnusedCancellationReason,
+                    serviceUnusedCancellationReason);
+        }
+<span class="fc" id="L305">        return new TerminationReasonMapping(null, null);</span>
+    }
+
+    private boolean isBatchServiceType(final String sikSvcShbt) {
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        return batchFinalCloseServiceType.equals(sikSvcShbt)</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">                || batchNextThreeTemporaryServiceType.equals(sikSvcShbt);</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf toSv326GmtsetdInf(
+            final ClosingCancellationGmtsetdInf gmtsetdInf) {
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (gmtsetdInf == null) {</span>
+<span class="nc" id="L316">            return null;</span>
+        }
+<span class="fc" id="L318">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf(</span>
+<span class="fc" id="L319">                gmtsetdInf.szcGkkCd(),</span>
+<span class="fc" id="L320">                gmtsetdInf.szcCmazCd(),</span>
+<span class="fc" id="L321">                gmtsetdInf.szcMchCd(),</span>
+<span class="fc" id="L322">                gmtsetdInf.ckrtGmscJtkb());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.CancellationGmtsetdInf
+            toSv328GmtsetdInf(
+                    final Long gasMtstNo, final ClosingCancellationGmtsetdInf gmtsetdInf) {
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">        if (gmtsetdInf == null) {</span>
+<span class="nc" id="L329">            return null;</span>
+        }
+<span class="fc" id="L331">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model</span>
+                .CancellationGmtsetdInf(
+                gasMtstNo,
+<span class="fc" id="L334">                gmtsetdInf.szcGkkCd(),</span>
+<span class="fc" id="L335">                gmtsetdInf.szcCmazCd(),</span>
+<span class="fc" id="L336">                gmtsetdInf.szcMchCd(),</span>
+<span class="fc" id="L337">                gmtsetdInf.ckrtGmscJtkb());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TskgmstInf toSv326TskgmstInf(
+            final TskgmstInf tskgmstInf) {
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">        if (tskgmstInf == null) {</span>
+<span class="nc" id="L343">            return null;</span>
+        }
+<span class="fc" id="L345">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TskgmstInf(</span>
+<span class="fc" id="L346">                tskgmstInf.tksuSvkyNo(),</span>
+<span class="fc" id="L347">                tskgmstInf.skno(),</span>
+<span class="fc" id="L348">                tskgmstInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TkssvkyInf toSv326TkssvkyInf(
+            final TkssvkyInf tkssvkyInf) {
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">        if (tkssvkyInf == null) {</span>
+<span class="nc" id="L354">            return null;</span>
+        }
+<span class="fc" id="L356">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.TkssvkyInf(</span>
+<span class="fc" id="L357">                tkssvkyInf.tksuSvkyNo(),</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">                tkssvkyInf.skno() == null ? null : Long.valueOf(tkssvkyInf.skno()),</span>
+<span class="fc" id="L359">                tkssvkyInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvmstkrInf toSv326SvmstkrInf(
+            final SvmstkrInf svmstkrInf) {
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        if (svmstkrInf == null) {</span>
+<span class="nc" id="L365">            return null;</span>
+        }
+<span class="fc" id="L367">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvmstkrInf(</span>
+<span class="fc" id="L368">                svmstkrInf.svkyNo(),</span>
+<span class="fc" id="L369">                svmstkrInf.skno(),</span>
+<span class="fc" id="L370">                svmstkrInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvsihkrInf toSv326SvsihkrInf(
+            final SvsihkrInf svsihkrInf) {
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        if (svsihkrInf == null) {</span>
+<span class="nc" id="L376">            return null;</span>
+        }
+<span class="fc" id="L378">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SvsihkrInf(</span>
+<span class="fc" id="L379">                svsihkrInf.sihKiyNo(),</span>
+<span class="fc" id="L380">                svsihkrInf.svkyNo(),</span>
+<span class="fc" id="L381">                svsihkrInf.skno(),</span>
+<span class="fc" id="L382">                svsihkrInf.ikskEndYm(),</span>
+<span class="fc" id="L383">                svsihkrInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf toSv326SvckyaInf(
+            final SvckyaInf svckyaInf) {
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">        if (svckyaInf == null) {</span>
+<span class="nc" id="L389">            return null;</span>
+        }
+<span class="fc" id="L391">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf(</span>
+<span class="fc" id="L392">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L393">                svckyaInf.skno(),</span>
+<span class="fc" id="L394">                svckyaInf.recUpdJnjNo(),</span>
+<span class="fc" id="L395">                svckyaInf.sziKziKbn(),</span>
+<span class="fc" id="L396">                svckyaInf.syaKbn(),</span>
+<span class="fc" id="L397">                svckyaInf.sqtiKiyNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SihakyInf toSv326SihakyInf(
+            final SihakyInf sihakyInf) {
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (sihakyInf == null) {</span>
+<span class="nc" id="L403">            return null;</span>
+        }
+<span class="fc" id="L405">        return toSv328SihakyInf(sihakyInf);</span>
+    }
+
+    private List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SnyInf&gt; toSv326SnyInfList(
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">        if (snyInfList == null) {</span>
+<span class="nc" id="L411">            return null;</span>
+        }
+<span class="fc" id="L413">        return snyInfList.stream()</span>
+<span class="fc" id="L414">                .map(this::toSv326SnyInf)</span>
+<span class="fc" id="L415">                .toList();</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SnyInf toSv326SnyInf(
+            final SnyInf snyInf) {
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">        if (snyInf == null) {</span>
+<span class="nc" id="L421">            return null;</span>
+        }
+<span class="fc" id="L423">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SnyInf(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model
+                        .TransportServiceContractGmtsetdInf(
+<span class="fc" id="L426">                        snyInf.gasMtstNo()));</span>
+    }
+
+    private List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SogoTmtrInf&gt;
+            toSv326SogoTmtrInfList(
+                    final List&lt;ClosingCancellationSogoTmtrInf&gt; sgoTmtrInfList) {
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">        if (sgoTmtrInfList == null) {</span>
+<span class="nc" id="L433">            return null;</span>
+        }
+<span class="fc" id="L435">        return sgoTmtrInfList.stream()</span>
+<span class="fc" id="L436">                .map(this::toSv326SogoTmtrInf)</span>
+<span class="fc" id="L437">                .toList();</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SogoTmtrInf toSv326SogoTmtrInf(
+            final ClosingCancellationSogoTmtrInf sgoTmtrInf) {
+<span class="pc bpc" id="L442" title="1 of 2 branches missed.">        if (sgoTmtrInf == null) {</span>
+<span class="nc" id="L443">            return null;</span>
+        }
+<span class="fc" id="L445">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.SogoTmtrInf(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model
+                        .ComprehensiveContractSvmstkrInf(
+<span class="fc" id="L448">                        sgoTmtrInf.mtstNo(),</span>
+<span class="fc" id="L449">                        sgoTmtrInf.svkyNo(),</span>
+<span class="fc" id="L450">                        sgoTmtrInf.skno(),</span>
+<span class="fc" id="L451">                        sgoTmtrInf.recUpdJnjNo()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.model.GmtsetdInf(
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L456">                        sgoTmtrInf.ckrtGmscJtkb()));</span>
+    }
+
+    private List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SogoTmtrInf&gt;
+            toSv328SogoTmtrInfList(
+                    final List&lt;ClosingCancellationSogoTmtrInf&gt; sgoTmtrInfList) {
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        if (sgoTmtrInfList == null) {</span>
+<span class="nc" id="L463">            return null;</span>
+        }
+<span class="fc" id="L465">        return sgoTmtrInfList.stream()</span>
+<span class="fc" id="L466">                .map(this::toSv328SogoTmtrInf)</span>
+<span class="fc" id="L467">                .toList();</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SogoTmtrInf
+            toSv328SogoTmtrInf(final ClosingCancellationSogoTmtrInf sgoTmtrInf) {
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">        if (sgoTmtrInf == null) {</span>
+<span class="nc" id="L473">            return null;</span>
+        }
+<span class="fc" id="L475">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SogoTmtrInf(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SogoSvmstkrInf(
+<span class="fc" id="L477">                        sgoTmtrInf.mtstNo(),</span>
+<span class="fc" id="L478">                        sgoTmtrInf.svkyNo(),</span>
+<span class="fc" id="L479">                        sgoTmtrInf.skno(),</span>
+<span class="fc" id="L480">                        sgoTmtrInf.recUpdJnjNo()),</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model
+                        .CancellationGmtsetdInf(
+<span class="fc" id="L483">                        sgoTmtrInf.mtstNo(),</span>
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L487">                        sgoTmtrInf.ckrtGmscJtkb()));</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TskgmstInf toSv328TskgmstInf(
+            final TskgmstInf tskgmstInf) {
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        if (tskgmstInf == null) {</span>
+<span class="nc" id="L493">            return null;</span>
+        }
+<span class="fc" id="L495">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TskgmstInf(</span>
+<span class="fc" id="L496">                tskgmstInf.tksuSvkyNo(), tskgmstInf.skno(), tskgmstInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TkssvkyInf toSv328TkssvkyInf(
+            final TkssvkyInf tkssvkyInf) {
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">        if (tkssvkyInf == null) {</span>
+<span class="nc" id="L502">            return null;</span>
+        }
+<span class="fc" id="L504">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.TkssvkyInf(</span>
+<span class="fc" id="L505">                tkssvkyInf.tksuSvkyNo(),</span>
+<span class="fc" id="L506">                tkssvkyInf.skno(),</span>
+<span class="fc" id="L507">                tkssvkyInf.tksuKijsCd(),</span>
+<span class="fc" id="L508">                tkssvkyInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvmstkrInf toSv328SvmstkrInf(
+            final SvmstkrInf svmstkrInf) {
+<span class="pc bpc" id="L513" title="1 of 2 branches missed.">        if (svmstkrInf == null) {</span>
+<span class="nc" id="L514">            return null;</span>
+        }
+<span class="fc" id="L516">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvmstkrInf(</span>
+<span class="fc" id="L517">                svmstkrInf.svkyNo(), svmstkrInf.skno(), svmstkrInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf toSv328SvckyaInf(
+            final SvckyaInf svckyaInf) {
+<span class="pc bpc" id="L522" title="1 of 2 branches missed.">        if (svckyaInf == null) {</span>
+<span class="nc" id="L523">            return null;</span>
+        }
+<span class="fc" id="L525">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvckyaInf(</span>
+<span class="fc" id="L526">                svckyaInf.svkyNo(),</span>
+<span class="fc" id="L527">                svckyaInf.skno(),</span>
+<span class="fc" id="L528">                svckyaInf.recUpdJnjNo(),</span>
+<span class="fc" id="L529">                svckyaInf.sziKziKbn(),</span>
+<span class="fc" id="L530">                svckyaInf.syaKbn(),</span>
+<span class="fc" id="L531">                svckyaInf.sqtiKiyNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvsihkrInf toSv328SvsihkrInf(
+            final SvsihkrInf svsihkrInf) {
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">        if (svsihkrInf == null) {</span>
+<span class="nc" id="L537">            return null;</span>
+        }
+<span class="fc" id="L539">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SvsihkrInf(</span>
+<span class="fc" id="L540">                svsihkrInf.sihKiyNo(),</span>
+<span class="fc" id="L541">                svsihkrInf.svkyNo(),</span>
+<span class="fc" id="L542">                svsihkrInf.skno(),</span>
+<span class="fc" id="L543">                svsihkrInf.ikskEndYm(),</span>
+<span class="fc" id="L544">                svsihkrInf.recUpdJnjNo());</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SihakyInf toSv328SihakyInf(
+            final SihakyInf sihakyInf) {
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">        if (sihakyInf == null) {</span>
+<span class="nc" id="L550">            return null;</span>
+        }
+<span class="fc" id="L552">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SihakyInf(</span>
+<span class="fc" id="L553">                sihakyInf.sihKiyNo(),</span>
+<span class="fc" id="L554">                sihakyInf.skno(),</span>
+<span class="fc" id="L555">                sihakyInf.sihHuhuShbt(),</span>
+<span class="fc" id="L556">                sihakyInf.sikSvcShbt(),</span>
+<span class="fc" id="L557">                sihakyInf.skshHyjsKrno(),</span>
+<span class="fc" id="L558">                sihakyInf.sikKrno(),</span>
+<span class="fc" id="L559">                sihakyInf.recUpdJnjNo());</span>
+    }
+
+    private List&lt;jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SnyInf&gt;
+            toSv328SnyInfList(final List&lt;SnyInf&gt; snyInfList) {
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">        if (snyInfList == null) {</span>
+<span class="nc" id="L565">            return null;</span>
+        }
+<span class="fc" id="L567">        return snyInfList.stream()</span>
+<span class="fc" id="L568">                .map(this::toSv328SnyInf)</span>
+<span class="fc" id="L569">                .toList();</span>
+    }
+
+    private jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SnyInf toSv328SnyInf(
+            final SnyInf snyInf) {
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">        if (snyInf == null) {</span>
+<span class="nc" id="L575">            return null;</span>
+        }
+<span class="fc" id="L577">        return new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model.SnyInf(</span>
+                new jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.model
+<span class="fc" id="L579">                        .CancellationGmtsetdInf(snyInf.gasMtstNo(), null, null, null, null));</span>
+    }
+
+    private CancellationCommonProcessCommonOtherRetailGmtsetdInf toSv329GmtsetdInf(
+            final ClosingCancellationGmtsetdInf gmtsetdInf) {
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">        if (gmtsetdInf == null) {</span>
+<span class="nc" id="L585">            return null;</span>
+        }
+<span class="fc" id="L587">        return new CancellationCommonProcessCommonOtherRetailGmtsetdInf(</span>
+<span class="fc" id="L588">                gmtsetdInf.ckrtGmscJtkb());</span>
+    }
+
+    private CancellationCommonProcessCommonOtherRetailTskgmstInf toSv329TskgmstInf(
+            final TskgmstInf tskgmstInf) {
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (tskgmstInf == null) {</span>
+<span class="nc" id="L594">            return null;</span>
+        }
+<span class="fc" id="L596">        return new CancellationCommonProcessCommonOtherRetailTskgmstInf(</span>
+<span class="fc" id="L597">                tskgmstInf.tksuSvkyNo(),</span>
+<span class="fc" id="L598">                tskgmstInf.skno(),</span>
+<span class="fc" id="L599">                tskgmstInf.recUpdJnjNo());</span>
+    }
+
+    private CancellationCommonProcessCommonOtherRetailTkssvkyInf toSv329TkssvkyInf(
+            final TkssvkyInf tkssvkyInf) {
+<span class="pc bpc" id="L604" title="1 of 2 branches missed.">        if (tkssvkyInf == null) {</span>
+<span class="nc" id="L605">            return null;</span>
+        }
+<span class="fc" id="L607">        return new CancellationCommonProcessCommonOtherRetailTkssvkyInf(</span>
+<span class="fc" id="L608">                tkssvkyInf.tksuSvkyNo(),</span>
+<span class="fc" id="L609">                tkssvkyInf.skno(),</span>
+<span class="fc" id="L610">                tkssvkyInf.recUpdJnjNo());</span>
+    }
+
+    private List&lt;CancellationCommonProcessCommonOtherRetailSnyInf&gt; toSv329SnyInfList(
+            final List&lt;SnyInf&gt; snyInfList) {
+<span class="pc bpc" id="L615" title="1 of 2 branches missed.">        if (snyInfList == null) {</span>
+<span class="nc" id="L616">            return null;</span>
+        }
+<span class="fc" id="L618">        return snyInfList.stream()</span>
+<span class="fc" id="L619">                .map(this::toSv329SnyInf)</span>
+<span class="fc" id="L620">                .toList();</span>
+    }
+
+    private CancellationCommonProcessCommonOtherRetailSnyInf toSv329SnyInf(
+            final SnyInf snyInf) {
+<span class="pc bpc" id="L625" title="1 of 2 branches missed.">        if (snyInf == null) {</span>
+<span class="nc" id="L626">            return null;</span>
+        }
+<span class="fc" id="L628">        return new CancellationCommonProcessCommonOtherRetailSnyInf(</span>
+<span class="fc" id="L629">                snyInf.gasMtstNo());</span>
+    }
+
+    private CancellationCommonProcessCommonOtherRetailTaksmtrInf toSv329TaksmtrInf(
+            final TaksmtrInf taksmtrInf) {
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">        if (taksmtrInf == null) {</span>
+<span class="nc" id="L635">            return null;</span>
+        }
+<span class="fc" id="L637">        return new CancellationCommonProcessCommonOtherRetailTaksmtrInf(</span>
+<span class="fc" id="L638">                taksmtrInf.tkykNo(),</span>
+<span class="fc" id="L639">                taksmtrInf.hkicNo(),</span>
+<span class="fc" id="L640">                taksmtrInf.recUpdJnjNo());</span>
+    }
+
+    private TaksmtrInf normalizeTaksmtrInf(
+            final String tkykJtCd,
+            final TaksmtrInf taksmtrInf) {
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">        if (temporaryCancellationStatus.equals(tkykJtCd)) {</span>
+<span class="fc" id="L647">            return taksmtrInf;</span>
+        }
+<span class="nc" id="L649">        return new TaksmtrInf(null, null, null);</span>
+    }
+
+    private List&lt;ClosingCancellationSogoTmtrInf&gt; normalizeSgoTmtrInfList(
+            final List&lt;ClosingCancellationSogoTmtrInf&gt; sgoTmtrInfList) {
+<span class="pc bpc" id="L654" title="1 of 2 branches missed.">        if (sgoTmtrInfList == null) {</span>
+<span class="nc" id="L655">            return null;</span>
+        }
+<span class="fc" id="L657">        return sgoTmtrInfList.stream()</span>
+<span class="fc" id="L658">                .map(this::normalizeSgoTmtrInf)</span>
+<span class="fc" id="L659">                .toList();</span>
+    }
+
+    private ClosingCancellationSogoTmtrInf normalizeSgoTmtrInf(
+            final ClosingCancellationSogoTmtrInf sgoTmtrInf) {
+<span class="fc bfc" id="L664" title="All 2 branches covered.">        if (relatedEndStatus.equals(sgoTmtrInf.rkkiKnrnJtkb())) {</span>
+<span class="fc" id="L665">            return new ClosingCancellationSogoTmtrInf(</span>
+                    null,
+                    null,
+<span class="fc" id="L668">                    sgoTmtrInf.rkkiKnrnJtkb(),</span>
+                    null,
+                    null,
+                    null);
+        }
+<span class="fc" id="L673">        return sgoTmtrInf;</span>
+    }
+
+    private &lt;T&gt; List&lt;T&gt; copyList(final List&lt;T&gt; values) {
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">        if (values == null) {</span>
+<span class="nc" id="L678">            return null;</span>
+        }
+<span class="fc" id="L680">        return List.copyOf(values);</span>
+    }
+
+    private void requireRequestContext() {
+<span class="fc" id="L684">        requestContext.getCorrelationId()</span>
+<span class="fc" id="L685">                .orElseThrow(</span>
+<span class="fc" id="L686">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.correlationId is required&quot;));
+<span class="fc" id="L688">        requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L689">                .orElseThrow(</span>
+<span class="fc" id="L690">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.hukkSysShbt is required&quot;));
+<span class="fc" id="L692">        requestContext.getSystemDatetime()</span>
+<span class="fc" id="L693">                .orElseThrow(</span>
+<span class="fc" id="L694">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.systemDatetime is required&quot;));
+<span class="fc" id="L696">    }</span>
+
+<span class="fc" id="L698">    private record TerminationReasonMapping(</span>
+            String tksuSvkeJysb,
+            String svkyEndJysb) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

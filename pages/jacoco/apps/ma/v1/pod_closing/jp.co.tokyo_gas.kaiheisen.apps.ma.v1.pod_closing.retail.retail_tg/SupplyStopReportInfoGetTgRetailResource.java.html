@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SupplyStopReportInfoGetTgRetailResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-ma-pod-closing</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg</a> &gt; <span class="el_source">SupplyStopReportInfoGetTgRetailResource.java</span></div><h1>SupplyStopReportInfoGetTgRetailResource.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.ma.v1.pod_closing.retail.retail_tg;
+
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import jakarta.ws.rs.BeanParam;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.BaseResource;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MaResponseNumericValues;
+import jp.co.tokyo_gas.kaiheisen.apps.ma.v1.core.resource.MainService;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.CommonErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.response.KaiheisenErrorResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportInfoGetTgRetailEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportInfoGetTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_closing.retail.retail_tg.SupplyStopReportInfoGetTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCatalog;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.common.validation.RequestDtoValidator;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ServiceContractNumberAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosing;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingResultAcquisitionForClosingOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.GhpMeterInstallationCodeEdit;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.transfercode.GhpMeterInstallationCodeEditOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterCompanyUseCategoryJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterRetailCategoryJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingTargetGasMeterRetailCategoryJudgmentOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ComprehensiveJudgmentProcessOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.OpeningClosingInProgressErrorJudgment;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.ParameterIn;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
+
+/**
+ * 概要: MA-023 供給停止報告情報取得-小売-TG小売 API のリソース実装。
+ * 主な仕様:
+ * - MA の REST 入口として TSV step 順序どおりに DA / SV を呼び出し、契約 DTO へ整形する。
+ * - `BaseResource` を継承し、RequestContext バインドや例外処理は共通処理へ委譲する。
+ * 既知の制約:
+ * - 設計書上の GET + body は MA 規約に合わせて GET + query へ読み替えている。
+ */
+@MainService(identifier = &quot;MA-023&quot;, name = &quot;供給停止報告情報取得-小売-TG小売 API&quot;)
+@Path(SupplyStopReportInfoGetTgRetailEndpointContract.PATH)
+@Produces(MediaType.APPLICATION_JSON)
+@Tag(
+        name = &quot;供給停止報告情報取得-小売-TG小売&quot;,
+        description = &quot;MA-023 供給停止報告情報取得-小売-TG小売 API&quot;)
+public class SupplyStopReportInfoGetTgRetailResource
+        extends BaseResource&lt;SupplyStopReportInfoGetTgRetailRequest&gt; {
+
+    private static final String RETAIL_STOCK_DIVISION = &quot;2&quot;;
+
+    private static final String SERVICE_CONTRACT_ACQUISITION_DIVISION = &quot;2&quot;;
+
+    private final String closingInProgressJudgmentDivision;
+
+    private final String comprehensiveJudgmentProcessingDivision;
+
+    private final String invalidPaymentContractStatus;
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    private final KnsytiDataAccess knsytiDataAccess;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment;
+
+    private final ClosingTargetGasMeterRetailCategoryJudgment
+            closingTargetGasMeterRetailCategoryJudgment;
+
+    private final ServiceContractNumberAcquisition serviceContractNumberAcquisition;
+
+    private final ClosingTargetGasMeterCompanyUseCategoryJudgment
+            closingTargetGasMeterCompanyUseCategoryJudgment;
+
+    private final MeterReadingResultAcquisitionForClosing meterReadingResultAcquisitionForClosing;
+
+    private final ComprehensiveJudgmentProcess comprehensiveJudgmentProcess;
+
+    private final GhpMeterInstallationCodeEdit ghpMeterInstallationCodeEdit;
+
+    /**
+     * 概要: MA-023 に必要な依存コンポーネントを受け取って初期化する。
+     * 主な仕様:
+     * - TSV step で使用する DA / SV を受け取り、設定値は設計正本の記載形式に合わせて解決する。
+     * - `〔KH...〕` と `【J...】` 表記の値は定数サービスから取得し、それ以外の固定値はクラス定数で保持する。
+     * 既知の制約:
+     * - 設計変更で定数種別が変わった場合は、定数サービス解決とクラス定数の使い分けを更新する必要がある。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param requestDtoValidator リクエスト DTO バリデータ
+     * @param clock システム日時プロバイダ
+     * @param gmtsetdDataAccess ガスメーター設置場所 DA
+     * @param gasmtrdDataAccess ガスメーター DA
+     * @param knsytiDataAccess 検針予定 DA
+     * @param svsihkrDataAccess サービス契約・支払契約関連 DA
+     * @param sihakyDataAccess 支払契約 DA
+     * @param openingClosingInProgressErrorJudgment 開閉栓中エラー判定 SV
+     * @param closingTargetGasMeterRetailCategoryJudgment 閉栓対象ガスメーターの小売分類判定 SV
+     * @param serviceContractNumberAcquisition サービス契約番号取得 SV
+     * @param closingTargetGasMeterCompanyUseCategoryJudgment 閉栓対象ガスメーターの社用区分判定 SV
+     * @param meterReadingResultAcquisitionForClosing 検針結果取得（閉栓）SV
+     * @param comprehensiveJudgmentProcess 総合判定処理 SV
+     * @param ghpMeterInstallationCodeEdit GHP メータ設置コード編集 SV
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    @Inject
+    public SupplyStopReportInfoGetTgRetailResource(
+            RequestContext requestContext,
+            RequestDtoValidator requestDtoValidator,
+            SystemDateTimeProvider clock,
+            GmtsetdDataAccess gmtsetdDataAccess,
+            GasmtrdDataAccess gasmtrdDataAccess,
+            KnsytiDataAccess knsytiDataAccess,
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            OpeningClosingInProgressErrorJudgment openingClosingInProgressErrorJudgment,
+            ClosingTargetGasMeterRetailCategoryJudgment closingTargetGasMeterRetailCategoryJudgment,
+            ServiceContractNumberAcquisition serviceContractNumberAcquisition,
+            ClosingTargetGasMeterCompanyUseCategoryJudgment
+                    closingTargetGasMeterCompanyUseCategoryJudgment,
+            MeterReadingResultAcquisitionForClosing meterReadingResultAcquisitionForClosing,
+            ComprehensiveJudgmentProcess comprehensiveJudgmentProcess,
+            GhpMeterInstallationCodeEdit ghpMeterInstallationCodeEdit,
+            KaiheisenConstantService kaiheisenConstantService,
+            CiriusConstantService ciriusConstantService) {
+<span class="fc" id="L169">        super(requestContext, requestDtoValidator, clock);</span>
+<span class="fc" id="L170">        this.gmtsetdDataAccess = gmtsetdDataAccess;</span>
+<span class="fc" id="L171">        this.gasmtrdDataAccess = gasmtrdDataAccess;</span>
+<span class="fc" id="L172">        this.knsytiDataAccess = knsytiDataAccess;</span>
+<span class="fc" id="L173">        this.svsihkrDataAccess = svsihkrDataAccess;</span>
+<span class="fc" id="L174">        this.sihakyDataAccess = sihakyDataAccess;</span>
+<span class="fc" id="L175">        this.openingClosingInProgressErrorJudgment = openingClosingInProgressErrorJudgment;</span>
+<span class="fc" id="L176">        this.closingTargetGasMeterRetailCategoryJudgment =</span>
+                closingTargetGasMeterRetailCategoryJudgment;
+<span class="fc" id="L178">        this.serviceContractNumberAcquisition = serviceContractNumberAcquisition;</span>
+<span class="fc" id="L179">        this.closingTargetGasMeterCompanyUseCategoryJudgment =</span>
+                closingTargetGasMeterCompanyUseCategoryJudgment;
+<span class="fc" id="L181">        this.meterReadingResultAcquisitionForClosing = meterReadingResultAcquisitionForClosing;</span>
+<span class="fc" id="L182">        this.comprehensiveJudgmentProcess = comprehensiveJudgmentProcess;</span>
+<span class="fc" id="L183">        this.ghpMeterInstallationCodeEdit = ghpMeterInstallationCodeEdit;</span>
+<span class="fc" id="L184">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L185">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L186">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L187">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L188">        this.closingInProgressJudgmentDivision =</span>
+<span class="fc" id="L189">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.TYPE,
+                        ConstantLookupKeys.Kaiheisen.OpeningClosingInProgressErrorJudgmentType.CLOSING);
+<span class="fc" id="L193">        this.comprehensiveJudgmentProcessingDivision =</span>
+<span class="fc" id="L194">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        nonNullKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing.TYPE,
+                        ConstantLookupKeys.Kaiheisen.ComprehensiveJudgmentProcessing
+                                .OVERALL_JUDGMENT_NO_RELATED_END);
+<span class="fc" id="L199">        this.invalidPaymentContractStatus =</span>
+<span class="fc" id="L200">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.PaymentContractStatus.INVALID);
+<span class="fc" id="L204">    }</span>
+
+    /**
+     * 概要: MA-023 供給停止報告情報取得-小売-TG小売 API を実行する。
+     * 主な仕様:
+     * - `BaseResource#execute` を経由して RequestContext バインド、バリデーション、例外ログを共通処理へ委譲する。
+     * - 実処理本体は `handle` に分離し、SV / DA 呼出しとレスポンス整形を 1 エンドポイント 1 クラスで完結させる。
+     * 既知の制約:
+     * - 正常系レスポンス DTO には error 系フィールドを持たせず、400 / 500 は共通例外マッパーに委譲する。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    @GET
+    @Transactional(TxType.REQUIRED)
+    @Operation(
+            summary = &quot;供給停止報告情報取得-小売-TG小売&quot;,
+            description = &quot;供給停止報告に必要な TG 小売向け情報を返却する。&quot;,
+            operationId = &quot;getSupplyStopReportInfoTgRetail&quot;)
+    @Parameter(
+            name = &quot;gasMtstNo&quot;,
+            in = ParameterIn.QUERY,
+            required = true,
+            description = &quot;ガスメーター設置場所番号&quot;)
+    @APIResponse(
+            responseCode = &quot;200&quot;,
+            description = &quot;供給停止報告情報の取得結果&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = SupplyStopReportInfoGetTgRetailResponse.class)))
+    @APIResponse(
+            responseCode = &quot;400&quot;,
+            description = &quot;入力不正・業務エラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(anyOf = {
+                        CommonErrorResponse.class,
+                        SupplyStopReportInfoGetTgRetailResponse.ErrorResponse.class})))
+    @APIResponse(
+            responseCode = &quot;500&quot;,
+            description = &quot;サーバエラー&quot;,
+            content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = KaiheisenErrorResponse.class)))
+    public SupplyStopReportInfoGetTgRetailResponse endpoint(
+            @BeanParam SupplyStopReportInfoGetTgRetailRequest request) {
+<span class="fc" id="L250">        return execute(request, () -&gt; handle(request));</span>
+    }
+
+    /**
+     * 概要: MA-023 の実処理を順序どおり実行する。
+     * 主な仕様:
+     * - TSV step の順序どおりに DA / SV を実行し、取得結果をレスポンスへ整形する。
+     * - 0 件時の業務エラー、データなし、データ不整合エラーは設計どおりに送出する。
+     * 既知の制約:
+     * - systemDatetime は BaseResource 経由で RequestContext に設定済みである前提とする。
+     *
+     * @param request リクエスト DTO
+     * @return レスポンス DTO
+     */
+    SupplyStopReportInfoGetTgRetailResponse handle(SupplyStopReportInfoGetTgRetailRequest request) {
+<span class="fc" id="L265">        Long gasMtstNo = Long.valueOf(request.gasMtstNo().trim());</span>
+<span class="fc" id="L266">        LocalDate systemDate =</span>
+<span class="fc" id="L267">                requestContext.getSystemDatetime()</span>
+<span class="pc" id="L268">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;systemDatetime is not set&quot;))</span>
+<span class="fc" id="L269">                        .toLocalDate();</span>
+<span class="fc" id="L270">        YearMonth systemYearMonth = YearMonth.of(systemDate.getYear(), systemDate.getMonthValue());</span>
+
+<span class="fc" id="L272">        GmtsetdRecord gmtsetdRecord =</span>
+                gmtsetdDataAccess
+<span class="fc" id="L274">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(gasMtstNo, systemDate)</span>
+<span class="fc" id="L275">                        .orElseThrow(</span>
+<span class="fc" id="L276">                                () -&gt; new BusinessRuleException(</span>
+                                        ErrorCodeConstants.ERROR_CODE_020000012));
+
+<span class="fc" id="L279">        executeOpeningClosingInProgressErrorJudgment(gmtsetdRecord);</span>
+
+<span class="fc" id="L281">        ClosingTargetGasMeterRetailCategoryJudgmentOutput retailCategory =</span>
+<span class="fc" id="L282">                closingTargetGasMeterRetailCategoryJudgment.execute(</span>
+                        gasMtstNo, RETAIL_STOCK_DIVISION);
+
+<span class="fc" id="L285">        ServiceContractNumberAcquisitionOutput serviceContract =</span>
+<span class="fc" id="L286">                serviceContractNumberAcquisition.execute(</span>
+                        gasMtstNo,
+<span class="fc" id="L288">                        gmtsetdRecord.mtgMtstNo(),</span>
+                        SERVICE_CONTRACT_ACQUISITION_DIVISION,
+<span class="fc" id="L290">                        gmtsetdRecord.ckrtGmscJtkb(),</span>
+                        systemDate);
+
+<span class="fc" id="L293">        ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput companyUseCategory =</span>
+<span class="fc" id="L294">                closingTargetGasMeterCompanyUseCategoryJudgment.execute(serviceContract.svkyNo());</span>
+
+<span class="fc" id="L296">        MeterReadingResultAcquisitionForClosingOutput meterReadingResult =</span>
+<span class="fc" id="L297">                meterReadingResultAcquisitionForClosing.execute(gasMtstNo);</span>
+
+<span class="fc" id="L299">        GasmtrdRecord gasmtrdRecord =</span>
+                gasmtrdDataAccess
+<span class="fc" id="L301">                        .findByTtkGmsbNoAndGmtkYmd(gasMtstNo, systemDate)</span>
+<span class="fc" id="L302">                        .orElseThrow(() -&gt; new DataNotFoundException(gasmtrdDataAccess.tableName()));</span>
+
+<span class="fc" id="L304">        KnsytiRecord knsytiRecord =</span>
+<span class="fc" id="L305">                knsytiDataAccess.findAllByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, systemYearMonth)</span>
+<span class="fc" id="L306">                        .stream()</span>
+<span class="fc" id="L307">                        .findFirst()</span>
+<span class="fc" id="L308">                        .orElseThrow(() -&gt; new DataNotFoundException(knsytiDataAccess.tableName()));</span>
+
+<span class="fc" id="L310">        ComprehensiveJudgmentProcessOutput comprehensiveJudgment =</span>
+<span class="fc" id="L311">                comprehensiveJudgmentProcess.execute(</span>
+                        gasMtstNo, null, comprehensiveJudgmentProcessingDivision);
+
+<span class="fc" id="L314">        SvsihkrRecord svsihkrRecord =</span>
+                svsihkrDataAccess
+<span class="fc" id="L316">                        .findBySvkyNoAndTkysYmdAndTyenYmdAndNotSihKiyJtkb(</span>
+<span class="fc" id="L317">                                serviceContract.svkyNo(),</span>
+                                systemDate,
+                                invalidPaymentContractStatus)
+<span class="fc" id="L320">                        .orElseThrow(</span>
+<span class="fc" id="L321">                                () -&gt; createSvsihkrDataInconsistency(</span>
+<span class="fc" id="L322">                                        serviceContract.svkyNo(), systemDate));</span>
+
+<span class="fc" id="L324">        SihakyRecord sihakyRecord =</span>
+                sihakyDataAccess
+<span class="fc" id="L326">                        .findBySihKiyNoAndKnskKjnYmdAndNotSihKiyJtkbOrderByTkysYmdDesc(</span>
+<span class="fc" id="L327">                                svsihkrRecord.sihKiyNo(),</span>
+                                systemDate,
+                                invalidPaymentContractStatus)
+<span class="fc" id="L330">                        .orElseThrow(</span>
+<span class="nc" id="L331">                                () -&gt; createSihakyDataInconsistency(</span>
+<span class="nc" id="L332">                                        svsihkrRecord.sihKiyNo(), systemDate));</span>
+
+<span class="fc" id="L334">        GhpMeterInstallationCodeEditOutput ghpCode =</span>
+<span class="fc" id="L335">                ghpMeterInstallationCodeEdit.execute(</span>
+<span class="fc" id="L336">                        gmtsetdRecord.ckrtGmscJtkb(), gmtsetdRecord.kkyuGmtKbn());</span>
+
+<span class="fc" id="L338">        return toResponse(</span>
+                gmtsetdRecord,
+                gasmtrdRecord,
+                knsytiRecord,
+                sihakyRecord,
+                retailCategory,
+                serviceContract,
+                companyUseCategory,
+                meterReadingResult,
+                comprehensiveJudgment,
+                ghpCode);
+    }
+
+    /**
+     * 概要: SV-138 の閉栓共通エラーを MA-023 の 400 レスポンスへ変換する。
+     * 主な仕様:
+     * - 閉栓共通エラーは元のエラーコードにかかわらず 020000073 として返す。
+     * - 相関 ID は共通フィルタが RequestContext に設定した値を返す。
+     * 既知の制約:
+     * - SV-138 以外で発生した例外は本処理の変換対象外とする。
+     *
+     * @param gmtsetdRecord ガスメーター設置場所レコード
+     */
+    private void executeOpeningClosingInProgressErrorJudgment(GmtsetdRecord gmtsetdRecord) {
+        try {
+<span class="fc" id="L363">            openingClosingInProgressErrorJudgment.execute(</span>
+<span class="fc" id="L364">                    gmtsetdRecord.gmtKhsJtkb(), closingInProgressJudgmentDivision);</span>
+<span class="fc" id="L365">        } catch (HeisenRuleException exception) {</span>
+<span class="fc" id="L366">            String errorCode = ErrorCodeConstants.ERROR_CODE_020000073;</span>
+<span class="fc" id="L367">            SupplyStopReportInfoGetTgRetailResponse.ErrorResponse body =</span>
+                    new SupplyStopReportInfoGetTgRetailResponse.ErrorResponse(
+<span class="fc" id="L369">                            requestContext.getCorrelationId().orElseThrow(</span>
+<span class="nc" id="L370">                                    () -&gt; new IllegalStateException(&quot;correlationId is not set&quot;)),</span>
+                            errorCode,
+<span class="fc" id="L372">                            ErrorCatalog.resolveErrorMessage(errorCode, List.of()),</span>
+<span class="fc" id="L373">                            List.of(),</span>
+<span class="fc" id="L374">                            ErrorCatalog.resolveCiriusMessageId(errorCode),</span>
+<span class="fc" id="L375">                            List.of());</span>
+<span class="fc" id="L376">            throw new WebApplicationException(exception, Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="fc" id="L377">                    .type(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L378">                    .entity(body)</span>
+<span class="fc" id="L379">                    .build());</span>
+<span class="fc" id="L380">        }</span>
+<span class="fc" id="L381">    }</span>
+
+    /**
+     * 概要: 取得結果を MA-023 レスポンスへ整形する。
+     * 主な仕様:
+     * - DA / SV の内部型を露出せず、契約 DTO へ変換して返却する。
+     * - 日付と数値の出力形式は既存 MA-024 と同じ規約に合わせる。
+     * 既知の制約:
+     * - 正常系レスポンスには相関 ID と error 系フィールドを含めない。
+     *
+     * @param gmtsetdRecord ガスメーター設置場所レコード
+     * @param gasmtrdRecord ガスメーターレコード
+     * @param knsytiRecord 検針予定レコード
+     * @param sihakyRecord 支払契約レコード
+     * @param retailCategory 小売分類判定結果
+     * @param serviceContract サービス契約番号取得結果
+     * @param companyUseCategory 社用区分判定結果
+     * @param meterReadingResult 検針結果取得結果
+     * @param comprehensiveJudgment 総合判定結果
+     * @param ghpCode GHP メータ設置コード編集結果
+     * @return レスポンス DTO
+     */
+    private SupplyStopReportInfoGetTgRetailResponse toResponse(
+            GmtsetdRecord gmtsetdRecord,
+            GasmtrdRecord gasmtrdRecord,
+            KnsytiRecord knsytiRecord,
+            SihakyRecord sihakyRecord,
+            ClosingTargetGasMeterRetailCategoryJudgmentOutput retailCategory,
+            ServiceContractNumberAcquisitionOutput serviceContract,
+            ClosingTargetGasMeterCompanyUseCategoryJudgmentOutput companyUseCategory,
+            MeterReadingResultAcquisitionForClosingOutput meterReadingResult,
+            ComprehensiveJudgmentProcessOutput comprehensiveJudgment,
+            GhpMeterInstallationCodeEditOutput ghpCode) {
+<span class="fc" id="L414">        return new SupplyStopReportInfoGetTgRetailResponse(</span>
+                new SupplyStopReportInfoGetTgRetailResponse.GmtsetInfo(
+<span class="fc" id="L416">                        gmtsetdRecord.gasMtstNo(),</span>
+<span class="fc" id="L417">                        gmtsetdRecord.gmtKhsJtkb(),</span>
+<span class="fc" id="L418">                        gmtsetdRecord.kngmStbJtkb(),</span>
+<span class="fc" id="L419">                        formatDate(gmtsetdRecord.kasYmd()),</span>
+<span class="fc" id="L420">                        formatDate(gmtsetdRecord.hesnYmd()),</span>
+<span class="fc" id="L421">                        formatDate(gmtsetdRecord.kusYmd()),</span>
+<span class="fc" id="L422">                        formatDate(gmtsetdRecord.kngmSbmsYmd()),</span>
+<span class="fc" id="L423">                        gmtsetdRecord.hesnJysb(),</span>
+<span class="fc" id="L424">                        gmtsetdRecord.kasJysb(),</span>
+<span class="fc" id="L425">                        ghpCode.ghpmSchCd()),</span>
+<span class="fc" id="L426">                new SupplyStopReportInfoGetTgRetailResponse.KnsytiInfo(knsytiRecord.knsHuhuKbn()),</span>
+<span class="fc" id="L427">                new SupplyStopReportInfoGetTgRetailResponse.SihakyInfo(sihakyRecord.sikSvcShbt()),</span>
+                new SupplyStopReportInfoGetTgRetailResponse.GmtInfo(
+<span class="fc" id="L429">                        gasmtrdRecord.gmb(),</span>
+<span class="fc" id="L430">                        gasmtrdRecord.gmkShbt(),</span>
+<span class="fc" id="L431">                        MaResponseNumericValues.oneDecimalOrZero(gasmtrdRecord.gmtGusu()),</span>
+<span class="fc" id="L432">                        MaResponseNumericValues.oneDecimalOrZero(gasmtrdRecord.sjsuMincSu())),</span>
+                new SupplyStopReportInfoGetTgRetailResponse.KnsKkaInfo(
+<span class="fc" id="L434">                        meterReadingResult.skinKnkkInf().gmtShjSu(),</span>
+<span class="fc" id="L435">                        formatDate(meterReadingResult.skinKnkkInf().knsYmd())),</span>
+                new SupplyStopReportInfoGetTgRetailResponse.TkssvkyInfo(
+<span class="fc" id="L437">                        retailCategory.tksuKijsCd(), retailCategory.syoKyoTrno()),</span>
+                new SupplyStopReportInfoGetTgRetailResponse.SvckyaInfo(
+<span class="fc" id="L439">                        serviceContract.svkyNo(), companyUseCategory.kiyShbt()),</span>
+<span class="fc" id="L440">                comprehensiveJudgment.suguHntFlg(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 概要: SVSIHKR 0 件時のデータ不整合例外を生成する。
+     * 主な仕様:
+     * - 設計書どおりテーブル名、DA 識別子、呼出しパラメータ JSON を含める。
+     * - DA-044-R007 の入力値は systemDatetime の日付部を使用する。
+     * 既知の制約:
+     * - 相関 ID や報告システム種別は DataInconsistencySupport のパラメータへ含めない。
+     *
+     * @param svkyNo サービス契約番号
+     * @param systemDate システム日付
+     * @return データ不整合例外
+     */
+    private RuntimeException createSvsihkrDataInconsistency(Long svkyNo, LocalDate systemDate) {
+<span class="fc" id="L462">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L463">                svsihkrDataAccess.tableName(),</span>
+                SvsihkrDataAccess.CallSpecs.FIND_BY_SVKY_NO_AND_TKYS_YMD_AND_TYEN_YMD_AND_NOT_SIH_KIY_JTKB
+<span class="fc" id="L465">                        .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L467">                        .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L468">                        .put(&quot;knskKjnYmd&quot;, systemDate)</span>
+<span class="fc" id="L469">                        .put(&quot;sihKiyJtkb&quot;, invalidPaymentContractStatus));</span>
+    }
+
+    /**
+     * 概要: SIHAKY 0 件時のデータ不整合例外を生成する。
+     * 主な仕様:
+     * - 設計書どおりテーブル名、DA 識別子、呼出しパラメータ JSON を含める。
+     * - DA-075-R005 の入力値は systemDatetime の日付部を使用する。
+     * 既知の制約:
+     * - DataInconsistencySupport の JSON には支払契約検索に必要な最小項目のみを載せる。
+     *
+     * @param sihKiyNo 支払契約番号
+     * @param systemDate システム日付
+     * @return データ不整合例外
+     */
+    private RuntimeException createSihakyDataInconsistency(Long sihKiyNo, LocalDate systemDate) {
+<span class="nc" id="L485">        return DataInconsistencySupport.create(</span>
+<span class="nc" id="L486">                sihakyDataAccess.tableName(),</span>
+                SihakyDataAccess.CallSpecs
+                        .FIND_BY_SIH_KIY_NO_AND_KNSK_KJN_YMD_AND_NOT_SIH_KIY_JTKB_ORDER_BY_TKYS_YMD_DESC
+<span class="nc" id="L489">                        .identifier(),</span>
+                new FlatJsonBuilder()
+<span class="nc" id="L491">                        .put(&quot;sihKiyNo&quot;, sihKiyNo)</span>
+<span class="nc" id="L492">                        .put(&quot;knskKjnYmd&quot;, systemDate)</span>
+<span class="nc" id="L493">                        .put(&quot;sihKiyJtkb&quot;, invalidPaymentContractStatus));</span>
+    }
+
+    private static String formatDate(LocalDate date) {
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">        return date == null ? null : date.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

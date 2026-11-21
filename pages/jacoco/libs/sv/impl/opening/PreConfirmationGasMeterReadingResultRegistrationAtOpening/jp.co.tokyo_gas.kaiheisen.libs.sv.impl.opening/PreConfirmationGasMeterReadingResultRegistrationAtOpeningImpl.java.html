@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreConfirmationGasMeterReadingResultRegistrationAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-preconfirmationgasmeterreadingresultregistrationatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">PreConfirmationGasMeterReadingResultRegistrationAtOpeningImpl.java</span></div><h1>PreConfirmationGasMeterReadingResultRegistrationAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.KtmgmkkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ktmgmkk.write.KtmgmkkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreConfirmationGasMeterReadingResultRegistrationAtOpening;
+
+/**
+ * 概要: SV-232（開栓時確定前ガスメーター検針結果登録）のサービス実装。
+ * 主な仕様:
+ * - `DA-052-R002` で既存の確定前ガスメーター検針結果を取得できた場合は、その最新 1 件を登録内容へ採用する。
+ * - `DA-052-R002` で取得できない場合は `DA-027-R001` で導管検針結果を取得し、取得できた場合のみその最新 1 件を登録内容へ採用する。
+ * - 開栓事由種別から検針結果作成事由種別を決定し、`DA-052-C001` へ 1 件登録する。
+ * - 監査ユーザー ID は `KHSS232`、最終更新起点機能 ID は RequestContext の報告システム種別を開閉栓定数でデコードした値を利用する。
+ * 既知の制約:
+ * - RequestContext の `systemDatetime` と `hukkSysShbt` が未設定の場合は早期失敗する。
+ * - 固定設定値はコンストラクタ初期化時に必須 CIRIUS 定数として検証する。
+ */
+public class PreConfirmationGasMeterReadingResultRegistrationAtOpeningImpl
+    implements PreConfirmationGasMeterReadingResultRegistrationAtOpening {
+
+    static final String SERVICE_USER_ID = &quot;KHSS232&quot;;
+
+<span class="fc" id="L36">    private static final Set&lt;String&gt; SUPPLY_RESUMED_REASON_TYPES = Set.of(</span>
+            ConstantLookupKeys.Cirius.OpeningReasonType.SUPPLY_RESUMED,
+            ConstantLookupKeys.Cirius.OpeningReasonType.START_SUPPLYING_TO_OTHER_PARTIES);
+
+    private final KtmgmkkDataAccess ktmgmkkDataAccess;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String openingReasonCode;
+
+    private final String supplyResumedReasonCode;
+
+    private final String disasterRestorationReasonCode;
+
+    private final String securityReleaseReasonCode;
+
+    private final String noRegressionCode;
+
+    private final String noChangeCode;
+
+    private final String onlineReportingMethodCode;
+
+    private final String irregularMeterReadingCode;
+
+    private final String actualInspectionStatusCode;
+
+    private final String openingStatusCode;
+
+    /**
+     * 概要: SV-232 実行に必要な依存オブジェクトと必須定数を初期化する。
+     *
+     * @param ktmgmkkDataAccess 確定前ガスメーター検針結果データアクセス
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public PreConfirmationGasMeterReadingResultRegistrationAtOpeningImpl(
+                KtmgmkkDataAccess ktmgmkkDataAccess,
+                GmkskkdDataAccess gmkskkdDataAccess,
+                RequestContext requestContext,
+                KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L82">                CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L83">        this.ktmgmkkDataAccess = Objects.requireNonNull(ktmgmkkDataAccess, &quot;ktmgmkkDataAccess&quot;);</span>
+<span class="fc" id="L84">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L85">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L86">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L89">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L92">        this.openingReasonCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.OPENING);
+<span class="fc" id="L96">        this.supplyResumedReasonCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SUPPLY_RESUMED);
+<span class="fc" id="L100">        this.disasterRestorationReasonCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                        .RESTORATION_OF_SHUTOFF_IN_CASE_OF_DISASTER);
+<span class="fc" id="L105">        this.securityReleaseReasonCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.SECURITY_RELEASE);
+<span class="fc" id="L109">        this.noRegressionCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.TYPE,
+                ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.NONE);
+<span class="fc" id="L113">        this.noChangeCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChangeDetection.TYPE,
+                ConstantLookupKeys.Cirius.ChangeDetection.NO_CHANGE);
+<span class="fc" id="L117">        this.onlineReportingMethodCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterReadingResultReportingMethod.TYPE,
+                ConstantLookupKeys.Cirius.MeterReadingResultReportingMethod.ONLINE);
+<span class="fc" id="L121">        this.irregularMeterReadingCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.RegularMeterReading.TYPE,
+                ConstantLookupKeys.Cirius.RegularMeterReading.IRREGULAR);
+<span class="fc" id="L125">        this.actualInspectionStatusCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.MeterReadingImplementationStatusCode.TYPE,
+                ConstantLookupKeys.Cirius.MeterReadingImplementationStatusCode
+                        .ACTUAL_INSPECTION_NORMAL_METER_READING);
+<span class="fc" id="L130">        this.openingStatusCode = requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * 概要: SV-232 を実行し、確定前ガスメーター検針結果を 1 件登録する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param hkkKsenSaymd 報告開栓作業年月日
+     * @param kktGmtShjSu 確定ガスメーター指示数
+     * @param knsHuhuKbn 検針方法区分
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param mtgMtstNo 元ガスメーター設置場所番号
+     * @param gmb ガスメーター社番
+     * @param gmbTsno ガスメーター社番通し番号
+     * @param kktTksuSvkyNo 確定託送サービス契約番号
+     * @param sgytSinNo 作業担当社員番号
+     * @param kasJysb 開栓事由種別
+     */
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate hkkKsenSaymd,
+            Long kktGmtShjSu,
+            String knsHuhuKbn,
+            String ckrtGmscJtkb,
+            Long mtgMtstNo,
+            String gmb,
+            Integer gmbTsno,
+            Long kktTksuSvkyNo,
+            String sgytSinNo,
+            String kasJysb) {
+<span class="fc" id="L164">        RequestState requestState = requireRequestState();</span>
+<span class="fc" id="L165">        int maxSequenceNumber = resolveMaxSequenceNumber(gasMtstNo, hkkKsenSaymd);</span>
+<span class="fc" id="L166">        String reasonTypeForCreate = resolveReasonTypeForCreate(kasJysb);</span>
+<span class="fc" id="L167">        ktmgmkkDataAccess.insert(</span>
+                new KtmgmkkWriteRecord(
+                        gasMtstNo,
+                        hkkKsenSaymd,
+<span class="fc" id="L171">                        maxSequenceNumber + 1,</span>
+                        null,
+                        reasonTypeForCreate,
+                        null,
+                        kktGmtShjSu,
+                        null,
+                        null,
+                        null,
+                        noRegressionCode,
+                        noChangeCode,
+                        onlineReportingMethodCode,
+<span class="fc" id="L182">                        false,</span>
+                        irregularMeterReadingCode,
+                        actualInspectionStatusCode,
+                        openingStatusCode,
+                        knsHuhuKbn,
+                        ckrtGmscJtkb,
+                        mtgMtstNo,
+                        null,
+                        null,
+                        gmb,
+                        gmbTsno,
+                        kktTksuSvkyNo,
+                        sgytSinNo,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+<span class="fc" id="L201">                        requestState.systemDate(),</span>
+<span class="fc" id="L202">                        false,</span>
+                        null),
+<span class="fc" id="L204">                AuditContext.of(SERVICE_USER_ID, requestState.originFunctionId()));</span>
+<span class="fc" id="L205">    }</span>
+
+    /**
+     * 概要: 既存データから最大検針結果通し番号を決定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knsYmd 検針年月日
+     * @return 最大検針結果通し番号
+     */
+    private int resolveMaxSequenceNumber(Long gasMtstNo, LocalDate knsYmd) {
+<span class="fc" id="L215">        var preConfirmationResult = ktmgmkkDataAccess.findByGasMtstNoAndKnsYmd(gasMtstNo, knsYmd);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (preConfirmationResult.isPresent()) {</span>
+<span class="fc" id="L217">            return preConfirmationResult.map(KtmgmkkRecord::knsKkaTsno).orElse(0);</span>
+        }
+<span class="fc" id="L219">        return gmkskkdDataAccess.findByGasMtstNoAndKnsYmd(gasMtstNo, knsYmd)</span>
+<span class="fc" id="L220">                .map(GmkskkdRecord::knsKkaTsno)</span>
+<span class="fc" id="L221">                .orElse(0);</span>
+    }
+
+    /**
+     * 概要: 開栓事由種別から検針結果作成事由種別を決定する。
+     *
+     * @param kasJysb 開栓事由種別
+     * @return 検針結果作成事由種別
+     */
+    private String resolveReasonTypeForCreate(String kasJysb) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (SUPPLY_RESUMED_REASON_TYPES.contains(kasJysb)) {</span>
+<span class="fc" id="L232">            return supplyResumedReasonCode;</span>
+        }
+<span class="fc bfc" id="L234" title="All 3 branches covered.">        return switch (kasJysb) {</span>
+<span class="fc" id="L235">            case ConstantLookupKeys.Cirius.OpeningReasonType.SECURITY_RESTORATION -&gt; securityReleaseReasonCode;</span>
+<span class="fc" id="L236">            case ConstantLookupKeys.Cirius.OpeningReasonType.DISASTER_RECOVERY -&gt; disasterRestorationReasonCode;</span>
+<span class="fc" id="L237">            default -&gt; openingReasonCode;</span>
+        };
+    }
+
+    /**
+     * 概要: 実行に必要な RequestContext 値を取得し、起点機能 ID を解決する。
+     *
+     * @return 実行時に利用するリクエスト状態
+     */
+    private RequestState requireRequestState() {
+<span class="fc" id="L247">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L248">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L249">                .toLocalDate();</span>
+<span class="fc" id="L250">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L251">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L252">        String originFunctionId = kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                hukkSysShbt);
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        if (originFunctionId == null) {</span>
+<span class="fc" id="L256">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L260">        return new RequestState(systemDate, originFunctionId);</span>
+    }
+
+    /**
+     * 概要: 必須 CIRIUS 定数を検証済みコードとして返却する。
+     *
+     * @param ciriusConstantService CIRIUS 定数サービス
+     * @param type 定数種別
+     * @param code 定数コード
+     * @return 検証済みコード
+     */
+    private static String requireCiriusConstant(
+            CiriusConstantService ciriusConstantService,
+            String type,
+            String code) {
+<span class="fc" id="L275">        return RequiredConstantResolver.requireCiriusConstant(</span>
+            ciriusConstantService,
+            type,
+            code);
+    }
+
+    /** 実行に必要な RequestContext 由来値。 */
+<span class="fc" id="L282">    private record RequestState(</span>
+            LocalDate systemDate,
+            String originFunctionId) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

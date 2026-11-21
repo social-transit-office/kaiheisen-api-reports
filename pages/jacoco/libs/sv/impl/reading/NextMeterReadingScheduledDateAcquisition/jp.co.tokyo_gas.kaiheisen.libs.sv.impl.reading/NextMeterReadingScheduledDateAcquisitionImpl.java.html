@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NextMeterReadingScheduledDateAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-nextmeterreadingscheduleddateacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">NextMeterReadingScheduledDateAcquisitionImpl.java</span></div><h1>NextMeterReadingScheduledDateAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import java.time.LocalDate;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.NextMeterReadingScheduledDateConfirmation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisitionOutput;
+
+/** 次回検針予定年月日取得サービス実装。 */
+public class NextMeterReadingScheduledDateAcquisitionImpl
+        implements NextMeterReadingScheduledDateAcquisition {
+
+    private final KnsytiDataAccess knsytiDataAccess;
+
+    private final NextMeterReadingScheduledDateConfirmation
+            nextMeterReadingScheduledDateConfirmation;
+
+    private final RequestContext requestContext;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param knsytiDataAccess 検針予定データアクセス
+     * @param nextMeterReadingScheduledDateConfirmation 次回検針予定日確定処理サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public NextMeterReadingScheduledDateAcquisitionImpl(
+            KnsytiDataAccess knsytiDataAccess,
+            NextMeterReadingScheduledDateConfirmation nextMeterReadingScheduledDateConfirmation,
+<span class="fc" id="L34">            RequestContext requestContext) {</span>
+<span class="fc" id="L35">        this.knsytiDataAccess = knsytiDataAccess;</span>
+<span class="fc" id="L36">        this.nextMeterReadingScheduledDateConfirmation = nextMeterReadingScheduledDateConfirmation;</span>
+<span class="fc" id="L37">        this.requestContext = requestContext;</span>
+<span class="fc" id="L38">    }</span>
+
+    /**
+     * 概要: 検索基準年月日とシステム日時の年月で検針予定を探索し、次回検針予定年月日を返却する。 主な仕様: - まず検索基準年月日の年月で DA-067-R001 を検索する。 -
+        * 0件の場合は RequestContext の systemDatetime の年月で再検索する。 - SV-047 で定例検針予定年月日を確定し、基準日未満なら翌月で再確定する。
+        * 既知の制約: - RequestContext に systemDatetime が未設定の場合は IllegalStateException を送出する。 -
+     * 取得候補が複数ある場合は先頭レコードを採用する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kskKjnYmd 検索基準年月日
+     * @return 次回検針予定年月日取得結果
+     */
+    @Override
+    public NextMeterReadingScheduledDateAcquisitionOutput execute(
+            Long gasMtstNo, LocalDate kskKjnYmd) {
+<span class="fc" id="L53">        KnsytiRecord scheduledRecord = findScheduledRecord(gasMtstNo, kskKjnYmd);</span>
+<span class="fc" id="L54">        LocalDate tkytYmd = resolveScheduledDate(scheduledRecord, kskKjnYmd);</span>
+<span class="fc" id="L55">        return toOutput(scheduledRecord, tkytYmd);</span>
+    }
+
+    /**
+     * 概要: 検針予定を検索し、検索基準年月日でヒットしない場合はシステム日時年月で再検索する。 主な仕様: - 1回目の検索は検索基準年月日の年月を使用する。 - 0件時のみ
+     * RequestContext の systemDatetime の年月を使用して再検索する。 - 再検索でも0件の場合は処理対象データ無しエラーを送出する。 既知の制約: -
+     * 複数件ヒット時は先頭レコードを採用する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kskKjnYmd 検索基準年月日
+     * @return 採用した検針予定レコード
+     */
+    private KnsytiRecord findScheduledRecord(Long gasMtstNo, LocalDate kskKjnYmd) {
+<span class="fc" id="L68">        List&lt;KnsytiRecord&gt; records =</span>
+<span class="fc" id="L69">                knsytiDataAccess.findAllByGasMtstNoAndTkysYmAndTyenYm(</span>
+<span class="fc" id="L70">                        gasMtstNo, toYearMonth(kskKjnYmd));</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (!records.isEmpty()) {</span>
+<span class="fc" id="L72">            return records.getFirst();</span>
+        }
+
+<span class="fc" id="L75">        LocalDate systemDate =</span>
+                requestContext
+<span class="fc" id="L77">                        .getSystemDatetime()</span>
+<span class="fc" id="L78">                        .orElseThrow(</span>
+                                () -&gt;
+<span class="fc" id="L80">                                        new IllegalStateException(</span>
+                                                &quot;RequestContext.systemDatetime is required&quot;))
+<span class="fc" id="L82">                        .toLocalDate();</span>
+<span class="fc" id="L83">        List&lt;KnsytiRecord&gt; fallbackRecords =</span>
+<span class="fc" id="L84">                knsytiDataAccess.findAllByGasMtstNoAndTkysYmAndTyenYm(</span>
+<span class="fc" id="L85">                        gasMtstNo, toYearMonth(systemDate));</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (!fallbackRecords.isEmpty()) {</span>
+<span class="fc" id="L87">            return fallbackRecords.getFirst();</span>
+        }
+<span class="fc" id="L89">        throw new DataNotFoundException(knsytiDataAccess.tableName());</span>
+    }
+
+    /**
+     * 概要: KNSYTI と基準日から定例検針予定年月日を確定する。 主な仕様: - 最初に基準日で SV-047 を呼び出す。 - 確定した年月日が基準日未満の場合は翌月基準で再度
+     * SV-047 を呼び出す。 既知の制約: - SV-047 の例外は補足せずそのまま上位へ送出する。
+     *
+     * @param scheduledRecord 採用した検針予定レコード
+     * @param kskKjnYmd 検索基準年月日
+     * @return 確定した定例検針予定年月日
+     */
+    private LocalDate resolveScheduledDate(KnsytiRecord scheduledRecord, LocalDate kskKjnYmd) {
+<span class="fc" id="L101">        LocalDate tkytYmd =</span>
+                nextMeterReadingScheduledDateConfirmation
+<span class="fc" id="L103">                        .execute(</span>
+                                kskKjnYmd,
+<span class="fc" id="L105">                                scheduledRecord.stkbKbn(),</span>
+<span class="fc" id="L106">                                scheduledRecord.knsHuhuKbn(),</span>
+<span class="fc" id="L107">                                scheduledRecord.shtiKskbNo(),</span>
+<span class="fc" id="L108">                                scheduledRecord.tkkbNo())</span>
+<span class="fc" id="L109">                        .tkytYmd();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!tkytYmd.isBefore(kskKjnYmd)) {</span>
+<span class="fc" id="L111">            return tkytYmd;</span>
+        }
+<span class="fc" id="L113">        return nextMeterReadingScheduledDateConfirmation</span>
+<span class="fc" id="L114">                .execute(</span>
+<span class="fc" id="L115">                        kskKjnYmd.plusMonths(1),</span>
+<span class="fc" id="L116">                        scheduledRecord.stkbKbn(),</span>
+<span class="fc" id="L117">                        scheduledRecord.knsHuhuKbn(),</span>
+<span class="fc" id="L118">                        scheduledRecord.shtiKskbNo(),</span>
+<span class="fc" id="L119">                        scheduledRecord.tkkbNo())</span>
+<span class="fc" id="L120">                .tkytYmd();</span>
+    }
+
+    /**
+     * 概要: KNSYTI レコードと確定日から出力 DTO を構築する。 主な仕様: - KNSYTI 由来の項目はそのまま出力 DTO へ転記する。 - 定例検針予定年月日は SV-047
+     * の確定値を使用する。
+     *
+     * @param scheduledRecord 採用した検針予定レコード
+     * @param tkytYmd 確定した定例検針予定年月日
+     * @return 次回検針予定年月日取得結果
+     */
+    private static NextMeterReadingScheduledDateAcquisitionOutput toOutput(
+            KnsytiRecord scheduledRecord, LocalDate tkytYmd) {
+<span class="fc" id="L133">        return new NextMeterReadingScheduledDateAcquisitionOutput(</span>
+                tkytYmd,
+<span class="fc" id="L135">                scheduledRecord.tkkbNo(),</span>
+<span class="fc" id="L136">                scheduledRecord.knsHuhuKbn(),</span>
+<span class="fc" id="L137">                scheduledRecord.stkbKbn(),</span>
+<span class="fc" id="L138">                scheduledRecord.shtiKskbNo(),</span>
+<span class="fc" id="L139">                scheduledRecord.tkysYm(),</span>
+<span class="fc" id="L140">                scheduledRecord.tyenYm(),</span>
+<span class="fc" id="L141">                scheduledRecord.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: LocalDate を YearMonth へ変換する。 主な仕様: - 年月日の年と月のみを使用する。
+     *
+     * @param date 変換元日付
+     * @return YearMonth
+     */
+    private static jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth toYearMonth(
+            LocalDate date) {
+<span class="fc" id="L152">        return jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth.of(</span>
+<span class="fc" id="L153">                date.getYear(), date.getMonthValue());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

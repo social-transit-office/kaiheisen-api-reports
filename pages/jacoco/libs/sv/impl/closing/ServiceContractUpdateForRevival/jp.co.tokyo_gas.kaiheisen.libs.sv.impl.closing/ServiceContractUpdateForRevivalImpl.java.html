@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceContractUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-closing-servicecontractupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing</a> &gt; <span class="el_source">ServiceContractUpdateForRevivalImpl.java</span></div><h1>ServiceContractUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.closing;
+
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess.CallSpecs.FIND_LATEST_BY_SVKY_NO_AND_RKKI_STT_YMD_AND_SVKY_JTKB;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_KYTT_SKNO_AND_SKNO_NOT;
+import static jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_SKNO;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaKyttSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.closing.ServiceContractUpdateForRevival;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.TaxExemptContractUpdateForRevival;
+
+/**
+ * 概要: SV-108（サービス契約更新（契約復活））のサービス実装。
+ * 主な仕様:
+ * - 取消対象検針年月日の翌日時点で無効のサービス契約を参照し、契約復活状態へ更新する。
+ * - 免税条件に一致する場合は先に SV-109 を呼び出す。
+ * - 非排他更新の更新件数が 0 件の場合は DataInconsistencyException を送出する。
+ */
+public final class ServiceContractUpdateForRevivalImpl
+        implements ServiceContractUpdateForRevival {
+
+    /** 監査項目に設定する更新ユーザー ID。 */
+    static final String SERVICE_USER_ID = &quot;KHSS108&quot;;
+
+    /** 契約復活時に設定する最大日付。 */
+<span class="fc" id="L41">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final TaxExemptContractUpdateForRevival taxExemptContractUpdateForRevival;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String invalidServiceContractStatus;
+
+    private final String underContractStatus;
+
+    private final String dutyFreeConsumptionTax;
+
+    /**
+     * 必須依存と定数を初期化する。
+     *
+     * @param serviceContractDataAccess サービス契約 DA
+     * @param taxExemptUpdateService 免税契約更新 SV
+     * @param context リクエストコンテキスト
+     * @param reportingConstantService 開閉栓定数取得サービス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ServiceContractUpdateForRevivalImpl(
+            final SvckyaDataAccess serviceContractDataAccess,
+            final TaxExemptContractUpdateForRevival taxExemptUpdateService,
+            final RequestContext context,
+            final KaiheisenConstantService reportingConstantService,
+<span class="fc" id="L71">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L72">        this.svckyaDataAccess = Objects.requireNonNull(</span>
+                serviceContractDataAccess,
+                &quot;serviceContractDataAccess&quot;);
+<span class="fc" id="L75">        this.taxExemptContractUpdateForRevival = Objects.requireNonNull(</span>
+                taxExemptUpdateService,
+                &quot;taxExemptUpdateService&quot;);
+<span class="fc" id="L78">        this.requestContext = Objects.requireNonNull(context, &quot;requestContext&quot;);</span>
+<span class="fc" id="L79">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                reportingConstantService,
+                &quot;reportingConstantService&quot;);
+<span class="fc" id="L82">        CiriusConstantService resolvedCiriusConstantService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L85">        this.invalidServiceContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.INVALID);
+<span class="fc" id="L89">        this.underContractStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L93">        this.dutyFreeConsumptionTax = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ConsumptionTax.TYPE,
+                ConstantLookupKeys.Cirius.ConsumptionTax.DUTY_FREE);
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * サービス契約の契約復活更新を実行する。
+     *
+     * @param svkyNo サービス契約番号
+     * @param trkKnsYmd 取消対象検針年月日
+     * @param sziKziKbn 消費税課税区分
+     * @param skno 世代管理番号
+     * @param kyttSkno 契約特定世代管理番号
+     */
+    @Override
+    public void execute(
+            final Long svkyNo,
+            final LocalDate trkKnsYmd,
+            final String sziKziKbn,
+            final Integer skno,
+            final Integer kyttSkno) {
+<span class="fc" id="L115">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L116">        AuditContext auditContext = AuditContext.of(</span>
+                SERVICE_USER_ID,
+                decodedOriginFunctionId);
+
+<span class="fc" id="L120">        Optional&lt;SvckyaRecord&gt; serviceContract = svckyaDataAccess</span>
+<span class="fc" id="L121">                .findLatestBySvkyNoAndRkkiSttYmdAndSvkyJtkb(</span>
+                        svkyNo,
+<span class="fc" id="L123">                        trkKnsYmd.plusDays(1),</span>
+                        invalidServiceContractStatus);
+
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (shouldInvokeTaxExemptUpdate(serviceContract.orElse(null), sziKziKbn)) {</span>
+<span class="fc" id="L127">            taxExemptContractUpdateForRevival.execute(svkyNo, trkKnsYmd);</span>
+        }
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        if (serviceContract.isEmpty()) {</span>
+<span class="fc" id="L131">            updateWhenNoContractExists(</span>
+                    svkyNo,
+                    skno,
+                    kyttSkno,
+                    auditContext,
+                    decodedOriginFunctionId);
+<span class="fc" id="L137">            return;</span>
+        }
+
+<span class="fc" id="L140">        updateWhenContractExists(</span>
+<span class="fc" id="L141">                serviceContract.get(),</span>
+                svkyNo,
+                skno,
+                kyttSkno,
+                sziKziKbn,
+                auditContext,
+                decodedOriginFunctionId);
+<span class="fc" id="L148">    }</span>
+
+    private boolean shouldInvokeTaxExemptUpdate(
+            final SvckyaRecord serviceContract,
+            final String inputConsumptionTax) {
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        return dutyFreeConsumptionTax.equals(inputConsumptionTax)</span>
+                || (serviceContract != null
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                &amp;&amp; dutyFreeConsumptionTax.equals(serviceContract.sziKziKbn()));</span>
+    }
+
+    private void updateWhenNoContractExists(
+            final Long svkyNo,
+            final Integer skno,
+            final Integer kyttSkno,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L164">        int updatedPrimaryCount = svckyaDataAccess.updateBySvkyNoAndSkno(</span>
+<span class="fc" id="L165">                buildRevivalWriteRecord(</span>
+                        underContractStatus,
+                        null,
+                        MAX_DATE,
+                        MAX_DATE,
+                        MAX_DATE,
+                        null),
+<span class="fc" id="L172">                EnumSet.of(</span>
+                        SvckyaColumn.SVKY_JTKB,
+                        SvckyaColumn.SVKY_END_JYSB,
+                        SvckyaColumn.RKKI_END_YMD,
+                        SvckyaColumn.KSB_END_YMD,
+                        SvckyaColumn.KSB_ENYT_YMD),
+                new SvckyaSknoUpdateKey(svkyNo, skno),
+                auditContext);
+<span class="fc" id="L180">        ensureUpdated(</span>
+                updatedPrimaryCount,
+<span class="fc" id="L182">                createPrimaryUpdateException(</span>
+                        svkyNo,
+                        skno,
+                        underContractStatus,
+                        null,
+                        MAX_DATE,
+                        MAX_DATE,
+                        MAX_DATE,
+                        null,
+                        decodedOriginFunctionId));
+
+<span class="fc" id="L193">        svckyaDataAccess.updateBySvkyNoAndKyttSknoAndSknoNot(</span>
+<span class="fc" id="L194">                buildRelatedUpdateWriteRecord(),</span>
+<span class="fc" id="L195">                EnumSet.of(</span>
+                        SvckyaColumn.KSB_END_YMD,
+                        SvckyaColumn.KSB_ENYT_YMD),
+                new SvckyaKyttSknoUpdateKey(svkyNo, kyttSkno, skno),
+                auditContext);
+<span class="fc" id="L200">    }</span>
+
+    private void updateWhenContractExists(
+            final SvckyaRecord serviceContract,
+            final Long svkyNo,
+            final Integer skno,
+            final Integer kyttSkno,
+            final String sziKziKbn,
+            final AuditContext auditContext,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L210">        int updatedRevivalCount = svckyaDataAccess.updateBySvkyNoAndSkno(</span>
+<span class="fc" id="L211">                buildRevivalWriteRecord(</span>
+                        underContractStatus,
+                        null,
+                        MAX_DATE,
+                        MAX_DATE,
+                        MAX_DATE,
+                        sziKziKbn),
+<span class="fc" id="L218">                EnumSet.of(</span>
+                        SvckyaColumn.SVKY_JTKB,
+                        SvckyaColumn.SVKY_END_JYSB,
+                        SvckyaColumn.RKKI_END_YMD,
+                        SvckyaColumn.KSB_END_YMD,
+                        SvckyaColumn.KSB_ENYT_YMD,
+                        SvckyaColumn.SZI_KZI_KBN),
+<span class="fc" id="L225">                new SvckyaSknoUpdateKey(svkyNo, serviceContract.skno()),</span>
+                auditContext);
+<span class="fc" id="L227">        ensureUpdated(</span>
+                updatedRevivalCount,
+<span class="fc" id="L229">                createPrimaryUpdateException(</span>
+                        svkyNo,
+<span class="fc" id="L231">                        serviceContract.skno(),</span>
+                        underContractStatus,
+                        null,
+                        MAX_DATE,
+                        MAX_DATE,
+                        MAX_DATE,
+                        sziKziKbn,
+                        decodedOriginFunctionId));
+
+<span class="fc" id="L240">        int updatedEndReasonCount = svckyaDataAccess.updateBySvkyNoAndSkno(</span>
+<span class="fc" id="L241">                buildEndReasonClearWriteRecord(),</span>
+<span class="fc" id="L242">                EnumSet.of(SvckyaColumn.SVKY_END_JYSB),</span>
+                new SvckyaSknoUpdateKey(svkyNo, skno),
+                auditContext);
+<span class="fc" id="L245">        ensureUpdated(</span>
+                updatedEndReasonCount,
+<span class="fc" id="L247">                createEndReasonClearException(</span>
+                        svkyNo,
+                        skno,
+                        decodedOriginFunctionId));
+
+<span class="fc" id="L252">        svckyaDataAccess.updateBySvkyNoAndKyttSknoAndSknoNot(</span>
+<span class="fc" id="L253">                buildRelatedUpdateWriteRecord(),</span>
+<span class="fc" id="L254">                EnumSet.of(</span>
+                        SvckyaColumn.KSB_END_YMD,
+                        SvckyaColumn.KSB_ENYT_YMD),
+                new SvckyaKyttSknoUpdateKey(svkyNo, kyttSkno, skno),
+                auditContext);
+<span class="fc" id="L259">    }</span>
+
+    private void ensureUpdated(
+            final int updatedCount,
+            final RuntimeException exception) {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L265">            throw exception;</span>
+        }
+<span class="fc" id="L267">    }</span>
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L270">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L272">                requestContext.getHukkSysShbt().orElseThrow(</span>
+<span class="fc" id="L273">                        () -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.hukkSysShbt is required&quot;)));
+    }
+
+    private RuntimeException createPrimaryUpdateException(
+            final Long svkyNo,
+            final Integer skno,
+            final String svkyJtkb,
+            final String svkyEndJysb,
+            final LocalDate rkkiEndYmd,
+            final LocalDate ksbEndYmd,
+            final LocalDate ksbEnytYmd,
+            final String sziKziKbn,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L287">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L288">                svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L289">                UPDATE_BY_SVKY_NO_AND_SKNO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L291">                        .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L292">                        .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L293">                        .put(&quot;svkyJtkb&quot;, svkyJtkb)</span>
+<span class="fc" id="L294">                        .put(&quot;svkyEndJysb&quot;, svkyEndJysb)</span>
+<span class="fc" id="L295">                        .put(&quot;rkkiEndYmd&quot;, rkkiEndYmd)</span>
+<span class="fc" id="L296">                        .put(&quot;ksbEndYmd&quot;, ksbEndYmd)</span>
+<span class="fc" id="L297">                        .put(&quot;ksbEnytYmd&quot;, ksbEnytYmd)</span>
+<span class="fc" id="L298">                        .putIfNonNull(&quot;sziKziKbn&quot;, sziKziKbn)</span>
+<span class="fc" id="L299">                        .put(&quot;regUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L300">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L301">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private RuntimeException createEndReasonClearException(
+            final Long svkyNo,
+            final Integer skno,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L308">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L309">                svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L310">                UPDATE_BY_SVKY_NO_AND_SKNO.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L312">                        .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="fc" id="L313">                        .put(&quot;skno&quot;, skno)</span>
+<span class="fc" id="L314">                        .put(&quot;svkyEndJysb&quot;, null)</span>
+<span class="fc" id="L315">                        .put(&quot;regUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L316">                        .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L317">                        .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+    }
+
+    private static SvckyaWriteRecord buildRevivalWriteRecord(
+            final String svkyJtkb,
+            final String svkyEndJysb,
+            final LocalDate rkkiEndYmd,
+            final LocalDate ksbEndYmd,
+            final LocalDate ksbEnytYmd,
+            final String sziKziKbn) {
+<span class="fc" id="L327">        return new SvckyaWriteRecord(</span>
+                null,
+                null,
+                null,
+                null,
+                svkyJtkb,
+                null,
+                null,
+                svkyEndJysb,
+                null,
+                rkkiEndYmd,
+                null,
+                ksbEndYmd,
+                null,
+                ksbEnytYmd,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                sziKziKbn,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static SvckyaWriteRecord buildEndReasonClearWriteRecord() {
+<span class="fc" id="L364">        return buildRevivalWriteRecord(null, null, null, null, null, null);</span>
+    }
+
+    private static SvckyaWriteRecord buildRelatedUpdateWriteRecord() {
+<span class="fc" id="L368">        return new SvckyaWriteRecord(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                MAX_DATE,
+                null,
+                MAX_DATE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

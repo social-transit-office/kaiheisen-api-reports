@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AutoNeutralValueResolver.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core</a> &gt; <span class="el_source">AutoNeutralValueResolver.java</span></div><h1>AutoNeutralValueResolver.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core;
+
+import java.lang.reflect.RecordComponent;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.ReflectiveValueExtractors;
+
+/**
+ * Record コンポーネントの型情報から neutral value を自動判定する {@link NeutralValueResolver} 実装。
+ *
+ * &lt;p&gt;判定ルール:
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link String} → {@code &quot;&quot;}
+ *   &lt;li&gt;{@link Long} / {@code long} → {@code 0L}
+ *   &lt;li&gt;{@link Integer} / {@code int} → {@code 0}
+ *   &lt;li&gt;{@link Short} / {@code short} → {@code (short) 0}
+ *   &lt;li&gt;{@link BigDecimal} → {@link BigDecimal#ZERO}
+ *   &lt;li&gt;{@link LocalDate} → 補完しない（{@link Optional#empty()}）
+ *   &lt;li&gt;不明型 → 補完しない
+ * &lt;/ul&gt;
+ *
+ * @param &lt;TColumn&gt; Column enum 型
+ */
+public final class AutoNeutralValueResolver&lt;TColumn extends Enum&lt;TColumn&gt; &amp; DataAccessColumn&gt;
+        implements NeutralValueResolver&lt;TColumn&gt; {
+
+    private final Map&lt;TColumn, Optional&lt;Object&gt;&gt; cache;
+
+<span class="nc" id="L35">    private AutoNeutralValueResolver(Map&lt;TColumn, Optional&lt;Object&gt;&gt; cache) {</span>
+<span class="nc" id="L36">        this.cache = cache;</span>
+<span class="nc" id="L37">    }</span>
+
+    /**
+     * Column enum と Record クラスから neutral value resolver を構築する。
+     *
+     * @param &lt;C&gt; Column enum 型
+     * @param &lt;R&gt; Record 型（read model）
+     * @param columnClass Column enum クラス
+     * @param recordClass Record クラス（全列の型を判定するため read model を使用）
+     * @return neutral value resolver
+     */
+    public static &lt;C extends Enum&lt;C&gt; &amp; DataAccessColumn, R extends Record&gt;
+            AutoNeutralValueResolver&lt;C&gt; create(Class&lt;C&gt; columnClass, Class&lt;R&gt; recordClass) {
+<span class="nc" id="L50">        Objects.requireNonNull(columnClass, &quot;columnClass&quot;);</span>
+<span class="nc" id="L51">        Objects.requireNonNull(recordClass, &quot;recordClass&quot;);</span>
+
+<span class="nc" id="L53">        Map&lt;String, Class&lt;?&gt;&gt; componentTypes = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        for (RecordComponent comp : recordClass.getRecordComponents()) {</span>
+<span class="nc" id="L55">            componentTypes.put(comp.getName(), comp.getType());</span>
+        }
+
+<span class="nc" id="L58">        Map&lt;C, Optional&lt;Object&gt;&gt; result = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        for (C column : columnClass.getEnumConstants()) {</span>
+<span class="nc" id="L60">            String camelName = ReflectiveValueExtractors.snakeToCamel(column.name());</span>
+<span class="nc" id="L61">            Class&lt;?&gt; type = componentTypes.get(camelName);</span>
+<span class="nc" id="L62">            result.put(column, resolveNeutralValue(type));</span>
+        }
+
+<span class="nc" id="L65">        return new AutoNeutralValueResolver&lt;&gt;(result);</span>
+    }
+
+    @Override
+    public Optional&lt;Object&gt; neutralValue(TColumn column) {
+<span class="nc" id="L70">        Objects.requireNonNull(column, &quot;column&quot;);</span>
+<span class="nc" id="L71">        Optional&lt;Object&gt; value = cache.get(column);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L73">            return Optional.empty();</span>
+        }
+<span class="nc" id="L75">        return value;</span>
+    }
+
+    private static Optional&lt;Object&gt; resolveNeutralValue(Class&lt;?&gt; type) {
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L80">            return Optional.empty();</span>
+        }
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (type == String.class) {</span>
+<span class="nc" id="L83">            return Optional.of(&quot;&quot;);</span>
+        }
+<span class="nc bnc" id="L85" title="All 4 branches missed.">        if (type == Long.class || type == long.class) {</span>
+<span class="nc" id="L86">            return Optional.of(0L);</span>
+        }
+<span class="nc bnc" id="L88" title="All 4 branches missed.">        if (type == Integer.class || type == int.class) {</span>
+<span class="nc" id="L89">            return Optional.of(0);</span>
+        }
+<span class="nc bnc" id="L91" title="All 4 branches missed.">        if (type == Short.class || type == short.class) {</span>
+<span class="nc" id="L92">            return Optional.of((short) 0);</span>
+        }
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (type == BigDecimal.class) {</span>
+<span class="nc" id="L95">            return Optional.of(BigDecimal.ZERO);</span>
+        }
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        if (type == LocalDate.class) {</span>
+<span class="nc" id="L98">            return Optional.empty();</span>
+        }
+<span class="nc" id="L100">        return Optional.empty();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

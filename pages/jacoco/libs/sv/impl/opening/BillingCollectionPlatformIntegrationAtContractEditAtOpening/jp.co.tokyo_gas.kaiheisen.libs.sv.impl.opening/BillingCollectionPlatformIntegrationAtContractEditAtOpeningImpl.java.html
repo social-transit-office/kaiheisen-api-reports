@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BillingCollectionPlatformIntegrationAtContractEditAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-billingcollectionplatformintegrationatcontracteditatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">BillingCollectionPlatformIntegrationAtContractEditAtOpeningImpl.java</span></div><h1>BillingCollectionPlatformIntegrationAtContractEditAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kiycstk.KiycstkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kyotelk.KyotelkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationAtContractEditAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.BillingCollectionPlatformIntegrationAtContractEditAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSihakyKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSkkbRkySgjhInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSktsKykHkirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSktsSihDlirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSktsSihHkirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSktsSihTrirInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.BillingCollectionPlatformIntegrationAtContractSvckyaKktInf;
+
+/**
+ * 概要: SV-253（前契約継続時請求回収基盤連携情報編集）の実装。
+ * 主な仕様:
+ * - DA-060-R001 と DA-062-R001 の取得結果、および前契約継続処理区分に応じて請求回収基盤連携 DTO を編集する。
+ * - RequestContext の systemDatetime を処理年月日へ反映する。
+ * 既知の制約:
+ * - 公開引数の null 妥当性検証は上位層責務とし、本クラスでは最小限の fail-fast のみ行う。
+ */
+public final class BillingCollectionPlatformIntegrationAtContractEditAtOpeningImpl
+        implements BillingCollectionPlatformIntegrationAtContractEditAtOpening {
+
+    private static final long FIXED_GAS_METER_LOCATION_NO = 11111111111L;
+
+    private static final long ZERO_CUSTOMER_ROLE_NO = 0L;
+
+<span class="fc" id="L44">    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final KiycstkDataAccess kiycstkDataAccess;
+
+    private final KyotelkDataAccess kyotelkDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String continuousRevivalProcessing;
+
+    private final String outOfSupplyProcessing;
+
+    private final String generalUpdateProcessing;
+
+    private final String accountTransferPaymentMethod;
+
+    private final String noPhoneType;
+
+    private final String blankContactType;
+
+    private final String tokyoGasOperatorCode;
+
+    private final String paymentManagementTransferCode;
+
+    private final String contractManagementTransferCode;
+
+    private final String noServiceSuspensionOrCancellation;
+
+    /**
+     * 概要: SV-253 の依存と必須定数を初期化する。
+     *
+     * @param kiycstkDataAccess 契約お客さま＜小売＞データアクセス
+     * @param kyotelkDataAccess 契約お客さま電話番号＜小売＞データアクセス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param kaiheisenConstantService 開閉栓定数取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public BillingCollectionPlatformIntegrationAtContractEditAtOpeningImpl(
+            KiycstkDataAccess kiycstkDataAccess,
+            KyotelkDataAccess kyotelkDataAccess,
+            CiriusConstantService ciriusConstantService,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L86">            RequestContext requestContext) {</span>
+<span class="fc" id="L87">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L88">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L89">        KaiheisenConstantService nonNullKaiheisenConstantService =</span>
+<span class="fc" id="L90">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L91">        this.kiycstkDataAccess = Objects.requireNonNull(kiycstkDataAccess, &quot;kiycstkDataAccess&quot;);</span>
+<span class="fc" id="L92">        this.kyotelkDataAccess = Objects.requireNonNull(kyotelkDataAccess, &quot;kyotelkDataAccess&quot;);</span>
+<span class="fc" id="L93">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L94">        this.continuousRevivalProcessing = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.CONTINUOUS_REVIVAL);
+<span class="fc" id="L98">        this.outOfSupplyProcessing = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.OUT_OF_SUPPLY);
+<span class="fc" id="L102">        this.generalUpdateProcessing = RequiredConstantResolver.requireKaiheisenConstant(</span>
+                nonNullKaiheisenConstantService,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.TYPE,
+                ConstantLookupKeys.Kaiheisen.PreviousContractContinuationProcessing.GENERAL_UPDATE);
+<span class="fc" id="L106">        this.accountTransferPaymentMethod = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.ACCOUNT_TRANSFER);
+<span class="fc" id="L110">        this.noPhoneType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.PhoneType.TYPE,
+                ConstantLookupKeys.Cirius.PhoneType.NO_PHONE);
+<span class="fc" id="L114">        this.blankContactType = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContactType.TYPE,
+                ConstantLookupKeys.Cirius.ContactType.BLANK);
+<span class="fc" id="L118">        this.tokyoGasOperatorCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TYPE,
+                ConstantLookupKeys.Cirius.NwOperatorCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L122">        this.paymentManagementTransferCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_PAYMENT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L126">        this.contractManagementTransferCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.BILLABLE_CONTRACT_MANAGEMENT_TRANSFER);
+<span class="fc" id="L130">        this.noServiceSuspensionOrCancellation = RequiredConstantResolver.requireCiriusConstant(</span>
+                nonNullCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceSuspensionCancellationReasonType.NO_SERVICE_SUSPENSION_OR_CANCELLATION);
+<span class="fc" id="L134">    }</span>
+
+    /**
+     * 概要: 前契約継続時の請求回収基盤連携 DTO 群を編集する。
+     *
+     * @param zkyKzkSyoriKbn 前契約継続処理区分
+     * @param gmtsetdKsenSaymdInf ガスメーター設置場所＜導管＞情報（開栓作業日時点）
+     * @param svckyaKktInf サービス契約情報（確定）
+     * @param sihakyKktInf 支払契約情報（確定）
+     * @param syoTisiUmFlg 使用者訂正有無フラグ
+     * @param sikSvcShbt 請求サービス種別
+     * @param suguHtkFlg 総合判定結果フラグ
+     * @param kiyUmFlg 契約有無フラグ
+     * @return 編集済み DTO 群
+     */
+    @Override
+    public BillingCollectionPlatformIntegrationAtContractEditAtOpeningOutput execute(
+            String zkyKzkSyoriKbn,
+            BillingCollectionPlatformIntegrationAtContractGmtsetdKsenSaymdInf gmtsetdKsenSaymdInf,
+            BillingCollectionPlatformIntegrationAtContractSvckyaKktInf svckyaKktInf,
+            BillingCollectionPlatformIntegrationAtContractSihakyKktInf sihakyKktInf,
+            Boolean syoTisiUmFlg,
+            String sikSvcShbt,
+            Boolean suguHtkFlg,
+            Boolean kiyUmFlg) {
+<span class="fc" id="L159">        LocalDate systemDate = requireSystemDatetime().toLocalDate();</span>
+<span class="fc" id="L160">        Long payerCustomerRegistrationNo = sihakyKktInf.shsyKyoTrno();</span>
+<span class="fc" id="L161">        KiycstkRecord customerRecord = findCustomer(payerCustomerRegistrationNo);</span>
+<span class="fc" id="L162">        PhoneValues phoneValues = resolvePhoneValues(payerCustomerRegistrationNo);</span>
+
+<span class="fc" id="L164">        Long controlGasMeterLocationNo = gmtsetdKsenSaymdInf.gasMtstNo();</span>
+<span class="fc" id="L165">        Boolean paymentContractCancellationFlag = null;</span>
+<span class="fc" id="L166">        Boolean billingServiceTypeExistsFlag = null;</span>
+<span class="fc" id="L167">        Long requestSourceCustomerRoleNo = null;</span>
+<span class="fc" id="L168">        String accountNameKana = null;</span>
+<span class="fc" id="L169">        String accountNameKanji = null;</span>
+<span class="fc" id="L170">        String nwOperatorCode = null;</span>
+<span class="fc" id="L171">        LocalDate paymentManagementEndDate = null;</span>
+
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (continuousRevivalProcessing.equals(zkyKzkSyoriKbn)) {</span>
+<span class="fc" id="L174">            controlGasMeterLocationNo = FIXED_GAS_METER_LOCATION_NO;</span>
+<span class="fc" id="L175">            paymentContractCancellationFlag = Boolean.TRUE;</span>
+<span class="fc" id="L176">            requestSourceCustomerRoleNo = payerCustomerRegistrationNo;</span>
+<span class="fc" id="L177">            nwOperatorCode = tokyoGasOperatorCode;</span>
+<span class="fc" id="L178">            paymentManagementEndDate = sihakyKktInf.tyenYmd();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            billingServiceTypeExistsFlag = sikSvcShbt != null;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (accountTransferPaymentMethod.equals(sihakyKktInf.sihHuhuShbt())) {</span>
+<span class="fc" id="L181">                accountNameKana = customerRecord.ctnmKn1();</span>
+<span class="fc" id="L182">                accountNameKanji = customerRecord.ctnmKj1();</span>
+            }
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        } else if (outOfSupplyProcessing.equals(zkyKzkSyoriKbn)) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">            controlGasMeterLocationNo = Boolean.TRUE.equals(suguHtkFlg)</span>
+<span class="fc" id="L186">                    ? svckyaKktInf.svkyNo()</span>
+<span class="fc" id="L187">                    : FIXED_GAS_METER_LOCATION_NO;</span>
+<span class="fc" id="L188">            paymentContractCancellationFlag = Boolean.FALSE;</span>
+<span class="fc" id="L189">            billingServiceTypeExistsFlag = Boolean.FALSE;</span>
+<span class="fc" id="L190">            requestSourceCustomerRoleNo = ZERO_CUSTOMER_ROLE_NO;</span>
+<span class="fc" id="L191">            phoneValues = defaultPhoneValues();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        } else if (generalUpdateProcessing.equals(zkyKzkSyoriKbn)) {</span>
+<span class="fc" id="L193">            controlGasMeterLocationNo = svckyaKktInf.svkyNo();</span>
+<span class="fc" id="L194">            paymentContractCancellationFlag = Boolean.FALSE;</span>
+<span class="fc" id="L195">            billingServiceTypeExistsFlag = Boolean.FALSE;</span>
+<span class="fc" id="L196">            requestSourceCustomerRoleNo = ZERO_CUSTOMER_ROLE_NO;</span>
+<span class="fc" id="L197">            paymentManagementEndDate = sihakyKktInf.tyenYmd();</span>
+        }
+
+<span class="fc" id="L200">        Long noticeCustomerNumber = resolveNoticeCustomerNumber(</span>
+                kiyUmFlg,
+                suguHtkFlg,
+<span class="fc" id="L203">                gmtsetdKsenSaymdInf.gasMtstNo(),</span>
+<span class="fc" id="L204">                svckyaKktInf.svkyNo());</span>
+
+<span class="fc" id="L206">        return new BillingCollectionPlatformIntegrationAtContractEditAtOpeningOutput(</span>
+                new BillingCollectionPlatformIntegrationAtContractSkkbRkySgjhInf(
+                        null,
+<span class="fc" id="L209">                        sihakyKktInf.sikKrno(),</span>
+<span class="fc" id="L210">                        svckyaKktInf.sqtiKiyNo(),</span>
+<span class="fc" id="L211">                        svckyaKktInf.svkyNo(),</span>
+<span class="fc" id="L212">                        svckyaKktInf.skno(),</span>
+<span class="fc" id="L213">                        sihakyKktInf.sihKiyNo(),</span>
+<span class="fc" id="L214">                        sihakyKktInf.skno(),</span>
+                        controlGasMeterLocationNo,
+<span class="fc" id="L216">                        svckyaKktInf.rkkiSttYmd(),</span>
+<span class="fc" id="L217">                        svckyaKktInf.rkkiEndYmd(),</span>
+                        Boolean.FALSE,
+                        paymentContractCancellationFlag,
+                        billingServiceTypeExistsFlag,
+                        syoTisiUmFlg,
+                        systemDate),
+                new BillingCollectionPlatformIntegrationAtContractSktsSihTrirInf(
+                        null,
+                        null,
+                        requestSourceCustomerRoleNo,
+                        accountNameKana,
+                        accountNameKanji,
+<span class="fc" id="L229">                        phoneValues.contactType1(),</span>
+<span class="fc" id="L230">                        phoneValues.contactType2(),</span>
+<span class="fc" id="L231">                        phoneValues.phoneNumber1(),</span>
+<span class="fc" id="L232">                        phoneValues.phoneNumber2(),</span>
+<span class="fc" id="L233">                        phoneValues.phoneType1(),</span>
+<span class="fc" id="L234">                        phoneValues.phoneType2(),</span>
+                        paymentManagementTransferCode,
+<span class="fc" id="L236">                        sihakyKktInf.tyenYmd(),</span>
+<span class="fc" id="L237">                        sihakyKktInf.tkysYmd(),</span>
+                        nwOperatorCode),
+                new BillingCollectionPlatformIntegrationAtContractSktsSihHkirInf(
+                        paymentManagementTransferCode,
+                        paymentManagementEndDate),
+                new BillingCollectionPlatformIntegrationAtContractSktsKykHkirInf(
+                        noServiceSuspensionOrCancellation,
+                        MAX_DATE,
+                        MAX_DATE,
+                        contractManagementTransferCode,
+                        noticeCustomerNumber,
+<span class="fc" id="L248">                        svckyaKktInf.szirHtyoYmd()),</span>
+                new BillingCollectionPlatformIntegrationAtContractSktsSihDlirInf(
+                        paymentManagementTransferCode));
+    }
+
+    private KiycstkRecord findCustomer(Long kyoTrkNo) {
+<span class="fc" id="L254">        return kiycstkDataAccess.findByKyoTrkNo(kyoTrkNo)</span>
+<span class="fc" id="L255">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L256">                        kiycstkDataAccess.tableName(),</span>
+<span class="fc" id="L257">                        KiycstkDataAccess.CallSpecs.FIND_BY_KYO_TRK_NO.identifier(),</span>
+<span class="fc" id="L258">                        new FlatJsonBuilder().put(&quot;kyoTrkNo&quot;, kyoTrkNo)));</span>
+    }
+
+    private PhoneValues resolvePhoneValues(Long kyoTrkNo) {
+<span class="fc" id="L262">        PhoneValues defaultValues = defaultPhoneValues();</span>
+<span class="fc" id="L263">        List&lt;KyotelkRecord&gt; phoneRecords = kyotelkDataAccess.findAllByKyoTrkNo(kyoTrkNo);</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (phoneRecords.isEmpty()) {</span>
+<span class="fc" id="L265">            return defaultValues;</span>
+        }
+
+<span class="fc" id="L268">        KyotelkRecord firstRecord = phoneRecords.getFirst();</span>
+<span class="fc" id="L269">        String contactType1 = firstRecord.telRrskShbt();</span>
+<span class="fc" id="L270">        String phoneNumber1 = firstRecord.kyoTelNo();</span>
+<span class="fc" id="L271">        String phoneType1 = firstRecord.telShbt();</span>
+<span class="fc" id="L272">        String contactType2 = defaultValues.contactType2();</span>
+<span class="fc" id="L273">        String phoneNumber2 = defaultValues.phoneNumber2();</span>
+<span class="fc" id="L274">        String phoneType2 = defaultValues.phoneType2();</span>
+
+<span class="fc bfc" id="L276" title="All 2 branches covered.">        if (phoneRecords.size() &gt; 1) {</span>
+<span class="fc" id="L277">            KyotelkRecord secondRecord = phoneRecords.get(1);</span>
+<span class="fc" id="L278">            contactType2 = secondRecord.telRrskShbt();</span>
+<span class="fc" id="L279">            phoneNumber2 = secondRecord.kyoTelNo();</span>
+<span class="fc" id="L280">            phoneType2 = secondRecord.telShbt();</span>
+        }
+
+<span class="fc" id="L283">        return new PhoneValues(</span>
+                contactType1,
+                contactType2,
+                phoneNumber1,
+                phoneNumber2,
+                phoneType1,
+                phoneType2);
+    }
+
+    private PhoneValues defaultPhoneValues() {
+<span class="fc" id="L293">        return new PhoneValues(blankContactType, blankContactType, null, null, noPhoneType, noPhoneType);</span>
+    }
+
+    private Long resolveNoticeCustomerNumber(
+            Boolean kiyUmFlg,
+            Boolean suguHtkFlg,
+            Long openingGasMeterLocationNo,
+            Long serviceContractNo) {
+<span class="fc bfc" id="L301" title="All 4 branches covered.">        if (Boolean.FALSE.equals(kiyUmFlg) || Boolean.FALSE.equals(suguHtkFlg)) {</span>
+<span class="fc" id="L302">            return openingGasMeterLocationNo;</span>
+        }
+<span class="fc" id="L304">        return serviceContractNo;</span>
+    }
+
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L308">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L309">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+<span class="fc" id="L312">    private record PhoneValues(</span>
+            String contactType1,
+            String contactType2,
+            String phoneNumber1,
+            String phoneNumber2,
+            String phoneType1,
+            String phoneType2) {
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

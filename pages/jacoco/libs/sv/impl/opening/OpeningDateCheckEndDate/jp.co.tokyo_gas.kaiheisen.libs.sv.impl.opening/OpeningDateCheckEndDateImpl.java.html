@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningDateCheckEndDateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingdatecheckenddate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningDateCheckEndDateImpl.java</span></div><h1>OpeningDateCheckEndDateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckEndDate;
+
+/**
+ * 概要: SV-184（開栓日チェック（終了日判定））の実装クラス。
+ * 主な仕様:
+ * - 東京ガスかつ関連終了の組み合わせのみ終了日判定の対象とする。
+ * - 対象開栓事由では終了日が開栓作業日を超過した場合に業務エラー 020100018 を送出する。
+ * - 対象外開栓事由では終了日が開栓作業日以上の場合に業務エラー 020100018 を送出する。
+ * 既知の制約:
+ * - 入力値の補正や trim は行わず、受け取った値をそのまま比較する。
+ * - RequestContext は依存整合のため保持するが、本ロジックでは参照しない。
+ */
+public class OpeningDateCheckEndDateImpl implements OpeningDateCheckEndDate {
+
+    /**
+     * 概要: SV 実行時のリクエストコンテキスト。
+     * 主な仕様:
+     * - 既存 opening 系 SV と同じ依存注入形を維持するために保持する。
+     * - 共通情報の受け渡し先として利用可能な形を維持する。
+     * 既知の制約:
+     * - SV-184 の判定ロジック自体では参照しない。
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: 東京ガスの小売事業者コード。
+     * 主な仕様:
+     * - CIRIUS 定数 J0580 の東京ガス株式会社コードをコンストラクタで解決して保持する。
+     * 既知の制約:
+     * - 定数未登録時はコンストラクタで fail-fast する。
+     */
+    private final String tokyoGasRetailerCode;
+
+    /**
+     * 概要: 関連終了の料金計算関連状態区分。
+     * 主な仕様:
+     * - CIRIUS 定数 J0611 の関連終了コードをコンストラクタで解決して保持する。
+     * 既知の制約:
+     * - 定数未登録時はコンストラクタで fail-fast する。
+     */
+    private final String relatedEndStatus;
+
+    /**
+     * 概要: 対象開栓事由の集合。
+     * 主な仕様:
+     * - 代替開栓、新設開栓、お客さま開栓、継続使用の4値を必須解決して保持する。
+     * 既知の制約:
+     * - 各定数未登録時はコンストラクタで fail-fast する。
+     */
+    private final Set&lt;String&gt; targetOpeningReasons;
+
+    /**
+     * 概要: 判定に必要な依存を受け取り、必須定数を解決して初期化するコンストラクタ。
+     * 主な仕様:
+     * - RequestContext と CiriusConstantService の null を許容しない。
+     * - 判定に必要な CIRIUS 定数をすべてコンストラクタ時点で解決する。
+     * 既知の制約:
+     * - 定数解決失敗時はインスタンス生成に失敗する。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public OpeningDateCheckEndDateImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L77">            RequestContext requestContext) {</span>
+<span class="fc" id="L78">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L79">                        Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L80">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L81">        this.tokyoGasRetailerCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.RetailerCode.TYPE,
+                ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD);
+<span class="fc" id="L85">        this.relatedEndStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_END);
+<span class="fc" id="L89">        this.targetOpeningReasons = Set.of(</span>
+<span class="fc" id="L90">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.ALTERNATIVE_OPENING),
+<span class="fc" id="L94">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.NEWLY_OPENED_TAP),
+<span class="fc" id="L98">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.CUSTOMER_OPENING),
+<span class="fc" id="L102">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedConstantService,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                        ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE));
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * 終了日判定を実行し、条件に該当する場合は開栓共通エラーを送出する。
+     *
+     * &lt;p&gt;東京ガスかつ関連終了の組み合わせのみ外側ゲートの判定対象とする。
+     * 対象開栓事由では料金計算終了年月日が開栓作業年月日を超過した場合に、
+     * 対象外開栓事由では料金計算終了年月日が開栓作業年月日以上の場合に、
+     * 開栓共通エラー 020100018 を {@link KaisenRuleException} として送出する。&lt;/p&gt;
+     *
+     * &lt;p&gt;入力値の必須性や null バリデーションは上位層責務とし、
+     * 本メソッドでは SV レイヤ規約に従って public 引数の null ガードを行わない。&lt;/p&gt;
+     *
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @param hkkKasJysb 報告開栓事由種別
+     * @param rkkiEndYmd 料金計算終了年月日
+     * @param kasgYmd 開栓作業年月日
+     */
+    @Override
+    public void execute(
+            String tksuKijsCd,
+            String rkkiKnrnJtkb,
+            String hkkKasJysb,
+            LocalDate rkkiEndYmd,
+            LocalDate kasgYmd) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (isTargetRetailerAndStatus(tksuKijsCd, rkkiKnrnJtkb)) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (isTargetOpeningReason(hkkKasJysb)) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                if (rkkiEndYmd.isAfter(kasgYmd)) {</span>
+<span class="fc" id="L135">                    throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100018);</span>
+                }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            } else if (!rkkiEndYmd.isBefore(kasgYmd)) {</span>
+<span class="fc" id="L138">                throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100018);</span>
+            }
+        }
+<span class="fc" id="L141">    }</span>
+
+    /**
+     * 概要: 東京ガスかつ関連終了の組み合わせかを判定する。
+     * 主な仕様:
+     * - 小売事業者コードと料金計算関連状態区分の両方が解決済み定数と一致した場合に true を返す。
+     * 既知の制約:
+     * - 前後空白の除去やコード補正は行わない。
+     *
+     * @param tksuKijsCd 託送供給依頼事業者コード
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @return 東京ガスかつ関連終了の場合 true
+     */
+    private boolean isTargetRetailerAndStatus(String tksuKijsCd, String rkkiKnrnJtkb) {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        return tokyoGasRetailerCode.equals(tksuKijsCd)</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                &amp;&amp; relatedEndStatus.equals(rkkiKnrnJtkb);</span>
+    }
+
+    /**
+     * 概要: 入力された報告開栓事由種別が対象開栓事由かを判定する。
+     * 主な仕様:
+     * - 対象開栓事由集合に含まれる場合に true を返す。
+     * 既知の制約:
+     * - null の場合は false を返し、対象外事由として扱う。
+     *
+     * @param hkkKasJysb 報告開栓事由種別
+     * @return 対象開栓事由の場合 true
+     */
+    private boolean isTargetOpeningReason(String hkkKasJysb) {
+<span class="fc" id="L170">        return targetOpeningReasons.contains(hkkKasJysb);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

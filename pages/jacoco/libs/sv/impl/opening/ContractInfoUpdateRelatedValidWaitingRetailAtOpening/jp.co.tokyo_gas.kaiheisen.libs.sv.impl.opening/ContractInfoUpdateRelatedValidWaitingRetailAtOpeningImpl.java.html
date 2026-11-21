@@ -1,0 +1,678 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContractInfoUpdateRelatedValidWaitingRetailAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-contractinfoupdaterelatedvalidwaitingretailatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">ContractInfoUpdateRelatedValidWaitingRetailAtOpeningImpl.java</span></div><h1>ContractInfoUpdateRelatedValidWaitingRetailAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.HrikmiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.hrikmi.write.HrikmiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.SihakyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihaky.write.SihakyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.SihtkskDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sihtksk.write.SihtkskWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaSknoJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.write.SvckyaWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoOptionalUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.SvsihkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svsihkr.write.SvsihkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoUpdateRelatedValidWaitingRetailAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoUpdateRelatedValidWaitingRetailAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SihakyKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaKiyKtymInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaKktInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrYukuMchInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvsihkrKktInf;
+
+/**
+ * SV-223（開栓時契約情報更新処理（関連有効待ち）（小売））のサービス実装。
+ */
+public final class ContractInfoUpdateRelatedValidWaitingRetailAtOpeningImpl
+        implements ContractInfoUpdateRelatedValidWaitingRetailAtOpening {
+
+    static final String SERVICE_USER_ID = &quot;KHSS223&quot;;
+
+<span class="fc" id="L48">    private static final Integer INITIAL_SKNO = 1;</span>
+
+<span class="fc" id="L50">    private static final Integer INITIAL_KYTT_TSNO = 1;</span>
+
+<span class="fc" id="L52">    private static final Long INITIAL_IKSK_GRP_NO = 1L;</span>
+
+<span class="fc" id="L54">    private static final Long ZERO_TSZI_KYSB_NO = 0L;</span>
+
+<span class="fc" id="L56">    private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    private final SvsihkrDataAccess svsihkrDataAccess;
+
+    private final SihakyDataAccess sihakyDataAccess;
+
+    private final HrikmiDataAccess hrikmiDataAccess;
+
+    private final SihtkskDataAccess sihtkskDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String chargeCalculationRelatedStatusRelatedValid;
+
+    private final String serviceContractStatusUnderContract;
+
+    private final String serviceContractStartReasonNew;
+
+    private final String contractTypeApplicableReasonNewContract;
+
+    private final String productCategoryGas;
+
+    private final String contractTypeGeneralContract;
+
+    private final String contractManagementDepartmentCodeGeneral;
+
+    private final String companyUseDivisionOtherThanCompanyUse;
+
+    private final String paymentContractStatusApplying;
+
+    private final String singleBillingPartyIdentificationTypeTotal;
+
+    private final String billingTimingTypeImmediateBilling;
+
+    private final String paymentMethodTypePayment;
+
+    private final String nextMonthTotalApplicationTypeCanBeCarriedOver;
+
+    private final String automaticCancellationTypeNone;
+
+    private final String paymentFormShippingMethodTypeGeneralShipping;
+
+    private final String paymentFormPaymentSlipStandard;
+
+    private final String dunningMethodTypeNormalReminder;
+
+    private final String billingManagementLevelBatchIssueTarget;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param svckyaDataAccess サービス契約 DA
+     * @param svsihkrDataAccess サービス契約・支払契約関連 DA
+     * @param sihakyDataAccess 支払契約 DA
+     * @param hrikmiDataAccess 払込関連情報 DA
+     * @param sihtkskDataAccess 支払契約督促情報 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public ContractInfoUpdateRelatedValidWaitingRetailAtOpeningImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            SvckyaDataAccess svckyaDataAccess,
+            SvsihkrDataAccess svsihkrDataAccess,
+            SihakyDataAccess sihakyDataAccess,
+            HrikmiDataAccess hrikmiDataAccess,
+            SihtkskDataAccess sihtkskDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L132">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L133">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L134">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L135">        this.svsihkrDataAccess = Objects.requireNonNull(svsihkrDataAccess, &quot;svsihkrDataAccess&quot;);</span>
+<span class="fc" id="L136">        this.sihakyDataAccess = Objects.requireNonNull(sihakyDataAccess, &quot;sihakyDataAccess&quot;);</span>
+<span class="fc" id="L137">        this.hrikmiDataAccess = Objects.requireNonNull(hrikmiDataAccess, &quot;hrikmiDataAccess&quot;);</span>
+<span class="fc" id="L138">        this.sihtkskDataAccess = Objects.requireNonNull(sihtkskDataAccess, &quot;sihtkskDataAccess&quot;);</span>
+<span class="fc" id="L139">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L140">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L141">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L142">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L143">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L144">        this.chargeCalculationRelatedStatusRelatedValid = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L148">        this.serviceContractStatusUnderContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L152">        this.serviceContractStartReasonNew = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.NEW);
+<span class="fc" id="L156">        this.contractTypeApplicableReasonNewContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractTypeApplicableReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ContractTypeApplicableReasonType.NEW_CONTRACT);
+<span class="fc" id="L160">        this.productCategoryGas = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.Unnamed__N4.TYPE,
+                ConstantLookupKeys.Cirius.Unnamed__N4.GAS);
+<span class="fc" id="L164">        this.contractTypeGeneralContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractType.TYPE,
+                ConstantLookupKeys.Cirius.ContractType.GENERAL_CONTRACT);
+<span class="fc" id="L168">        this.contractManagementDepartmentCodeGeneral = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ContractManagementDepartmentCode.TYPE,
+                ConstantLookupKeys.Cirius.ContractManagementDepartmentCode.GENERAL);
+<span class="fc" id="L172">        this.companyUseDivisionOtherThanCompanyUse = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.Corporate.TYPE,
+                ConstantLookupKeys.Cirius.Corporate.OTHER_THAN_COMPANY_USE);
+<span class="fc" id="L176">        this.paymentContractStatusApplying = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.PaymentContractStatus.APPLYING);
+<span class="fc" id="L180">        this.singleBillingPartyIdentificationTypeTotal = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TYPE,
+                ConstantLookupKeys.Cirius.SingleBillingPartyIdentificationType.TOTAL);
+<span class="fc" id="L184">        this.billingTimingTypeImmediateBilling = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingTimingType.TYPE,
+                ConstantLookupKeys.Cirius.BillingTimingType.IMMEDIATE_BILLING);
+<span class="fc" id="L188">        this.paymentMethodTypePayment = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentMethodType.PAYMENT);
+<span class="fc" id="L192">        this.nextMonthTotalApplicationTypeCanBeCarriedOver = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.NextMonthTotalApplicationType.TYPE,
+                ConstantLookupKeys.Cirius.NextMonthTotalApplicationType.CAN_BE_CARRIED_OVER);
+<span class="fc" id="L196">        this.automaticCancellationTypeNone = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.AutomaticCancellationType.TYPE,
+                ConstantLookupKeys.Cirius.AutomaticCancellationType.NONE);
+<span class="fc" id="L200">        this.paymentFormShippingMethodTypeGeneralShipping = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentFormShippingMethodType.TYPE,
+                ConstantLookupKeys.Cirius.PaymentFormShippingMethodType.GENERAL_SHIPPING);
+<span class="fc" id="L204">        this.paymentFormPaymentSlipStandard = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PaymentForm.TYPE,
+                ConstantLookupKeys.Cirius.PaymentForm.PAYMENT_SLIP_STANDARD);
+<span class="fc" id="L208">        this.dunningMethodTypeNormalReminder = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.DunningMethodType.TYPE,
+                ConstantLookupKeys.Cirius.DunningMethodType.NORMAL_REMINDER);
+<span class="fc" id="L212">        this.billingManagementLevelBatchIssueTarget = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.BillingManagementLevel.TYPE,
+                ConstantLookupKeys.Cirius.BillingManagementLevel.BATCH_ISSUE_TARGET);
+<span class="fc" id="L216">    }</span>
+
+    /**
+     * 概要: 関連有効待ちの主関連・契約情報を更新し、確定契約情報 DTO を返却する。
+     * 主な仕様:
+     * - 主関連更新件数 0 件、最大世代管理番号未取得、最大契約特定世代管理番号未取得、契約適用待ち更新件数 0 件はデータ不整合とする。
+     * - RequestContext からは監査用の報告システム種別のみを参照し、未設定時は fail-fast する。
+     *
+     * @param kasgYmd 開栓作業年月日
+     * @param kktTyenYmd 確定適用終了年月日
+     * @param kktTkysYmd 確定適用開始年月日
+     * @param kktSvkyNo 確定サービス契約番号
+     * @param kktSihKiyNo 確定支払契約番号
+     * @param kktSqtiKiyNo 確定請求対象契約番号
+     * @param kktSikKrno 確定請求管理番号
+     * @param kktSyoKyoTrno 確定使用者契約お客さま登録番号
+     * @param kktSvckyaGasYtCd 確定サービス契約ガス用途コード
+     * @param kktSziKziKbn 確定消費税課税区分
+     * @param svckyaMchUmuFlg サービス契約適用待ち有無フラグ
+     * @param svmstkrYukuMchInf サービス契約・メーター設置場所関連情報（関連有効待ち）
+     * @param svckyaKiyKtymInf サービス契約情報（契約適用待ち）
+     * @return 登録した契約情報 DTO
+     */
+    @Override
+    public ContractInfoUpdateRelatedValidWaitingRetailAtOpeningOutput execute(
+            LocalDate kasgYmd,
+            LocalDate kktTyenYmd,
+            LocalDate kktTkysYmd,
+            Long kktSvkyNo,
+            Long kktSihKiyNo,
+            String kktSqtiKiyNo,
+            Long kktSikKrno,
+            Long kktSyoKyoTrno,
+            String kktSvckyaGasYtCd,
+            String kktSziKziKbn,
+            Boolean svckyaMchUmuFlg,
+            SvmstkrYukuMchInf svmstkrYukuMchInf,
+            SvckyaKiyKtymInf svckyaKiyKtymInf) {
+<span class="fc" id="L254">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L255">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+<span class="fc" id="L256">        LocalDate applicableEndDate = requireMaximumApplicableEndDate(kktTyenYmd);</span>
+<span class="fc" id="L257">        Long serviceContractNumber = resolveServiceContractNumber(</span>
+                kktSvkyNo,
+                svmstkrYukuMchInf,
+                svckyaMchUmuFlg,
+                svckyaKiyKtymInf);
+
+<span class="fc" id="L263">        svmstkrDataAccess.updateByMtstNoAndSvkyNoAndSkno(</span>
+<span class="fc" id="L264">                buildPrimaryRelationUpdateRecord(svmstkrYukuMchInf, kktTkysYmd),</span>
+<span class="fc" id="L265">                EnumSet.of(SvmstkrColumn.RKKI_KNRN_JTKB, SvmstkrColumn.RKKI_STT_YMD),</span>
+                new SvmstkrSknoOptionalUpdateKey(
+<span class="fc" id="L267">                        svmstkrYukuMchInf.mtstNo(),</span>
+<span class="fc" id="L268">                        svmstkrYukuMchInf.svkyNo(),</span>
+<span class="fc" id="L269">                        svmstkrYukuMchInf.skno(),</span>
+<span class="fc" id="L270">                        svmstkrYukuMchInf.recUpdJnjNo()),</span>
+                auditContext);
+
+<span class="fc" id="L273">        SvckyaRecord latestServiceContract = svckyaDataAccess</span>
+<span class="fc" id="L274">                .findLatestBySvkyNoAndSvkyJtkbNot(serviceContractNumber)</span>
+<span class="fc" id="L275">                .orElseThrow(() -&gt; createLatestServiceContractMissingException(serviceContractNumber));</span>
+<span class="fc" id="L276">        int maxSkno = latestServiceContract.skno() + 1;</span>
+<span class="fc" id="L277">        int maxKyttSkno = svckyaDataAccess.findMaxKyttSknoBySvkyNo(serviceContractNumber)</span>
+<span class="fc" id="L278">                .map(value -&gt; value + 1)</span>
+<span class="fc" id="L279">                .orElseThrow(() -&gt; createMaxKyttSknoMissingException(serviceContractNumber));</span>
+
+<span class="fc" id="L281">        SvckyaWriteRecord insertedServiceContract = buildInsertedServiceContractRecord(</span>
+                kktTkysYmd,
+                serviceContractNumber,
+                kktSqtiKiyNo,
+                kktSyoKyoTrno,
+                kktSvckyaGasYtCd,
+                kktSziKziKbn,
+                kasgYmd,
+<span class="fc" id="L289">                maxSkno,</span>
+<span class="fc" id="L290">                maxKyttSkno);</span>
+<span class="fc" id="L291">        svckyaDataAccess.insert(insertedServiceContract, auditContext);</span>
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (Boolean.TRUE.equals(svckyaMchUmuFlg)) {</span>
+<span class="fc" id="L294">            svckyaDataAccess.updateBySvkyNoAndSknoAndRecUpdJnjNo(</span>
+<span class="fc" id="L295">                    buildWaitingServiceContractUpdateRecord(</span>
+                            serviceContractNumber,
+                            svckyaKiyKtymInf,
+                            kktTkysYmd,
+                            kasgYmd,
+                            kktSvckyaGasYtCd),
+<span class="fc" id="L301">                    EnumSet.of(</span>
+                            SvckyaColumn.SVC_RYKS_YMD,
+                            SvckyaColumn.SVKY_TIKT_YMD,
+                            SvckyaColumn.SZIR_HTYO_YMD,
+                            SvckyaColumn.BYSS_UM_FLG,
+                            SvckyaColumn.GAS_YT_CD,
+                            SvckyaColumn.RKN_KHUM_FLG,
+                            SvckyaColumn.KKYS_SISN_JTKB,
+                            SvckyaColumn.TSZI_KYSB_NO),
+                    new SvckyaSknoJnjUpdateKey(
+                            serviceContractNumber,
+<span class="fc" id="L312">                            svckyaKiyKtymInf.skno(),</span>
+<span class="fc" id="L313">                            svckyaKiyKtymInf.recUpdJnjNo()),</span>
+                    auditContext);
+        }
+
+<span class="fc" id="L317">        SvsihkrWriteRecord insertedServicePaymentRelation =</span>
+<span class="fc" id="L318">                buildInsertedServicePaymentRelationRecord(</span>
+                        kktTkysYmd,
+                        applicableEndDate,
+                        serviceContractNumber,
+                        kktSihKiyNo);
+<span class="fc" id="L323">        svsihkrDataAccess.insert(insertedServicePaymentRelation, auditContext);</span>
+
+<span class="fc" id="L325">        SihakyWriteRecord insertedPaymentContract = buildInsertedPaymentContractRecord(</span>
+                kktTkysYmd,
+                applicableEndDate,
+                kktSihKiyNo,
+                kktSikKrno,
+                kktSyoKyoTrno);
+<span class="fc" id="L331">        sihakyDataAccess.insert(insertedPaymentContract, auditContext);</span>
+
+<span class="fc" id="L333">        hrikmiDataAccess.insert(</span>
+<span class="fc" id="L334">                buildInsertedPaymentRelatedInfoRecord(kktTkysYmd, applicableEndDate, kktSihKiyNo),</span>
+                auditContext);
+<span class="fc" id="L336">        sihtkskDataAccess.insert(buildInsertedDunningRecord(kktSihKiyNo), auditContext);</span>
+
+<span class="fc" id="L338">        return new ContractInfoUpdateRelatedValidWaitingRetailAtOpeningOutput(</span>
+<span class="fc" id="L339">                toSvckyaKktInf(insertedServiceContract),</span>
+<span class="fc" id="L340">                toSvsihkrKktInf(insertedServicePaymentRelation),</span>
+<span class="fc" id="L341">                toSihakyKktInf(insertedPaymentContract));</span>
+    }
+
+    private SvmstkrWriteRecord buildPrimaryRelationUpdateRecord(
+            SvmstkrYukuMchInf svmstkrYukuMchInf,
+            LocalDate kktTkysYmd) {
+<span class="fc" id="L347">        return new SvmstkrWriteRecord(</span>
+<span class="fc" id="L348">                svmstkrYukuMchInf.mtstNo(),</span>
+<span class="fc" id="L349">                svmstkrYukuMchInf.svkyNo(),</span>
+<span class="fc" id="L350">                svmstkrYukuMchInf.skno(),</span>
+                null,
+                null,
+                chargeCalculationRelatedStatusRelatedValid,
+                kktTkysYmd,
+                null,
+                null);
+    }
+
+    private SvckyaWriteRecord buildInsertedServiceContractRecord(
+            LocalDate kktTkysYmd,
+            Long kktSvkyNo,
+            String kktSqtiKiyNo,
+            Long kktSyoKyoTrno,
+            String kktSvckyaGasYtCd,
+            String kktSziKziKbn,
+            LocalDate kasgYmd,
+            Integer maxSkno,
+            Integer maxKyttSkno) {
+<span class="fc" id="L369">        return new SvckyaWriteRecord(</span>
+                kktSvkyNo,
+                maxSkno,
+                maxKyttSkno,
+                INITIAL_KYTT_TSNO,
+                serviceContractStatusUnderContract,
+                serviceContractStartReasonNew,
+                contractTypeApplicableReasonNewContract,
+                null,
+                kktTkysYmd,
+                MAX_DATE,
+                kktTkysYmd,
+                MAX_DATE,
+                kktTkysYmd,
+                MAX_DATE,
+                null,
+                kktTkysYmd,
+                kktTkysYmd,
+                kktTkysYmd,
+                kasgYmd,
+                kktSqtiKiyNo,
+                kktSyoKyoTrno,
+                kktSyoKyoTrno,
+                Boolean.FALSE,
+                productCategoryGas,
+                contractTypeGeneralContract,
+                kktSvckyaGasYtCd,
+                kktSziKziKbn,
+                Boolean.FALSE,
+                null,
+                contractManagementDepartmentCodeGeneral,
+                companyUseDivisionOtherThanCompanyUse,
+                null,
+<span class="fc" id="L402">                0);</span>
+    }
+
+    private SvckyaWriteRecord buildWaitingServiceContractUpdateRecord(
+                        Long serviceContractNumber,
+            SvckyaKiyKtymInf svckyaKiyKtymInf,
+            LocalDate kktTkysYmd,
+            LocalDate kasgYmd,
+            String kktSvckyaGasYtCd) {
+<span class="fc" id="L411">        return new SvckyaWriteRecord(</span>
+                                serviceContractNumber,
+<span class="fc" id="L413">                svckyaKiyKtymInf.skno(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                kktTkysYmd,
+                kktTkysYmd,
+                null,
+                kasgYmd,
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                kktSvckyaGasYtCd,
+                null,
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                ZERO_TSZI_KYSB_NO,
+                null);
+    }
+
+    /**
+     * 概要: 入力オブジェクト間で扱うサービス契約番号の整合性を検証する。
+     * 主な仕様:
+     * - 主関連情報のサービス契約番号を基準値とし、確定サービス契約番号との不一致は fail-fast する。
+     * - 契約適用待ち更新を行う場合は、契約適用待ち情報のサービス契約番号も同一値であることを要求する。
+     *
+     * @param kktSvkyNo 確定サービス契約番号
+     * @param svmstkrYukuMchInf サービス契約・メーター設置場所関連情報（関連有効待ち）
+     * @param svckyaMchUmuFlg サービス契約適用待ち有無フラグ
+     * @param svckyaKiyKtymInf サービス契約情報（契約適用待ち）
+     * @return 検証済みのサービス契約番号
+     */
+    private Long resolveServiceContractNumber(
+            Long kktSvkyNo,
+            SvmstkrYukuMchInf svmstkrYukuMchInf,
+            Boolean svckyaMchUmuFlg,
+            SvckyaKiyKtymInf svckyaKiyKtymInf) {
+<span class="fc" id="L464">        Long serviceContractNumber = svmstkrYukuMchInf.svkyNo();</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">        if (!Objects.equals(serviceContractNumber, kktSvkyNo)) {</span>
+<span class="fc" id="L466">            throw new IllegalArgumentException(</span>
+                    &quot;Service contract number mismatch between kktSvkyNo and svmstkrYukuMchInf.svkyNo: &quot;
+                            + &quot;kktSvkyNo=&quot;
+                            + kktSvkyNo
+                            + &quot;, svmstkrYukuMchInf.svkyNo=&quot;
+                            + serviceContractNumber);
+        }
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        if (Boolean.TRUE.equals(svckyaMchUmuFlg)</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">                &amp;&amp; !Objects.equals(serviceContractNumber, svckyaKiyKtymInf.svkyNo())) {</span>
+<span class="fc" id="L475">            throw new IllegalArgumentException(</span>
+                    &quot;Service contract number mismatch between svmstkrYukuMchInf.svkyNo and svckyaKiyKtymInf.svkyNo: &quot;
+                            + &quot;svmstkrYukuMchInf.svkyNo=&quot;
+                            + serviceContractNumber
+                            + &quot;, svckyaKiyKtymInf.svkyNo=&quot;
+<span class="fc" id="L480">                            + svckyaKiyKtymInf.svkyNo());</span>
+        }
+<span class="fc" id="L482">        return serviceContractNumber;</span>
+    }
+
+    /**
+     * 概要: 適用終了年月日が設計どおり最大日付であることを検証する。
+     * 主な仕様:
+     * - DA-044-C001、DA-075-C001、DA-093-C001 の適用終了年月日は最大日付固定である。
+     * - 最大日付以外が渡された場合は登録前に fail-fast する。
+     *
+     * @param kktTyenYmd 確定適用終了年月日
+     * @return 検証済みの最大日付
+     */
+    private LocalDate requireMaximumApplicableEndDate(LocalDate kktTyenYmd) {
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        if (!Objects.equals(MAX_DATE, kktTyenYmd)) {</span>
+<span class="fc" id="L496">            throw new IllegalArgumentException(</span>
+                    &quot;Applicable end date must be MAX_DATE for DA-044-C001/DA-075-C001/DA-093-C001: &quot;
+                            + &quot;kktTyenYmd=&quot;
+                            + kktTyenYmd);
+        }
+<span class="fc" id="L501">        return MAX_DATE;</span>
+    }
+
+    private SvsihkrWriteRecord buildInsertedServicePaymentRelationRecord(
+            LocalDate kktTkysYmd,
+            LocalDate kktTyenYmd,
+            Long kktSvkyNo,
+            Long kktSihKiyNo) {
+<span class="fc" id="L509">        return new SvsihkrWriteRecord(</span>
+                kktSihKiyNo,
+                kktSvkyNo,
+                INITIAL_SKNO,
+                kktTkysYmd,
+                kktTyenYmd,
+                paymentContractStatusApplying,
+                null,
+                null,
+                null,
+                INITIAL_IKSK_GRP_NO,
+                singleBillingPartyIdentificationTypeTotal,
+                Boolean.TRUE,
+                null,
+                billingTimingTypeImmediateBilling,
+                productCategoryGas);
+    }
+
+    private SihakyWriteRecord buildInsertedPaymentContractRecord(
+            LocalDate kktTkysYmd,
+            LocalDate kktTyenYmd,
+            Long kktSihKiyNo,
+            Long kktSikKrno,
+            Long kktSyoKyoTrno) {
+<span class="fc" id="L533">        return new SihakyWriteRecord(</span>
+                kktSihKiyNo,
+                INITIAL_SKNO,
+                kktTkysYmd,
+                kktTyenYmd,
+                paymentContractStatusApplying,
+                paymentMethodTypePayment,
+                null,
+                null,
+                nextMonthTotalApplicationTypeCanBeCarriedOver,
+                null,
+                null,
+                kktSikKrno,
+                null,
+                automaticCancellationTypeNone,
+                null,
+                kktSyoKyoTrno,
+                Boolean.FALSE,
+                null);
+    }
+
+    private HrikmiWriteRecord buildInsertedPaymentRelatedInfoRecord(
+            LocalDate kktTkysYmd,
+            LocalDate kktTyenYmd,
+            Long kktSihKiyNo) {
+<span class="fc" id="L558">        return new HrikmiWriteRecord(</span>
+                kktSihKiyNo,
+                INITIAL_SKNO,
+                kktTkysYmd,
+                kktTyenYmd,
+                paymentFormShippingMethodTypeGeneralShipping,
+                paymentFormPaymentSlipStandard,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private SihtkskWriteRecord buildInsertedDunningRecord(Long kktSihKiyNo) {
+<span class="fc" id="L574">        return new SihtkskWriteRecord(</span>
+                kktSihKiyNo,
+                dunningMethodTypeNormalReminder,
+                billingManagementLevelBatchIssueTarget);
+    }
+
+    private SvckyaKktInf toSvckyaKktInf(SvckyaWriteRecord record) {
+<span class="fc" id="L581">        return new SvckyaKktInf(</span>
+<span class="fc" id="L582">                record.svkyNo(),</span>
+<span class="fc" id="L583">                record.skno(),</span>
+<span class="fc" id="L584">                record.kyttSkno(),</span>
+<span class="fc" id="L585">                record.kyttTsno(),</span>
+<span class="fc" id="L586">                record.svkyJtkb(),</span>
+<span class="fc" id="L587">                record.svkySttJysb(),</span>
+<span class="fc" id="L588">                record.ksbTkyJysb(),</span>
+<span class="fc" id="L589">                record.svkyEndJysb(),</span>
+<span class="fc" id="L590">                record.rkkiSttYmd(),</span>
+<span class="fc" id="L591">                record.rkkiEndYmd(),</span>
+<span class="fc" id="L592">                record.ksbSttYmd(),</span>
+<span class="fc" id="L593">                record.ksbEndYmd(),</span>
+<span class="fc" id="L594">                record.ksbStytYmd(),</span>
+<span class="fc" id="L595">                record.ksbEnytYmd(),</span>
+<span class="fc" id="L596">                record.kykYtiYmd(),</span>
+<span class="fc" id="L597">                record.svcRyksYmd(),</span>
+<span class="fc" id="L598">                record.svkyTiktYmd(),</span>
+<span class="fc" id="L599">                record.ksbTiktYmd(),</span>
+<span class="fc" id="L600">                record.szirHtyoYmd(),</span>
+<span class="fc" id="L601">                record.sqtiKiyNo(),</span>
+<span class="fc" id="L602">                record.syoKyoTrno(),</span>
+<span class="fc" id="L603">                record.kysKyoTrno(),</span>
+<span class="fc" id="L604">                record.byssUmFlg(),</span>
+<span class="fc" id="L605">                record.shziKbn(),</span>
+<span class="fc" id="L606">                record.kiyShbt(),</span>
+<span class="fc" id="L607">                record.gasYtCd(),</span>
+<span class="fc" id="L608">                record.sziKziKbn(),</span>
+<span class="fc" id="L609">                record.rknKhumFlg(),</span>
+<span class="fc" id="L610">                record.kkysSisnJtkb(),</span>
+<span class="fc" id="L611">                record.kiyKnrkCd(),</span>
+<span class="fc" id="L612">                record.syaKbn(),</span>
+<span class="fc" id="L613">                record.tsziKysbNo());</span>
+    }
+
+    private SvsihkrKktInf toSvsihkrKktInf(SvsihkrWriteRecord record) {
+<span class="fc" id="L617">        return new SvsihkrKktInf(</span>
+<span class="fc" id="L618">                record.sihKiyNo(),</span>
+<span class="fc" id="L619">                record.svkyNo(),</span>
+<span class="fc" id="L620">                record.skno(),</span>
+<span class="fc" id="L621">                record.tkysYmd(),</span>
+<span class="fc" id="L622">                record.tyenYmd(),</span>
+<span class="fc" id="L623">                record.sihKiyJtkb(),</span>
+<span class="fc" id="L624">                record.snskSvkyNo(),</span>
+<span class="fc" id="L625">                record.ikskSttYm(),</span>
+<span class="fc" id="L626">                record.ikskEndYm(),</span>
+<span class="fc" id="L627">                record.ikskGrpNo(),</span>
+<span class="fc" id="L628">                record.tdssSbtShbt(),</span>
+<span class="fc" id="L629">                record.gsnKhFlg(),</span>
+<span class="fc" id="L630">                record.gsptShbt(),</span>
+<span class="fc" id="L631">                record.sikTmngShbt(),</span>
+<span class="fc" id="L632">                record.shziKbn());</span>
+    }
+
+    private SihakyKktInf toSihakyKktInf(SihakyWriteRecord record) {
+<span class="fc" id="L636">        return new SihakyKktInf(</span>
+<span class="fc" id="L637">                record.sihKiyNo(),</span>
+<span class="fc" id="L638">                record.skno(),</span>
+<span class="fc" id="L639">                record.tkysYmd(),</span>
+<span class="fc" id="L640">                record.tyenYmd(),</span>
+<span class="fc" id="L641">                record.sihKiyJtkb(),</span>
+<span class="fc" id="L642">                record.sihHuhuShbt(),</span>
+<span class="fc" id="L643">                record.sikSvcShbt(),</span>
+<span class="fc" id="L644">                record.sikKibNo(),</span>
+<span class="fc" id="L645">                record.yggsTkyShbt(),</span>
+<span class="fc" id="L646">                record.thsCdNo(),</span>
+<span class="fc" id="L647">                record.sikCycsNo(),</span>
+<span class="fc" id="L648">                record.sikKrno(),</span>
+<span class="fc" id="L649">                record.shtiSqddKbn(),</span>
+<span class="fc" id="L650">                record.jduKykShbt(),</span>
+<span class="fc" id="L651">                record.jduKykYmd(),</span>
+<span class="fc" id="L652">                record.shsyKyoTrno(),</span>
+<span class="fc" id="L653">                record.byssUmFlg(),</span>
+<span class="fc" id="L654">                record.skshHyjsKrno());</span>
+    }
+
+    private DataInconsistencyException createLatestServiceContractMissingException(Long svkyNo) {
+<span class="fc" id="L658">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L659">                svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L660">                SvckyaDataAccess.CallSpecs.FIND_LATEST_BY_SVKY_NO_AND_SVKY_JTKB_NOT.identifier(),</span>
+<span class="fc" id="L661">                new FlatJsonBuilder().put(&quot;svkyNo&quot;, svkyNo));</span>
+    }
+
+    private DataInconsistencyException createMaxKyttSknoMissingException(Long svkyNo) {
+<span class="fc" id="L665">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L666">                svckyaDataAccess.tableName(),</span>
+<span class="fc" id="L667">                SvckyaDataAccess.CallSpecs.FIND_MAX_KYTT_SKNO_BY_SVKY_NO.identifier(),</span>
+<span class="fc" id="L668">                new FlatJsonBuilder().put(&quot;svkyNo&quot;, svkyNo));</span>
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L672">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L674">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L675">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingDateErrorJudgment2Impl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingdateerrorjudgment2</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingDateErrorJudgment2Impl.java</span></div><h1>ClosingDateErrorJudgment2Impl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.HeisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingDateErrorJudgment2;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingDateValidityJudgment;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KnsKkaMtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SkinKnkkInf;
+
+/**
+ * 概要: SV-132（閉栓日エラー判定2）の実装クラス。
+ * 主な仕様:
+ * - 先行して SV-281 を呼び出し、その後に直列ガスメーター設置状態区分、異動・作業履歴業務コード、閉栓事由種別の順に判定する。
+ * - 最近検針結果情報の閉栓報告可能期限日が未設定の場合は、後続の起算日特定エラー判定へ委ねるため正常終了する。
+ * - 判定途中で条件に一致した場合は閉栓共通エラー 020200015 を送出する。
+ * - いずれの条件にも一致しない場合は正常終了する。
+ * 既知の制約:
+ * - public 引数の前後空白補正は行わず、上位バリデーション済み入力を前提とする。
+ * - 必須定数が未登録の場合はコンストラクタ初期化時点で fail-fast する。
+ */
+public final class ClosingDateErrorJudgment2Impl implements ClosingDateErrorJudgment2 {
+
+    private static final long TKSU_SVKY_NO = 0L;
+
+    private final ClosingDateValidityJudgment closingDateValidityJudgment;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final String dedicatedGasMeterStatus;
+
+    private final String originalGasMeterStatus;
+
+    private final String closingRegistration;
+
+    private final String supplyOutageReportRetail;
+
+    private final String supplyOutage;
+
+    private final String securityClosure;
+
+    private final String closedInCaseOfDisaster;
+
+    private final List&lt;String&gt; meterReadingReasonTypes;
+
+    /**
+     * 概要: 判定に必要な依存と CIRIUS 定数を初期化する。
+     * 主な仕様:
+     * - SV-281、GMKSKKD DA、定数取得サービスを保持する。
+     * - 直列ガスメーター設置状態区分、閉栓事由種別、異動・作業履歴業務コード、検針結果作成事由種別の必須定数を起動時に解決する。
+     * 既知の制約:
+     * - 必須依存または必須定数が不足している場合はコンストラクタで fail-fast する。
+     *
+     * @param closingDateValidityJudgment SV-281 閉栓日妥当性判定
+     * @param gmkskkdDataAccess GMKSKKD データアクセス
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ClosingDateErrorJudgment2Impl(
+            ClosingDateValidityJudgment closingDateValidityJudgment,
+            GmkskkdDataAccess gmkskkdDataAccess,
+<span class="fc" id="L67">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L68">        this.closingDateValidityJudgment = Objects.requireNonNull(</span>
+                closingDateValidityJudgment,
+                &quot;closingDateValidityJudgment&quot;);
+<span class="fc" id="L71">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L72">        CiriusConstantService resolvedService = Objects.requireNonNull(</span>
+                ciriusConstantService,
+                &quot;ciriusConstantService&quot;);
+<span class="fc" id="L75">        this.dedicatedGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L79">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L83">        this.closingRegistration = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.CLOSING_REGISTRATION);
+<span class="fc" id="L87">        this.supplyOutageReportRetail = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkCodeConduit.SUPPLY_OUTAGE_REPORT_RETAIL);
+<span class="fc" id="L91">        this.supplyOutage = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SUPPLY_OUTAGE);
+<span class="fc" id="L95">        this.securityClosure = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.SECURITY_CLOSURE);
+<span class="fc" id="L99">        this.closedInCaseOfDisaster = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ClosureReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ClosureReasonType.CLOSED_IN_CASE_OF_DISASTER);
+<span class="fc" id="L103">        this.meterReadingReasonTypes = List.of(</span>
+<span class="fc" id="L104">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR_SW_START),
+<span class="fc" id="L108">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY_SW_START));
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * 概要: 閉栓日エラー判定2を実行する。
+     * 主な仕様:
+     * - 先行して SV-281 を呼び出し、その後に直列ガスメーター設置状態区分、異動・作業履歴業務コード、閉栓事由種別の順に判定する。
+     * - 最近検針結果情報の閉栓報告可能期限日が未設定の場合は、後続の起算日特定エラー判定へ委ねるため正常終了する。
+     * - いずれかの判定で条件に一致した場合は閉栓共通エラー 020200015 を送出し、すべて不成立の場合は正常終了する。
+     * 既知の制約:
+     * - correlationId、hukkSysShbt、systemDatetime は SV 規約に従い公開引数へ含めない。
+     * - public 引数の前後空白補正は行わず、null 判定は仕様で必要な項目に限定する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param hssgYmd 閉栓作業年月日
+     * @param gmtkYmd ガスメーター取付年月日
+     * @param kasYmd 開栓年月日
+     * @param hesnYmd 閉栓年月日
+     * @param skinKnkkInf 最近検針結果情報
+     * @param knsKkaMtInf 検針結果＆検針関連情報取得_直列元情報
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param snyHsngKnsFlg 直列専用閉栓日以降検針有フラグ
+     * @param dgrpHesnMturFlg 同一グループ内閉栓日未到来フラグ
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     * @param znkiKnsYmd 前回検針年月日
+     * @param hesnJysb 閉栓事由種別
+     */
+    @Override
+    public void execute(
+            Long gasMtstNo,
+            LocalDate hssgYmd,
+            LocalDate gmtkYmd,
+            LocalDate kasYmd,
+            LocalDate hesnYmd,
+            SkinKnkkInf skinKnkkInf,
+            KnsKkaMtInf knsKkaMtInf,
+            String ckrtGmscJtkb,
+            Boolean snyHsngKnsFlg,
+            Boolean dgrpHesnMturFlg,
+            String duknIsrgCd,
+            LocalDate znkiKnsYmd,
+            String hesnJysb) {
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        if (skinKnkkInf == null || skinKnkkInf.hsenHkkKnuKigenYmd() == null) {</span>
+<span class="fc" id="L154">            return;</span>
+        }
+
+<span class="fc" id="L157">        closingDateValidityJudgment.execute(</span>
+                hssgYmd,
+                kasYmd,
+<span class="fc" id="L160">                skinKnkkInf.hsenHkkKnuKigenYmd(),</span>
+                gmtkYmd);
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (hasSeriesMeterStatusError(</span>
+                        ckrtGmscJtkb,
+                        knsKkaMtInf,
+                        hssgYmd,
+                        snyHsngKnsFlg,
+                        dgrpHesnMturFlg)
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                || hasWorkCodeError(duknIsrgCd, skinKnkkInf, hssgYmd, hesnYmd)</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                || hasClosureReasonError(hesnJysb, gasMtstNo, znkiKnsYmd, hssgYmd)) {</span>
+<span class="fc" id="L171">            throw new HeisenRuleException(ErrorCodeConstants.ERROR_CODE_020200015);</span>
+        }
+<span class="fc" id="L173">    }</span>
+
+    /**
+     * 概要: SV-132 step 2 に対応し、直列ガスメーター設置状態区分起点の判定を行う。
+     * 主な仕様:
+     * - 専用ガスメーターの場合は直列元情報の閉栓報告可能期限日と閉栓作業年月日を比較する。
+     * - 元ガスメーターの場合は直列専用閉栓日以降検針有フラグ、同一グループ内閉栓日未到来フラグの順で判定する。
+     * 既知の制約:
+     * - Boolean フラグは null を false として扱う。
+     * - 直列元情報や日付項目の null ガードは行わず、上位バリデーション済み入力を前提とする。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param knsKkaMtInf 検針結果＆検針関連情報取得_直列元情報
+     * @param hssgYmd 閉栓作業年月日
+     * @param snyHsngKnsFlg 直列専用閉栓日以降検針有フラグ
+     * @param dgrpHesnMturFlg 同一グループ内閉栓日未到来フラグ
+     * @return エラー条件に一致する場合 true
+     */
+    private boolean hasSeriesMeterStatusError(
+            String ckrtGmscJtkb,
+            KnsKkaMtInf knsKkaMtInf,
+            LocalDate hssgYmd,
+            Boolean snyHsngKnsFlg,
+            Boolean dgrpHesnMturFlg) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (dedicatedGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L198">            return knsKkaMtInf.hsenHkkKnuKigenYmd().isAfter(hssgYmd);</span>
+        }
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (Boolean.TRUE.equals(snyHsngKnsFlg)) {</span>
+<span class="fc" id="L203">                return true;</span>
+            }
+<span class="fc" id="L205">            return Boolean.TRUE.equals(dgrpHesnMturFlg);</span>
+        }
+
+<span class="fc" id="L208">        return false;</span>
+    }
+
+    /**
+     * 概要: SV-132 step 3 に対応し、異動・作業履歴業務コード起点の判定を行う。
+     * 主な仕様:
+     * - 閉栓登録の場合は最近検針結果情報の閉栓報告可能期限日と閉栓作業年月日の一致を確認する。
+     * - 供給停止報告（小売）の場合は閉栓年月日が設定されており、かつ閉栓作業年月日以上かを確認する。
+     * 既知の制約:
+     * - 対象外の業務コードは false を返し、後続判定へ委譲する。
+     * - 最近検針結果情報の null ガードは行わない。
+     *
+     * @param duknIsrgCd 異動・作業履歴業務コード（導管）
+     * @param skinKnkkInf 最近検針結果情報
+     * @param hssgYmd 閉栓作業年月日
+     * @param hesnYmd 閉栓年月日
+     * @return エラー条件に一致する場合 true
+     */
+    private boolean hasWorkCodeError(
+            String duknIsrgCd,
+            SkinKnkkInf skinKnkkInf,
+            LocalDate hssgYmd,
+            LocalDate hesnYmd) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (closingRegistration.equals(duknIsrgCd)) {</span>
+<span class="fc" id="L232">            return skinKnkkInf.hsenHkkKnuKigenYmd().isEqual(hssgYmd);</span>
+        }
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (supplyOutageReportRetail.equals(duknIsrgCd)) {</span>
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">            return hesnYmd != null &amp;&amp; !hesnYmd.isBefore(hssgYmd);</span>
+        }
+
+<span class="fc" id="L239">        return false;</span>
+    }
+
+    /**
+     * 概要: SV-132 step 4 に対応し、閉栓事由種別起点の DA 判定を行う。
+     * 主な仕様:
+     * - 対象閉栓事由種別のときだけ DA-027-R007 を呼び出して検針結果の有無を確認する。
+     * - DA が値を返した場合に閉栓共通エラー条件成立とみなす。
+     * 既知の制約:
+     * - 対象外の閉栓事由種別では DA を呼び出さず false を返す。
+     * - DA の例外はここで変換せず、そのまま上位へ伝播する。
+     *
+     * @param hesnJysb 閉栓事由種別
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param znkiKnsYmd 前回検針年月日
+     * @param hssgYmd 閉栓作業年月日
+     * @return エラー条件に一致する場合 true
+     */
+    private boolean hasClosureReasonError(
+            String hesnJysb,
+            Long gasMtstNo,
+            LocalDate znkiKnsYmd,
+            LocalDate hssgYmd) {
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (!isTargetClosureReason(hesnJysb)) {</span>
+<span class="fc" id="L263">            return false;</span>
+        }
+
+<span class="fc" id="L266">        return gmkskkdDataAccess.findByGasMtstNoAndKnsYmdAndKnkkSksiJysbAndTksuSvkyNo(</span>
+                gasMtstNo,
+                znkiKnsYmd,
+                hssgYmd,
+                meterReadingReasonTypes,
+<span class="fc" id="L271">                TKSU_SVKY_NO).isPresent();</span>
+    }
+
+    /**
+     * 概要: SV-132 step 4.a に対応し、閉栓事由種別が DA 判定対象かを判定する。
+     * 主な仕様:
+     * - 供給停止、保安閉栓、災害時閉栓のみを DA 判定対象とする。
+     * - それ以外の閉栓事由種別は非対象として扱う。
+     * 既知の制約:
+     * - 文字列の trim やコード値補正は行わない。
+     * - null の場合は equals 比較結果に従い非対象として扱う。
+     *
+     * @param hesnJysb 閉栓事由種別
+     * @return DA 判定対象である場合 true
+     */
+    private boolean isTargetClosureReason(String hesnJysb) {
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        return supplyOutage.equals(hesnJysb)</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                || securityClosure.equals(hesnJysb)</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                || closedInCaseOfDisaster.equals(hesnJysb);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

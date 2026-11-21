@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningCancelServiceContractMeterLocationUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-openingcancelservicecontractmeterlocationupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">OpeningCancelServiceContractMeterLocationUpdateImpl.java</span></div><h1>OpeningCancelServiceContractMeterLocationUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrSknoUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.write.SvmstkrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.OpeningCancelServiceContractMeterLocationUpdate;
+
+/**
+ * 概要: SV-059（開栓取消時サービス契約・メーター設置場所関連更新）のサービス実装。
+ * 主な仕様:
+ * - 主関連フラグとサービス契約開始事由種別に応じて、DA-041-U002 へ渡す更新値を切り替える。
+ * - 一次分岐では料金計算関連状態区分を関連有効待ち、料金計算開始年月日を最大日付へ更新する。
+ * - 二次分岐では料金計算関連状態区分を無効へ更新する。
+ * 既知の制約:
+ * - hukkSysShbt は RequestContext から取得し、未設定時は早期失敗する。
+ * - 必須定数はコンストラクタ初期化時に fail-fast で解決する。
+ */
+public class OpeningCancelServiceContractMeterLocationUpdateImpl
+        implements OpeningCancelServiceContractMeterLocationUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS059&quot;;
+
+<span class="fc" id="L33">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+<span class="fc" id="L35">    private static final Set&lt;SvmstkrColumn&gt; PRIMARY_TARGET_COLUMNS = Set.of(</span>
+            SvmstkrColumn.RKKI_KNRN_JTKB,
+            SvmstkrColumn.RKKI_STT_YMD);
+
+<span class="fc" id="L39">    private static final Set&lt;SvmstkrColumn&gt; SECONDARY_TARGET_COLUMNS = Set.of(</span>
+            SvmstkrColumn.RKKI_KNRN_JTKB);
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String continuationOfPreviousContract;
+
+    private final String relatedValidWaiting;
+
+    private final String invalidChargeCalculationRelatedStatus;
+
+    /**
+     * 概要: SV-059 に必要な依存オブジェクトと必須定数を初期化する。
+     * 主な仕様:
+     * - SVMSTKR DA、RequestContext、開閉栓定数サービス、CIRIUS 定数サービスを保持する。
+     * - 分岐条件と更新値に必要な J0567/J0611 定数を初期化時に解決する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は NullPointerException を送出する。
+     * - 必須定数が不足している場合はコンストラクタ初期化時点で失敗する。
+     *
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連 DA
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public OpeningCancelServiceContractMeterLocationUpdateImpl(
+            SvmstkrDataAccess svmstkrDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L72">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L73">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L74">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L75">        this.kaiheisenConstantService =</span>
+<span class="fc" id="L76">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L77">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L78">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L79">        this.continuationOfPreviousContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L83">        this.relatedValidWaiting = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_01);
+<span class="fc" id="L87">        this.invalidChargeCalculationRelatedStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.INVALID);
+<span class="fc" id="L91">    }</span>
+
+    /**
+     * 概要: SV-059 のサービス契約・メーター設置場所関連を更新する。
+     * 主な仕様:
+     * - 一次分岐条件は、主関連フラグが true かつサービス契約開始事由種別が前契約継続以外であること。
+     * - 一次分岐・二次分岐ともに SvmstkrDataAccess.CallSpecs.UPDATE_BY_MTST_NO_AND_SVKY_NO_AND_SKNO_KEY_ONLY を使用し、
+     *   SvmstkrSknoUpdateKey で更新する。
+     * - 監査情報は AuditContext を使用し、ユーザー ID は SERVICE_USER_ID、
+     *   報告元機能 ID は RequestContext.hukkSysShbt をデコードした値を設定する。
+     * 既知の制約:
+     * - 更新件数が 0 件の場合のエラー化は DA 側の契約に委譲する。
+     * - RequestContext.hukkSysShbt が未設定の場合は監査情報生成時に失敗する。
+     *
+     * @param mtstNo メーター設置場所番号
+     * @param svkyNo サービス契約番号
+     * @param skno 世代管理番号
+     * @param sknrFlg 主関連フラグ
+     * @param svkySttJysb サービス契約開始事由種別
+     */
+    @Override
+    public void execute(Long mtstNo, Long svkyNo, Integer skno, Boolean sknrFlg, String svkySttJysb) {
+<span class="fc" id="L113">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L114">        AuditContext auditContext = AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId);</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (isPrimaryBranch(sknrFlg, svkySttJysb)) {</span>
+<span class="fc" id="L117">            svmstkrDataAccess.updateByMtstNoAndSvkyNoAndSkno(</span>
+<span class="fc" id="L118">                    buildPrimaryWriteRecord(mtstNo, svkyNo, skno),</span>
+                    PRIMARY_TARGET_COLUMNS,
+                    new SvmstkrSknoUpdateKey(mtstNo, svkyNo, skno, null),
+                    auditContext);
+<span class="fc" id="L122">            return;</span>
+        }
+
+<span class="fc" id="L125">        svmstkrDataAccess.updateByMtstNoAndSvkyNoAndSkno(</span>
+<span class="fc" id="L126">                buildSecondaryWriteRecord(mtstNo, svkyNo, skno),</span>
+                SECONDARY_TARGET_COLUMNS,
+                new SvmstkrSknoUpdateKey(mtstNo, svkyNo, skno, null),
+                auditContext);
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * 概要: 一次分岐に入る条件を判定する。
+     * 主な仕様:
+     * - 主関連フラグが true であることを必須とする。
+     * - サービス契約開始事由種別が前契約継続以外であることを必須とする。
+     *
+     * @param sknrFlg 主関連フラグ
+     * @param svkySttJysb サービス契約開始事由種別
+     * @return 一次分岐に入る場合 true
+     */
+    private boolean isPrimaryBranch(Boolean sknrFlg, String svkySttJysb) {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        return Boolean.TRUE.equals(sknrFlg)</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                &amp;&amp; !continuationOfPreviousContract.equals(svkySttJysb);</span>
+    }
+
+        /**
+         * 概要: 一次分岐用の更新レコードを組み立てる。
+         * 主な仕様:
+         * - 料金計算関連状態区分を関連有効待ちへ更新する。
+         * - 料金計算開始年月日を最大日付へ更新する。
+         *
+         * @param mtstNo メーター設置場所番号
+         * @param svkyNo サービス契約番号
+         * @param skno 世代管理番号
+         * @return 更新レコード
+         */
+    private SvmstkrWriteRecord buildPrimaryWriteRecord(Long mtstNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L159">        return new SvmstkrWriteRecord(</span>
+                mtstNo,
+                svkyNo,
+                skno,
+                null,
+                null,
+                relatedValidWaiting,
+                MAX_DATE,
+                null,
+                null);
+    }
+
+        /**
+         * 概要: 二次分岐用の更新レコードを組み立てる。
+         * 主な仕様:
+         * - 料金計算関連状態区分を無効へ更新する。
+         * - 料金計算開始年月日は更新しない。
+         *
+         * @param mtstNo メーター設置場所番号
+         * @param svkyNo サービス契約番号
+         * @param skno 世代管理番号
+         * @return 更新レコード
+         */
+    private SvmstkrWriteRecord buildSecondaryWriteRecord(Long mtstNo, Long svkyNo, Integer skno) {
+<span class="fc" id="L183">        return new SvmstkrWriteRecord(</span>
+                mtstNo,
+                svkyNo,
+                skno,
+                null,
+                null,
+                invalidChargeCalculationRelatedStatus,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 概要: RequestContext の報告システム種別から監査用の機能 ID を取得する。
+     * 主な仕様:
+     * - RequestContext.hukkSysShbt を必須値として扱う。
+     * - 開閉栓定数サービスで報告元機能 ID 名へ変換する。
+     *
+     * @return 監査用の報告元機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L204">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+                requestContext
+<span class="fc" id="L207">                        .getHukkSysShbt()</span>
+<span class="fc" id="L208">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,607 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GetClosingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.get_closing</a> &gt; <span class="el_source">GetClosingService.java</span></div><h1>GetClosingService.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.get_closing;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.core.response.BffResponseValueNormalizer;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_closing.GetClosingRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_closing.GetClosingResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_closing.GetClosingResponse.GasUsageFluctuationCheck;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_closing.GetClosingResponse.MeterReadingInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.get_closing.GetClosingResponse.RelatedDedicatedMeterInfo;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TkssvkyInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_other.LivalitClosingWorkTicketInfoGetOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_other.LivalitClosingWorkTicketInfoGetOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitClosingWorkTicketInfoGetRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.LivalitClosingWorkTicketInfoGetResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.model.GasUsageFluctuationCheckResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.model.MeterReadingInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_tg.model.RelatedDedicatedMeterInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.parser.Rfc3339LocalDateParser;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.retail.RetailTypeJudgmentCode;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.schedule_management.ScheduleManagementCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.schedule_management.ScheduleManagementItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail.schedule_management.ScheduleManagementResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_work_ticket_info_other_retail.LivalitClosingWorkTicketInfoOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_work_ticket_info_tg_retail.LivalitClosingWorkTicketInfoTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.retail_division.RetailDivisionMaAdapter;
+
+/**
+ * BFF-002 閉栓作業票情報取得のアプリケーションサービス。
+ */
+@ApplicationScoped
+public class GetClosingService {
+
+    /** CIRIUS 連携で使用する日付フォーマット。 */
+<span class="fc" id="L55">    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern(&quot;yyyyMMdd&quot;);</span>
+
+    /** リバリットからの報告システム種別。 */
+    private static final String REPORTING_SYSTEM_TYPE =
+            ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT;
+
+    /** リクエストスコープのコンテキスト情報。 */
+    private final RequestContext requestContext;
+
+    /** 小売判定情報を取得する MA アダプタ。 */
+    private final RetailDivisionMaAdapter retailDivisionMaAdapter;
+
+    /** 2営業日判定に必要な日程管理情報を取得する CIRIUS アダプタ。 */
+    private final ScheduleManagementCiriusAdapter scheduleManagementCiriusAdapter;
+
+    /** TG 小売向けの閉栓作業票情報を取得する MA アダプタ。 */
+    private final LivalitClosingWorkTicketInfoTgRetailMaAdapter tgRetailMaAdapter;
+
+    /** 他小売向けの閉栓作業票情報を取得する MA アダプタ。 */
+    private final LivalitClosingWorkTicketInfoOtherRetailMaAdapter otherRetailMaAdapter;
+
+    /** systemDatetime 未設定時に利用するシステム日時プロバイダ。 */
+    private final SystemDateTimeProvider clock;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param retailDivisionMaAdapter 小売判定 adapter
+     * @param scheduleManagementCiriusAdapter CIRIUS スケジュール管理 adapter
+     * @param tgRetailMaAdapter MA-047 adapter
+     * @param otherRetailMaAdapter MA-048 adapter
+     * @param clock システム日時プロバイダ
+     */
+    @Inject
+    public GetClosingService(
+            RequestContext requestContext,
+            RetailDivisionMaAdapter retailDivisionMaAdapter,
+            ScheduleManagementCiriusAdapter scheduleManagementCiriusAdapter,
+            LivalitClosingWorkTicketInfoTgRetailMaAdapter tgRetailMaAdapter,
+            LivalitClosingWorkTicketInfoOtherRetailMaAdapter otherRetailMaAdapter,
+<span class="fc" id="L96">            SystemDateTimeProvider clock) {</span>
+<span class="fc" id="L97">        this.requestContext = requestContext;</span>
+<span class="fc" id="L98">        this.retailDivisionMaAdapter = retailDivisionMaAdapter;</span>
+<span class="fc" id="L99">        this.scheduleManagementCiriusAdapter = scheduleManagementCiriusAdapter;</span>
+<span class="fc" id="L100">        this.tgRetailMaAdapter = tgRetailMaAdapter;</span>
+<span class="fc" id="L101">        this.otherRetailMaAdapter = otherRetailMaAdapter;</span>
+<span class="fc" id="L102">        this.clock = clock;</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * 閉栓作業票情報を取得します。
+     *
+     * @param request BFF-002 リクエスト
+     * @return 閉栓作業票情報レスポンス
+     */
+    public GetClosingResponse handle(GetClosingRequest request) {
+<span class="fc" id="L112">        LocalDateTime systemDatetime = requestContext.getSystemDatetime().orElseGet(clock::currentDateTime);</span>
+<span class="fc" id="L113">        LocalDate systemDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L114">        String normalizedHsenKiboYmd = normalizeOptional(request.hsenKiboYmd());</span>
+<span class="fc" id="L115">        LocalDate hsenKiboYmd = Rfc3339LocalDateParser.parse(normalizedHsenKiboYmd);</span>
+
+<span class="fc" id="L117">        validateClosingRequestMonth(systemDate, hsenKiboYmd);</span>
+
+<span class="fc" id="L119">        ScheduleManagementResponse ciriusResponse = scheduleManagementCiriusAdapter.getByDateRange(</span>
+<span class="fc" id="L120">                systemDate.format(YYYYMMDD),</span>
+<span class="fc" id="L121">                systemDate.plusMonths(1).format(YYYYMMDD));</span>
+<span class="fc" id="L122">        LocalDate secondBusinessDay = extractSecondCisWorkDay(ciriusResponse.scheduleManagementList());</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (hsenKiboYmd.isAfter(secondBusinessDay)) {</span>
+<span class="fc" id="L124">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000020);</span>
+        }
+
+<span class="fc" id="L127">        String downstreamSystemDatetime = resolveSystemDatetimeForDownstream(request, systemDatetime);</span>
+<span class="fc" id="L128">        RetailDivisionResponse retailDivisionResponse = retailDivisionMaAdapter.invoke(new RetailDivisionRequest(</span>
+                &quot;1&quot;,
+<span class="fc" id="L130">                format11Digits(request.gasMtstNo()),</span>
+                normalizedHsenKiboYmd,
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime));
+
+<span class="fc" id="L135">        String retailDivision = retailDivisionResponse.kuHntKbn();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (RetailTypeJudgmentCode.TOKYO_GAS.code().equals(retailDivision)) {</span>
+<span class="fc" id="L137">            LivalitClosingWorkTicketInfoGetRequest tgRequest =</span>
+<span class="fc" id="L138">                buildTgRetailRequest(</span>
+                request,
+                normalizedHsenKiboYmd,
+                retailDivisionResponse,
+                downstreamSystemDatetime);
+<span class="fc" id="L143">            LivalitClosingWorkTicketInfoGetResponse tgResponse =</span>
+<span class="fc" id="L144">                tgRetailMaAdapter.invoke(tgRequest);</span>
+<span class="fc" id="L145">            return mapTgResponse(tgResponse);</span>
+        }
+
+<span class="fc" id="L148">        LivalitClosingWorkTicketInfoGetOtherRetailRequest otherRequest =</span>
+<span class="fc" id="L149">            buildOtherRetailRequest(</span>
+                request,
+                normalizedHsenKiboYmd,
+                retailDivisionResponse,
+                downstreamSystemDatetime);
+<span class="fc" id="L154">        LivalitClosingWorkTicketInfoGetOtherRetailResponse otherResponse =</span>
+<span class="fc" id="L155">            otherRetailMaAdapter.invoke(otherRequest);</span>
+<span class="fc" id="L156">        return mapOtherRetailResponse(otherResponse);</span>
+    }
+
+    /**
+     * 閉栓希望年月日の月が許容範囲内かを検証します。
+     *
+     * @param systemDate システム日付
+     * @param hsenKiboYmd 閉栓希望年月日
+     */
+    private void validateClosingRequestMonth(LocalDate systemDate, LocalDate hsenKiboYmd) {
+<span class="fc" id="L166">        YearMonth prevMonth = YearMonth.from(systemDate).minusMonths(1);</span>
+<span class="fc" id="L167">        YearMonth hsenMonth = YearMonth.from(hsenKiboYmd);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (hsenMonth.isBefore(prevMonth)) {</span>
+<span class="fc" id="L169">            throw new BusinessRuleException(ErrorCodeConstants.ERROR_CODE_020000020);</span>
+        }
+<span class="fc" id="L171">    }</span>
+
+    /**
+     * CIRIUS 日程管理情報から 2 営業日後の日付を抽出します。
+     *
+     * @param items 日程管理一覧
+     * @return 2 営業日後の日付
+     */
+    private LocalDate extractSecondCisWorkDay(List&lt;ScheduleManagementItem&gt; items) {
+<span class="fc" id="L180">        int count = 0;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        for (ScheduleManagementItem item : items) {</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">            if (item.cisKadKaibNo() != null &amp;&amp; !item.cisKadKaibNo().isBlank()) {</span>
+<span class="fc" id="L183">                count++;</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">                if (count == 2) {</span>
+<span class="fc" id="L185">                    return LocalDate.parse(String.valueOf(item.rekiYmd()), YYYYMMDD);</span>
+                }
+            }
+<span class="fc" id="L188">        }</span>
+<span class="nc" id="L189">        throw new KaiheisenException(</span>
+                &quot;CIRIUS日程管理情報からCIS稼働回分番号が設定された2件目のデータが取得できません&quot;);
+    }
+
+    /**
+     * TG 小売向けの MA-047 リクエストを構築します。
+     *
+     * @param request BFF-002 リクエスト
+     * @param retailDivisionResponse MA-107 応答
+     * @param downstreamSystemDatetime 下流連携用 systemDatetime
+     * @return MA-047 リクエスト
+     */
+    private LivalitClosingWorkTicketInfoGetRequest buildTgRetailRequest(
+            GetClosingRequest request,
+            String normalizedHsenKiboYmd,
+            RetailDivisionResponse retailDivisionResponse,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L206">        return new LivalitClosingWorkTicketInfoGetRequest(</span>
+<span class="fc" id="L207">                format11Digits(request.gasMtstNo()),</span>
+                normalizedHsenKiboYmd,
+<span class="fc" id="L209">                extractRequiredSyoKyoTrno(retailDivisionResponse),</span>
+<span class="fc" id="L210">                extractRequiredTksuSvkyNo(retailDivisionResponse),</span>
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime);
+    }
+
+    /**
+     * 他小売向けの MA-048 リクエストを構築します。
+     *
+     * @param request BFF-002 リクエスト
+     * @param retailDivisionResponse MA-107 応答
+     * @param downstreamSystemDatetime 下流連携用 systemDatetime
+     * @return MA-048 リクエスト
+     */
+    private LivalitClosingWorkTicketInfoGetOtherRetailRequest buildOtherRetailRequest(
+            GetClosingRequest request,
+            String normalizedHsenKiboYmd,
+            RetailDivisionResponse retailDivisionResponse,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L228">        return new LivalitClosingWorkTicketInfoGetOtherRetailRequest(</span>
+<span class="fc" id="L229">                format11Digits(request.gasMtstNo()),</span>
+                normalizedHsenKiboYmd,
+<span class="fc" id="L231">                extractOptionalSyoKyoTrno(retailDivisionResponse),</span>
+<span class="fc" id="L232">                extractOptionalTksuSvkyNo(retailDivisionResponse),</span>
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime);
+    }
+
+    /**
+     * MA-107 応答から使用者契約お客さま登録番号を抽出します。
+     *
+     * @param retailDivisionResponse MA-107 応答
+     * @return 11 桁ゼロ埋め済みの使用者契約お客さま登録番号
+     */
+    private String extractRequiredSyoKyoTrno(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L244">        TkssvkyInfoResponse tkssvkyInf = retailDivisionResponse.tkssvkyInf();</span>
+<span class="pc bpc" id="L245" title="2 of 4 branches missed.">        if (tkssvkyInf == null || tkssvkyInf.syoKyoTrno() == null) {</span>
+<span class="nc" id="L246">            throw new KaiheisenException(&quot;MA-107 応答に使用者契約お客さま登録番号がありません&quot;);</span>
+        }
+<span class="fc" id="L248">        return format11Digits(tkssvkyInf.syoKyoTrno());</span>
+    }
+
+    /**
+     * MA-107 応答から託送サービス契約番号を抽出します。
+     *
+     * @param retailDivisionResponse MA-107 応答
+     * @return 11 桁ゼロ埋め済みの託送サービス契約番号
+     */
+    private String extractRequiredTksuSvkyNo(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L258">        TkssvkyInfoResponse tkssvkyInf = retailDivisionResponse.tkssvkyInf();</span>
+<span class="pc bpc" id="L259" title="2 of 4 branches missed.">        if (tkssvkyInf == null || tkssvkyInf.tksuSvkyNo() == null) {</span>
+<span class="nc" id="L260">            throw new KaiheisenException(&quot;MA-107 応答に託送サービス契約番号がありません&quot;);</span>
+        }
+<span class="fc" id="L262">        return format11Digits(tkssvkyInf.tksuSvkyNo());</span>
+    }
+
+    /**
+     * MA-107 応答から使用者契約お客さま登録番号を抽出します。
+     *
+     * @param retailDivisionResponse MA-107 応答
+     * @return 11 桁ゼロ埋め済みの使用者契約お客さま登録番号。未取得時は null
+     */
+    private String extractOptionalSyoKyoTrno(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L272">        TkssvkyInfoResponse tkssvkyInf = retailDivisionResponse.tkssvkyInf();</span>
+<span class="pc bpc" id="L273" title="1 of 4 branches missed.">        if (tkssvkyInf == null || isMissingContractNumber(tkssvkyInf.syoKyoTrno())) {</span>
+<span class="fc" id="L274">            return null;</span>
+        }
+<span class="fc" id="L276">        return format11Digits(tkssvkyInf.syoKyoTrno());</span>
+    }
+
+    /**
+     * MA-107 応答から託送サービス契約番号を抽出します。
+     *
+     * @param retailDivisionResponse MA-107 応答
+     * @return 11 桁ゼロ埋め済みの託送サービス契約番号。未取得時は null
+     */
+    private String extractOptionalTksuSvkyNo(RetailDivisionResponse retailDivisionResponse) {
+<span class="fc" id="L286">        TkssvkyInfoResponse tkssvkyInf = retailDivisionResponse.tkssvkyInf();</span>
+<span class="pc bpc" id="L287" title="1 of 4 branches missed.">        if (tkssvkyInf == null || isMissingContractNumber(tkssvkyInf.tksuSvkyNo())) {</span>
+<span class="fc" id="L288">            return null;</span>
+        }
+<span class="fc" id="L290">        return format11Digits(tkssvkyInf.tksuSvkyNo());</span>
+    }
+
+    private boolean isMissingContractNumber(Long value) {
+<span class="fc bfc" id="L294" title="All 4 branches covered.">        return value == null || value == 0L;</span>
+    }
+
+    /**
+     * 下流 API へ渡す systemDatetime を決定します。
+     *
+     * @param request BFF-002 リクエスト
+     * @param systemDatetime RequestContext 上のシステム日時
+     * @return 下流連携用 systemDatetime
+     */
+    private String resolveSystemDatetimeForDownstream(GetClosingRequest request, LocalDateTime systemDatetime) {
+<span class="fc" id="L305">        String requestedSystemDatetime = normalizeOptional(request.systemDatetime());</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        if (requestedSystemDatetime != null) {</span>
+<span class="fc" id="L307">            return toRfc3339DateTimeText(requestedSystemDatetime);</span>
+        }
+<span class="fc" id="L309">        return systemDatetime.atOffset(ZoneOffset.UTC)</span>
+<span class="fc" id="L310">                .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L311">                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+    }
+
+    private String toRfc3339DateTimeText(String rawDateTime) {
+<span class="fc" id="L315">        String normalized = normalizeOptional(rawDateTime);</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L317">            return null;</span>
+        }
+        try {
+<span class="fc" id="L320">            return OffsetDateTime.parse(normalized)</span>
+<span class="fc" id="L321">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L322">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+<span class="fc" id="L323">        } catch (DateTimeParseException exception) {</span>
+<span class="fc" id="L324">            return LocalDateTime.parse(normalized)</span>
+<span class="fc" id="L325">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L326">                    .atOffset(ZoneOffset.UTC)</span>
+<span class="fc" id="L327">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+        }
+    }
+
+    /**
+     * 数値を 11 桁のゼロ埋め文字列へ変換します。
+     *
+     * @param value 変換対象の値
+     * @return 11 桁のゼロ埋め文字列
+     */
+    private String format11Digits(Long value) {
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L339">            throw new KaiheisenException(&quot;必須の11桁数値項目が取得できません&quot;);</span>
+        }
+<span class="fc" id="L341">        return String.format(&quot;%011d&quot;, value);</span>
+    }
+
+    /**
+     * TG 小売向け MA-047 応答を BFF レスポンスへ変換します。
+     *
+     * @param response MA-047 応答
+     * @return BFF レスポンス
+     */
+    private GetClosingResponse mapTgResponse(
+            LivalitClosingWorkTicketInfoGetResponse response) {
+<span class="fc" id="L352">        return new GetClosingResponse(</span>
+<span class="fc" id="L353">                BffResponseValueNormalizer.longOrZero(response.svkyNo()),</span>
+<span class="fc" id="L354">                BffResponseValueNormalizer.longOrZero(response.sihKiyNo()),</span>
+<span class="fc" id="L355">                BffResponseValueNormalizer.longOrZero(response.kyoTrkNo()),</span>
+<span class="fc" id="L356">                BffResponseValueNormalizer.stringOrEmpty(response.hesnYmd()),</span>
+<span class="fc" id="L357">                BffResponseValueNormalizer.stringOrEmpty(response.kasYmd()),</span>
+<span class="fc" id="L358">                BffResponseValueNormalizer.stringOrEmpty(response.snstGkjYm()),</span>
+<span class="fc" id="L359">                BffResponseValueNormalizer.stringOrEmpty(response.gmicDbriShbt()),</span>
+<span class="fc" id="L360">                BffResponseValueNormalizer.booleanOrFalse(response.knsKhFlg()),</span>
+<span class="fc" id="L361">                BffResponseValueNormalizer.stringOrEmpty(response.gmicSbriShbt()),</span>
+<span class="fc" id="L362">                BffResponseValueNormalizer.stringOrEmpty(response.gmtKhsJtkb()),</span>
+<span class="fc" id="L363">                BffResponseValueNormalizer.stringOrEmpty(response.ckrtGmscJtkb()),</span>
+<span class="fc" id="L364">                BffResponseValueNormalizer.stringOrEmpty(response.kkyuGmtKbn()),</span>
+<span class="fc" id="L365">                BffResponseValueNormalizer.stringOrEmpty(response.kngmStbJtkb()),</span>
+<span class="fc" id="L366">                BffResponseValueNormalizer.stringOrEmpty(response.knsHuhuKbn()),</span>
+<span class="fc" id="L367">                BffResponseValueNormalizer.stringOrEmpty(response.hesnSdnShbt()),</span>
+<span class="fc" id="L368">                BffResponseValueNormalizer.stringOrEmpty(response.gmtItiInf()),</span>
+<span class="fc" id="L369">                BffResponseValueNormalizer.stringOrEmpty(response.gmb()),</span>
+<span class="fc" id="L370">                BffResponseValueNormalizer.stringOrEmpty(response.gmkShbt()),</span>
+<span class="fc" id="L371">                BffResponseValueNormalizer.decimalOrZero(response.gmtGusu()),</span>
+<span class="fc" id="L372">                BffResponseValueNormalizer.longOrZero(response.sjskHticSu()),</span>
+<span class="fc" id="L373">                BffResponseValueNormalizer.decimalOrZero(response.sjsuMincSu()),</span>
+<span class="fc" id="L374">                BffResponseValueNormalizer.stringOrEmpty(response.ktyYm()),</span>
+<span class="fc" id="L375">                BffResponseValueNormalizer.stringOrEmpty(response.kiyShbt()),</span>
+<span class="fc" id="L376">                BffResponseValueNormalizer.stringOrEmpty(response.kasJysb()),</span>
+<span class="fc" id="L377">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKn1()),</span>
+<span class="fc" id="L378">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKj1()),</span>
+<span class="fc" id="L379">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKn2()),</span>
+<span class="fc" id="L380">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKj2()),</span>
+<span class="fc" id="L381">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm2HujnShbt()),</span>
+<span class="fc" id="L382">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm2HshiShbt()),</span>
+<span class="fc" id="L383">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm1HujnShbt()),</span>
+<span class="fc" id="L384">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm1HshiShbt()),</span>
+<span class="fc" id="L385">                BffResponseValueNormalizer.booleanOrFalse(response.ctnmKjhkFlg()),</span>
+<span class="fc" id="L386">                mapTgMeterReadingInfo(response.knsnInf()),</span>
+<span class="fc" id="L387">                mapTgGasUsageFluctuationCheck(response.hndSyoryCheck()),</span>
+<span class="fc" id="L388">                mapStringItems(response.knsnSienInf()),</span>
+<span class="fc" id="L389">                mapTgRelatedDedicatedMeterInfo(response.ckrtGmtInf()),</span>
+<span class="fc" id="L390">                BffResponseValueNormalizer.stringOrEmpty(requestContext.getCorrelationId().orElse(&quot;&quot;)));</span>
+    }
+
+    /**
+     * 他小売向け MA-048 応答を BFF レスポンスへ変換します。
+     *
+     * @param response MA-048 応答
+     * @return BFF レスポンス
+     */
+    private GetClosingResponse mapOtherRetailResponse(
+            LivalitClosingWorkTicketInfoGetOtherRetailResponse response) {
+<span class="fc" id="L401">        return new GetClosingResponse(</span>
+<span class="fc" id="L402">                BffResponseValueNormalizer.longOrZero(response.svkyNo()),</span>
+<span class="fc" id="L403">                0L,</span>
+<span class="fc" id="L404">                BffResponseValueNormalizer.longOrZero(response.kyoTrkNo()),</span>
+<span class="fc" id="L405">                BffResponseValueNormalizer.stringOrEmpty(response.hesnYmd()),</span>
+<span class="fc" id="L406">                BffResponseValueNormalizer.stringOrEmpty(response.kasYmd()),</span>
+<span class="fc" id="L407">                BffResponseValueNormalizer.stringOrEmpty(response.snstGkjYm()),</span>
+<span class="fc" id="L408">                BffResponseValueNormalizer.stringOrEmpty(response.gmicDbriShbt()),</span>
+<span class="fc" id="L409">                BffResponseValueNormalizer.booleanOrFalse(response.knsKhFlg()),</span>
+<span class="fc" id="L410">                BffResponseValueNormalizer.stringOrEmpty(response.gmicSbriShbt()),</span>
+<span class="fc" id="L411">                BffResponseValueNormalizer.stringOrEmpty(response.gmtKhsJtkb()),</span>
+<span class="fc" id="L412">                BffResponseValueNormalizer.stringOrEmpty(response.ckrtGmscJtkb()),</span>
+<span class="fc" id="L413">                BffResponseValueNormalizer.stringOrEmpty(response.kkyuGmtKbn()),</span>
+<span class="fc" id="L414">                BffResponseValueNormalizer.stringOrEmpty(response.kngmStbJtkb()),</span>
+<span class="fc" id="L415">                BffResponseValueNormalizer.stringOrEmpty(response.knsHuhuKbn()),</span>
+<span class="fc" id="L416">                BffResponseValueNormalizer.stringOrEmpty(response.hesnSdnShbt()),</span>
+<span class="fc" id="L417">                BffResponseValueNormalizer.stringOrEmpty(response.gmtItiInf()),</span>
+<span class="fc" id="L418">                BffResponseValueNormalizer.stringOrEmpty(response.gmb()),</span>
+<span class="fc" id="L419">                BffResponseValueNormalizer.stringOrEmpty(response.gmkShbt()),</span>
+<span class="fc" id="L420">                BffResponseValueNormalizer.decimalOrZero(response.gmtGusu()),</span>
+<span class="fc" id="L421">                BffResponseValueNormalizer.longOrZero(response.sjskHticSu()),</span>
+<span class="fc" id="L422">                BffResponseValueNormalizer.decimalOrZero(response.sjsuMincSu()),</span>
+<span class="fc" id="L423">                BffResponseValueNormalizer.stringOrEmpty(response.ktyYm()),</span>
+<span class="fc" id="L424">                BffResponseValueNormalizer.stringOrEmpty(response.kiyShbt()),</span>
+<span class="fc" id="L425">                BffResponseValueNormalizer.stringOrEmpty(response.kasJysb()),</span>
+<span class="fc" id="L426">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKn1()),</span>
+<span class="fc" id="L427">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKj1()),</span>
+<span class="fc" id="L428">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKn2()),</span>
+<span class="fc" id="L429">                BffResponseValueNormalizer.stringOrEmpty(response.ctnmKj2()),</span>
+<span class="fc" id="L430">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm2HujnShbt()),</span>
+<span class="fc" id="L431">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm2HshiShbt()),</span>
+<span class="fc" id="L432">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm1HujnShbt()),</span>
+<span class="fc" id="L433">                BffResponseValueNormalizer.stringOrEmpty(response.ctnm1HshiShbt()),</span>
+<span class="fc" id="L434">                BffResponseValueNormalizer.booleanOrFalse(response.ctnmKjhkFlg()),</span>
+<span class="fc" id="L435">                mapOtherMeterReadingInfo(response.knsnInf()),</span>
+<span class="fc" id="L436">                mapOtherGasUsageFluctuationCheck(response.hndSyoryCheck()),</span>
+<span class="fc" id="L437">                mapStringItems(response.knsnSienInf()),</span>
+<span class="fc" id="L438">                mapOtherRelatedDedicatedMeterInfo(response.ckrtGmtInf()),</span>
+<span class="fc" id="L439">                BffResponseValueNormalizer.stringOrEmpty(requestContext.getCorrelationId().orElse(&quot;&quot;)));</span>
+    }
+
+    private List&lt;String&gt; mapStringItems(List&lt;String&gt; list) {
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">        if (list == null) {</span>
+<span class="nc" id="L444">            return null;</span>
+        }
+<span class="fc" id="L446">        return list.stream()</span>
+<span class="fc" id="L447">                .map(BffResponseValueNormalizer::stringOrEmpty)</span>
+<span class="fc" id="L448">                .toList();</span>
+    }
+
+    /**
+     * TG 小売応答の検針情報一覧を BFF 型へ変換します。
+     *
+     * @param list MA-047 の検針情報一覧
+     * @return BFF の検針情報一覧
+     */
+    private List&lt;MeterReadingInfo&gt; mapTgMeterReadingInfo(List&lt;MeterReadingInfoResponse&gt; list) {
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">        if (list == null) {</span>
+<span class="nc" id="L459">            return null;</span>
+        }
+<span class="fc" id="L461">        return list.stream()</span>
+<span class="fc" id="L462">                .map(item -&gt; new MeterReadingInfo(</span>
+<span class="fc" id="L463">                BffResponseValueNormalizer.stringOrEmpty(item.knsYmd()),</span>
+<span class="fc" id="L464">                BffResponseValueNormalizer.stringOrEmpty(item.knsJsjkCd()),</span>
+<span class="fc" id="L465">                BffResponseValueNormalizer.longOrZero(item.gmtShjSu()),</span>
+<span class="fc" id="L466">                BffResponseValueNormalizer.decimalOrZero(item.gasSyry()),</span>
+<span class="fc" id="L467">                BffResponseValueNormalizer.integerOrZero(item.shyDdsu()),</span>
+<span class="fc" id="L468">                BffResponseValueNormalizer.stringOrEmpty(item.skknTkyCd())))</span>
+<span class="fc" id="L469">                .toList();</span>
+    }
+
+    /**
+     * 他小売応答の検針情報一覧を BFF 型へ変換します。
+     *
+     * @param list MA-048 の検針情報一覧
+     * @return BFF の検針情報一覧
+     */
+    private List&lt;MeterReadingInfo&gt; mapOtherMeterReadingInfo(List&lt;?&gt; list) {
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">        if (list == null) {</span>
+<span class="nc" id="L480">            return null;</span>
+        }
+<span class="fc" id="L482">        return list.stream()</span>
+<span class="fc" id="L483">                .map(item -&gt; new MeterReadingInfo(</span>
+<span class="fc" id="L484">                BffResponseValueNormalizer.stringOrEmpty(readString(item, &quot;knsYmd&quot;)),</span>
+<span class="fc" id="L485">                BffResponseValueNormalizer.stringOrEmpty(readString(item, &quot;knsJsjkCd&quot;)),</span>
+<span class="fc" id="L486">                BffResponseValueNormalizer.longOrZero(readLong(item, &quot;gmtShjSu&quot;)),</span>
+<span class="fc" id="L487">                BffResponseValueNormalizer.decimalOrZero(readBigDecimal(item, &quot;gasSyry&quot;)),</span>
+<span class="fc" id="L488">                BffResponseValueNormalizer.integerOrZero(readInteger(item, &quot;shyDdsu&quot;)),</span>
+<span class="fc" id="L489">                BffResponseValueNormalizer.stringOrEmpty(readString(item, &quot;skknTkyCd&quot;))))</span>
+<span class="fc" id="L490">                .toList();</span>
+    }
+
+    /**
+     * TG 小売応答の変動使用量チェックを BFF 型へ変換します。
+     *
+     * @param response MA-047 の変動使用量チェック
+     * @return BFF の変動使用量チェック
+     */
+    private GasUsageFluctuationCheck mapTgGasUsageFluctuationCheck(GasUsageFluctuationCheckResponse response) {
+<span class="pc bpc" id="L500" title="1 of 2 branches missed.">        if (response == null) {</span>
+<span class="nc" id="L501">            return null;</span>
+        }
+<span class="fc" id="L503">        return new GasUsageFluctuationCheck(</span>
+<span class="fc" id="L504">            BffResponseValueNormalizer.integerOrZero(response.zyDShyDdsu()),</span>
+<span class="fc" id="L505">            BffResponseValueNormalizer.decimalOrZero(response.zyDGasSyry()),</span>
+<span class="fc" id="L506">            BffResponseValueNormalizer.stringOrEmpty(response.zyDKnsjjCd()));</span>
+    }
+
+    /**
+     * 他小売応答の変動使用量チェックを BFF 型へ変換します。
+     *
+     * @param response MA-048 の変動使用量チェック
+     * @return BFF の変動使用量チェック
+     */
+    private GasUsageFluctuationCheck mapOtherGasUsageFluctuationCheck(Object response) {
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">        if (response == null) {</span>
+<span class="nc" id="L517">            return null;</span>
+        }
+<span class="fc" id="L519">        return new GasUsageFluctuationCheck(</span>
+<span class="fc" id="L520">            BffResponseValueNormalizer.integerOrZero(readInteger(response, &quot;zyDShyDdsu&quot;)),</span>
+<span class="fc" id="L521">            BffResponseValueNormalizer.decimalOrZero(readBigDecimal(response, &quot;zyDGasSyry&quot;)),</span>
+<span class="fc" id="L522">            BffResponseValueNormalizer.stringOrEmpty(readString(response, &quot;zyDKnsjjCd&quot;)));</span>
+    }
+
+    /**
+     * TG 小売応答の直列ガスメータ情報一覧を BFF 型へ変換します。
+     *
+     * @param list MA-047 の直列ガスメータ情報一覧
+     * @return BFF の直列ガスメータ情報一覧
+     */
+    private List&lt;RelatedDedicatedMeterInfo&gt; mapTgRelatedDedicatedMeterInfo(
+            List&lt;RelatedDedicatedMeterInfoResponse&gt; list) {
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">        if (list == null) {</span>
+<span class="nc" id="L534">            return null;</span>
+        }
+<span class="fc" id="L536">        return list.stream()</span>
+<span class="fc" id="L537">            .map(item -&gt; new RelatedDedicatedMeterInfo(</span>
+<span class="fc" id="L538">                BffResponseValueNormalizer.longOrZero(item.gasMtstNo()),</span>
+<span class="fc" id="L539">                BffResponseValueNormalizer.stringOrEmpty(item.gmb())))</span>
+<span class="fc" id="L540">                .toList();</span>
+    }
+
+    /**
+     * 他小売応答の直列ガスメータ情報一覧を BFF 型へ変換します。
+     *
+     * @param list MA-048 の直列ガスメータ情報一覧
+     * @return BFF の直列ガスメータ情報一覧
+     */
+    private List&lt;RelatedDedicatedMeterInfo&gt; mapOtherRelatedDedicatedMeterInfo(
+            List&lt;jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.retail.retail_other.model.RelatedDedicatedMeterInfoResponse&gt;
+                    list) {
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">        if (list == null) {</span>
+<span class="nc" id="L553">            return null;</span>
+        }
+<span class="fc" id="L555">        return list.stream()</span>
+<span class="fc" id="L556">            .map(item -&gt; new RelatedDedicatedMeterInfo(</span>
+<span class="fc" id="L557">                BffResponseValueNormalizer.longOrZero(item.gasMtstNo()),</span>
+<span class="fc" id="L558">                BffResponseValueNormalizer.stringOrEmpty(item.gmb())))</span>
+<span class="fc" id="L559">                .toList();</span>
+    }
+
+    /**
+     * 任意文字列の前後空白を除去し、空文字は null へ正規化します。
+     *
+     * @param value 正規化対象の値
+     * @return 正規化後の値
+     */
+    private String normalizeOptional(String value) {
+<span class="fc bfc" id="L569" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L570">            return null;</span>
+        }
+<span class="fc" id="L572">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+
+    private String readString(Object target, String accessorName) {
+<span class="fc" id="L577">        return readValue(target, accessorName, String.class);</span>
+    }
+
+    private Long readLong(Object target, String accessorName) {
+<span class="fc" id="L581">        return readValue(target, accessorName, Long.class);</span>
+    }
+
+    private Integer readInteger(Object target, String accessorName) {
+<span class="fc" id="L585">        return readValue(target, accessorName, Integer.class);</span>
+    }
+
+    private BigDecimal readBigDecimal(Object target, String accessorName) {
+<span class="fc" id="L589">        return readValue(target, accessorName, BigDecimal.class);</span>
+    }
+
+    private &lt;T&gt; T readValue(Object target, String accessorName, Class&lt;T&gt; expectedType) {
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (target == null) {</span>
+<span class="nc" id="L594">            return null;</span>
+        }
+        try {
+<span class="fc" id="L597">            Method accessor = target.getClass().getMethod(accessorName);</span>
+<span class="fc" id="L598">            Object value = accessor.invoke(target);</span>
+<span class="fc" id="L599">            return expectedType.cast(value);</span>
+<span class="nc" id="L600">        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException exception) {</span>
+<span class="nc" id="L601">            throw new KaiheisenException(</span>
+<span class="nc" id="L602">                    &quot;他小売応答の項目取得に失敗しました: &quot; + target.getClass().getName() + &quot;.&quot; + accessorName,</span>
+                    exception);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

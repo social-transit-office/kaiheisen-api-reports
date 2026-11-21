@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ServiceStateRuntime.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">common-service-state</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.servicestate</a> &gt; <span class="el_source">ServiceStateRuntime.java</span></div><h1>ServiceStateRuntime.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.common.servicestate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.runtime.ShutdownEvent;
+import io.quarkus.runtime.StartupEvent;
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+import java.time.Clock;
+import java.util.Map;
+import org.eclipse.microprofile.config.ConfigProvider;
+
+/** Lifecycle shared by the BFF and five MA deployments. No request performs network I/O. */
+@ApplicationScoped
+<span class="fc" id="L16">public class ServiceStateRuntime {</span>
+    @Inject ObjectMapper json;
+
+    private boolean enabled;
+
+    private String service;
+
+    private ServicePolicy policy;
+
+    private ModeState state;
+
+    private KubeApi api;
+
+    private StateMonitor monitor;
+
+    private volatile boolean closing;
+
+    private Thread bootstrap;
+
+<span class="fc" id="L35">    private final java.util.concurrent.locks.ReentrantLock lifecycle =</span>
+            new java.util.concurrent.locks.ReentrantLock();
+
+    void start(@Observes @Priority(100) StartupEvent event) {
+<span class="fc" id="L39">        enabled = Boolean.parseBoolean(setting(&quot;enabled&quot;, &quot;false&quot;));</span>
+<span class="fc" id="L40">        service =</span>
+<span class="fc" id="L41">                setting(</span>
+                        &quot;service&quot;,
+<span class="fc" id="L43">                        System.getenv().getOrDefault(&quot;SERVICE_STATE_SERVICE&quot;, &quot;unknown&quot;));</span>
+<span class="fc" id="L44">        policy =</span>
+<span class="fc" id="L45">                ServicePolicy.parse(</span>
+<span class="fc" id="L46">                        setting(&quot;open-time&quot;, &quot;07:30&quot;),</span>
+<span class="fc" id="L47">                        setting(&quot;close-time&quot;, &quot;21:00&quot;),</span>
+<span class="fc" id="L48">                        setting(&quot;closed-weekdays&quot;, &quot;&quot;),</span>
+<span class="fc" id="L49">                        setting(&quot;closed-dates&quot;, &quot;&quot;));</span>
+<span class="fc" id="L50">        state = new ModeState(Clock.systemUTC(), policy);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (enabled) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">            if (!Resources.SERVICES.contains(service)) {</span>
+<span class="nc" id="L53">                throw new IllegalArgumentException(&quot;UNKNOWN_SERVICE_STATE_SERVICE&quot;);</span>
+            }
+<span class="nc" id="L55">            bootstrap =</span>
+<span class="nc" id="L56">                    Thread.ofVirtual()</span>
+<span class="nc" id="L57">                            .name(&quot;service-state-bootstrap&quot;)</span>
+<span class="nc" id="L58">                            .start(</span>
+                                    () -&gt; {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">                                        while (!closing) {</span>
+                                            try {
+<span class="nc" id="L62">                                                KubeApi candidate =</span>
+                                                        new KubeApi(
+<span class="nc" id="L64">                                                                System.getenv()</span>
+<span class="nc" id="L65">                                                                        .getOrDefault(</span>
+                                                                                &quot;POD_NAMESPACE&quot;,
+                                                                                &quot;kaiheisen&quot;),
+                                                                json);
+<span class="nc" id="L69">                                                lifecycle.lock();</span>
+                                                try {
+<span class="nc bnc" id="L71" title="All 2 branches missed.">                                                    if (closing) {</span>
+<span class="nc" id="L72">                                                        candidate.close();</span>
+<span class="nc" id="L73">                                                        return;</span>
+                                                    }
+<span class="nc" id="L75">                                                    api = candidate;</span>
+<span class="nc" id="L76">                                                    monitor = new StateMonitor(api, state);</span>
+<span class="nc" id="L77">                                                    monitor.start();</span>
+                                                } finally {
+<span class="nc" id="L79">                                                    lifecycle.unlock();</span>
+                                                }
+<span class="nc" id="L81">                                                return;</span>
+<span class="nc" id="L82">                                            } catch (java.io.IOException</span>
+                                                    | java.security.GeneralSecurityException
+                                                    | RuntimeException unavailable) {
+<span class="nc" id="L85">                                                state.unavailable(&quot;CLIENT_INITIALIZATION_FAILED&quot;);</span>
+                                                try {
+<span class="nc" id="L87">                                                    Thread.sleep(1000);</span>
+<span class="nc" id="L88">                                                } catch (InterruptedException interrupted) {</span>
+<span class="nc" id="L89">                                                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L90">                                                    return;</span>
+<span class="nc" id="L91">                                                }</span>
+<span class="nc" id="L92">                                            }</span>
+                                        }
+<span class="nc" id="L94">                                    });</span>
+        }
+<span class="fc" id="L96">    }</span>
+
+    /** Resolve a release setting with its local-development default. */
+    public static String setting(String key, String fallback) {
+<span class="fc" id="L100">        return ConfigProvider.getConfig()</span>
+<span class="fc" id="L101">                .getOptionalValue(&quot;kaiheisen.service-state.&quot; + key, String.class)</span>
+<span class="fc" id="L102">                .orElse(fallback);</span>
+    }
+
+    /** Return the current request decision without network access. */
+    public boolean stopped() {
+<span class="nc bnc" id="L107" title="All 4 branches missed.">        return enabled &amp;&amp; state.stopped();</span>
+    }
+
+    /** Return the configured fixed error description. */
+    public String message() {
+<span class="nc" id="L112">        return policy.message();</span>
+    }
+
+    /** Return the Deployment service identifier. */
+    public String service() {
+<span class="nc" id="L117">        return service;</span>
+    }
+
+    /** Expose this Pod's current configuration and diagnostic state. */
+    public Map&lt;String, Object&gt; view() {
+<span class="nc" id="L122">        return state.view(</span>
+                service,
+<span class="nc" id="L124">                System.getenv().getOrDefault(&quot;POD_NAME&quot;, &quot;local&quot;),</span>
+<span class="nc" id="L125">                System.getenv().getOrDefault(&quot;POD_UID&quot;, &quot;local&quot;),</span>
+                enabled);
+    }
+
+    void stop(@Observes ShutdownEvent event) {
+<span class="fc" id="L130">        lifecycle.lock();</span>
+        try {
+<span class="fc" id="L132">            closing = true;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            if (bootstrap != null) {</span>
+<span class="nc" id="L134">                bootstrap.interrupt();</span>
+            }
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">            if (monitor != null) {</span>
+<span class="nc" id="L137">                monitor.close();</span>
+            }
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (api != null) {</span>
+<span class="nc" id="L140">                api.close();</span>
+            }
+        } finally {
+<span class="fc" id="L143">            lifecycle.unlock();</span>
+        }
+<span class="fc" id="L145">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

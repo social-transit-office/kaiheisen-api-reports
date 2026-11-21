@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningErrorFollowCompletedUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingerrorfollowcompletedupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningErrorFollowCompletedUpdateImpl.java</span></div><h1>OpeningErrorFollowCompletedUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.KseflDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflU002UpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.ksefl.write.KseflWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningErrorFollowCompletedUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KseflKeyInf;
+
+/**
+ * 概要: SV-266（開栓エラーフォローフォロー済更新）のサービス実装。
+ * 主な仕様:
+ * - DA-066-R001 で検針分担エリア情報を取得し、未取得時はデータ不整合例外を送出する。
+ * - 確定サービス契約番号が null 以外の場合はそれを採用し、null の場合は確定託送サービス契約番号を採用する。
+ * - DA-139-U002 で KSEFL をフォロー済へ更新し、更新件数 0 件はデータ不整合例外を送出する。
+ * 既知の制約:
+ * - RequestContext の systemDatetime と hukkSysShbt は上位層で設定済みであることを前提とする。
+ * - `correlationId` は本 SV のメソッド引数に持たず、RequestContext/MDC 側で扱う。
+ */
+public class OpeningErrorFollowCompletedUpdateImpl implements OpeningErrorFollowCompletedUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS266&quot;;
+
+<span class="fc" id="L39">    private static final Set&lt;KseflColumn&gt; TARGET_COLUMNS = Set.of(</span>
+            KseflColumn.FLW_ST_CD,
+            KseflColumn.FLTK_YMD,
+            KseflColumn.TSIG_KASG_YMD,
+            KseflColumn.TSIG_GMB,
+            KseflColumn.TSIG_GMSB_NO,
+            KseflColumn.TSGK_KYO_TRNO,
+            KseflColumn.TSIG_TKYK_NO,
+            KseflColumn.SIH_KIY_NO,
+            KseflColumn.TSIG_CKTK_CD,
+            KseflColumn.SVKY_NO);
+
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    private final KseflDataAccess kseflDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String followCompletedStatusCode;
+
+    /**
+     * 概要: SV-266 の実行に必要な依存オブジェクトと定数を初期化する。
+     * 主な仕様:
+     * - DA、RequestContext、開閉栓定数サービスを保持する。
+     * - フォロー済更新に使う CIRIUS 定数をコンストラクタ初期化時に検証する。
+     * @param kbagmstDataAccess KBAGMST データアクセス
+     * @param kseflDataAccess KSEFL データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public OpeningErrorFollowCompletedUpdateImpl(
+            KbagmstDataAccess kbagmstDataAccess,
+            KseflDataAccess kseflDataAccess,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L77">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L78">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L79">        this.kseflDataAccess = Objects.requireNonNull(kseflDataAccess, &quot;kseflDataAccess&quot;);</span>
+<span class="fc" id="L80">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L81">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L84">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L85">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L86">        this.followCompletedStatusCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.TYPE,
+                ConstantLookupKeys.Cirius.FollowStatusCode__N2.COMPLETED_FOLLOW_COMPLETED);
+<span class="fc" id="L90">    }</span>
+
+    /**
+     * 概要: 開栓エラーフォロー件名をフォロー済へ更新する。
+     * 主な仕様:
+     * - RequestContext の必須値を使って監査情報と付帯作業年月日を解決する。
+     * - DA-066-R001 の地域統括コードを DA-139-U002 の更新値へ転記する。
+     * - 更新対象列は設計書の SET 対象に限定する。
+     * @param kseflKeyInf 開栓エラーフォロー件名キー情報
+     * @param kasgYmd 開栓作業年月日
+     * @param tkykNo 託送契約番号
+     * @param gmb ガスメーター社番
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kktSyoKyoTrno 確定使用者契約お客さま登録番号
+     * @param kktSihKiyNo 確定支払契約番号
+     * @param kktSvkyNo 確定サービス契約番号
+     * @param kktTksuSvkyNo 確定託送サービス契約番号
+     */
+    @Override
+    public void execute(
+            KseflKeyInf kseflKeyInf,
+            LocalDate kasgYmd,
+            String tkykNo,
+            String gmb,
+            Long gasMtstNo,
+            Long kktSyoKyoTrno,
+            Long kktSihKiyNo,
+            Long kktSvkyNo,
+            Long kktTksuSvkyNo) {
+<span class="fc" id="L119">        LocalDateTime systemDatetime = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L120">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+<span class="fc" id="L121">        String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L122">        YearMonth knskKjnYm = YearMonth.of(kasgYmd.getYear(), kasgYmd.getMonthValue());</span>
+<span class="fc" id="L123">        KbagmstRecord kbagmstRecord = kbagmstDataAccess.findByGasMtstNoAndTkysYmAndTyenYm(gasMtstNo, knskKjnYm)</span>
+<span class="fc" id="L124">                .orElseThrow(() -&gt; DataInconsistencySupport.create(</span>
+<span class="fc" id="L125">                        kbagmstDataAccess.tableName(),</span>
+<span class="fc" id="L126">                        KbagmstDataAccess.CallSpecs.FIND_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM.identifier(),</span>
+                        new FlatJsonBuilder()
+<span class="fc" id="L128">                                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L129">                                .put(&quot;knskKjnYm&quot;, knskKjnYm.toString())));</span>
+
+<span class="fc" id="L131">        Long resolvedSvkyNo = resolveServiceContractNumber(kktSvkyNo, kktTksuSvkyNo);</span>
+<span class="fc" id="L132">        LocalDate fltkYmd = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L133">        int updatedCount = kseflDataAccess.updateByGmbAndKasgYmdAndKasHukkYmdAndSgyAnknNoAndRecUpdJnjNo(</span>
+<span class="fc" id="L134">                buildWriteRecord(</span>
+                        kasgYmd,
+                        gmb,
+                        gasMtstNo,
+                        kktSyoKyoTrno,
+                        tkykNo,
+                        kktSihKiyNo,
+<span class="fc" id="L141">                        kbagmstRecord.kbabCktkCd(),</span>
+                        resolvedSvkyNo,
+                        fltkYmd),
+                TARGET_COLUMNS,
+                new KseflU002UpdateKey(
+<span class="fc" id="L146">                        kseflKeyInf.gmb(),</span>
+<span class="fc" id="L147">                        kseflKeyInf.kasgYmd(),</span>
+<span class="fc" id="L148">                        kseflKeyInf.kasHukkYmd(),</span>
+<span class="fc" id="L149">                        kseflKeyInf.sgyAnknNo(),</span>
+<span class="fc" id="L150">                        kseflKeyInf.recUpdJnjNo()),</span>
+<span class="fc" id="L151">                AuditContext.of(SERVICE_USER_ID, decodedOriginFunctionId));</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L153">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L154">                    kseflDataAccess.tableName(),</span>
+                    KseflDataAccess.CallSpecs.UPDATE_BY_GMB_AND_KASG_YMD_AND_KAS_HUKK_YMD_AND_SGY_ANKN_NO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L156">                            .identifier(),</span>
+                    new FlatJsonBuilder()
+<span class="fc" id="L158">                            .put(&quot;gmb&quot;, kseflKeyInf.gmb())</span>
+<span class="fc" id="L159">                            .put(&quot;kasgYmd&quot;, kseflKeyInf.kasgYmd())</span>
+<span class="fc" id="L160">                            .put(&quot;kasHukkYmd&quot;, kseflKeyInf.kasHukkYmd())</span>
+<span class="fc" id="L161">                            .put(&quot;sgyAnknNo&quot;, kseflKeyInf.sgyAnknNo())</span>
+<span class="fc" id="L162">                            .put(&quot;recUpdJnjNo&quot;, kseflKeyInf.recUpdJnjNo())</span>
+<span class="fc" id="L163">                            .put(&quot;flwStCd&quot;, followCompletedStatusCode)</span>
+<span class="fc" id="L164">                            .put(&quot;fltkYmd&quot;, fltkYmd)</span>
+<span class="fc" id="L165">                            .put(&quot;tsigKasgYmd&quot;, kasgYmd)</span>
+<span class="fc" id="L166">                            .put(&quot;tsigGmb&quot;, gmb)</span>
+<span class="fc" id="L167">                            .put(&quot;tsigGmsbNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L168">                            .put(&quot;tsgkKyoTrno&quot;, kktSyoKyoTrno)</span>
+<span class="fc" id="L169">                            .put(&quot;tsigTkykNo&quot;, tkykNo)</span>
+<span class="fc" id="L170">                            .put(&quot;sihKiyNo&quot;, kktSihKiyNo)</span>
+<span class="fc" id="L171">                            .put(&quot;tsigCktkCd&quot;, kbagmstRecord.kbabCktkCd())</span>
+<span class="fc" id="L172">                            .put(&quot;svkyNo&quot;, resolvedSvkyNo)</span>
+<span class="fc" id="L173">                            .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L174">                            .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId));</span>
+        }
+<span class="fc" id="L176">    }</span>
+
+    private Long resolveServiceContractNumber(Long kktSvkyNo, Long kktTksuSvkyNo) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (kktSvkyNo != null) {</span>
+<span class="fc" id="L180">            return kktSvkyNo;</span>
+        }
+<span class="fc" id="L182">        return kktTksuSvkyNo;</span>
+    }
+
+    private KseflWriteRecord buildWriteRecord(
+            LocalDate kasgYmd,
+            String gmb,
+            Long gasMtstNo,
+            Long kktSyoKyoTrno,
+            String tkykNo,
+            Long kktSihKiyNo,
+            String tsigCktkCd,
+            Long svkyNo,
+            LocalDate fltkYmd) {
+<span class="fc" id="L195">        return KseflWriteRecord.forFollowCompletedUpdate(</span>
+                followCompletedStatusCode,
+                fltkYmd,
+                kasgYmd,
+                gmb,
+                gasMtstNo,
+                kktSyoKyoTrno,
+                tkykNo,
+                tsigCktkCd,
+                kktSihKiyNo,
+                svkyNo);
+    }
+
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L209">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L211">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L212">                        .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
