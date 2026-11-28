@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NextRegularMeterReadingScheduledDateUpdateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-nextregularmeterreadingscheduleddateupdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">NextRegularMeterReadingScheduledDateUpdateImpl.java</span></div><h1>NextRegularMeterReadingScheduledDateUpdateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.exception.ConstantDefinitionNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtksts.GmtkstsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtksts.GmtkstsRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.KnsytiRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.knsyti.write.KnsytiWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.NextRegularMeterReadingScheduledDateUpdate;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.NextRegularMeterReadingScheduledDateUpdateOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsytiInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.NextMeterReadingScheduledDateAcquisitionOutput;
+
+/**
+ * 概要: SV-231（次回定例検針予定日更新）のサービス実装。
+ * 主な仕様:
+ * - ガスメーター定例検針対象管理がある場合は KNSYTI を検索して次回定例検針予定年月日を更新する。
+ * - ガスメーター定例検針対象管理がない場合は当月の検針結果有無に応じて検索基準日を切り替え、SV-022 から補完した結果で更新する。
+ * - KNSYTI 取得 0 件は DataInconsistencyException として送出する。
+ * - 排他あり更新で対象なしとなる場合は DA 共通 helper 由来の例外をそのまま上位へ委譲する。
+ * 既知の制約:
+ * - RequestContext の hukkSysShbt と systemDatetime が未設定の場合は IllegalStateException を送出する。
+ * - DA-027-R006 の検索事由種別はコンストラクタ初期化時に CIRIUS 定数から fail-fast で解決する。
+ */
+public class NextRegularMeterReadingScheduledDateUpdateImpl
+        implements NextRegularMeterReadingScheduledDateUpdate {
+
+    static final String SERVICE_USER_ID = &quot;KHSS231&quot;;
+
+    private final GmtkstsDataAccess gmtkstsDataAccess;
+
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    private final KnsytiDataAccess knsytiDataAccess;
+
+    private final NextMeterReadingScheduledDateAcquisition nextMeterReadingScheduledDateAcquisition;
+
+    private final RequestContext requestContext;
+
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    private final String regularReasonType;
+
+    private final String regularSwCancellationReasonType;
+
+    /**
+     * 概要: SV-231 実行に必要な依存オブジェクトと必須定数を初期化する。
+     *
+     * @param gmtkstsDataAccess ガスメーター定例検針対象管理データアクセス
+     * @param gmkskkdDataAccess ガスメーター検針結果＜導管＞データアクセス
+     * @param knsytiDataAccess 検針予定データアクセス
+     * @param nextMeterReadingScheduledDateAcquisition 次回検針予定年月日取得サービス
+     * @param requestContext リクエストコンテキスト
+     * @param kaiheisenConstantService 開閉栓定数サービス
+     * @param ciriusConstantService CIRIUS 定数サービス
+     */
+    public NextRegularMeterReadingScheduledDateUpdateImpl(
+            GmtkstsDataAccess gmtkstsDataAccess,
+            GmkskkdDataAccess gmkskkdDataAccess,
+            KnsytiDataAccess knsytiDataAccess,
+            NextMeterReadingScheduledDateAcquisition nextMeterReadingScheduledDateAcquisition,
+            RequestContext requestContext,
+            KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L82">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L83">        this.gmtkstsDataAccess = Objects.requireNonNull(gmtkstsDataAccess, &quot;gmtkstsDataAccess&quot;);</span>
+<span class="fc" id="L84">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L85">        this.knsytiDataAccess = Objects.requireNonNull(knsytiDataAccess, &quot;knsytiDataAccess&quot;);</span>
+<span class="fc" id="L86">        this.nextMeterReadingScheduledDateAcquisition = Objects.requireNonNull(</span>
+                nextMeterReadingScheduledDateAcquisition,
+                &quot;nextMeterReadingScheduledDateAcquisition&quot;);
+<span class="fc" id="L89">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L90">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                kaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L93">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L94">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L95">        this.regularReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR);
+<span class="fc" id="L99">        this.regularSwCancellationReasonType = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR_SW_CANCELLATION);
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * 概要: SV-231 を実行し、更新対象として採用した検針予定情報を返却する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @return 次回定例検針予定日更新結果
+     */
+    @Override
+    public NextRegularMeterReadingScheduledDateUpdateOutput execute(Long gasMtstNo) {
+<span class="fc" id="L113">        RequestState requestState = requireRequestState();</span>
+<span class="fc" id="L114">        return gmtkstsDataAccess.findByGasMtstNo(gasMtstNo)</span>
+<span class="fc" id="L115">                .map(record -&gt; executeUsingRegularScheduleTarget(gasMtstNo, record, requestState))</span>
+<span class="fc" id="L116">                .orElseGet(() -&gt; executeUsingFallbackSearch(gasMtstNo, requestState));</span>
+    }
+
+    /**
+     * 概要: ガスメーター定例検針対象管理が存在する通常分岐を実行する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param gmtkstsRecord ガスメーター定例検針対象管理レコード
+     * @param requestState リクエスト状態
+     * @return 更新後に返却する出力 DTO
+     */
+    private NextRegularMeterReadingScheduledDateUpdateOutput executeUsingRegularScheduleTarget(
+            Long gasMtstNo,
+            GmtkstsRecord gmtkstsRecord,
+            RequestState requestState) {
+<span class="fc" id="L131">        KnsytiRecord knsytiRecord = knsytiDataAccess.findAllByGasMtstNoAndTkysYmAndTyenYm(</span>
+                        gasMtstNo,
+<span class="fc" id="L133">                        toYearMonth(requestState.systemDate()))</span>
+<span class="fc" id="L134">                .stream()</span>
+<span class="fc" id="L135">                .findFirst()</span>
+<span class="fc" id="L136">                .orElseThrow(() -&gt; createKnsytiReadInconsistency(</span>
+                        gasMtstNo,
+<span class="fc" id="L138">                        toYearMonth(requestState.systemDate())));</span>
+<span class="fc" id="L139">        updateScheduledDate(</span>
+                gasMtstNo,
+<span class="fc" id="L141">                knsytiRecord.tkysYm(),</span>
+<span class="fc" id="L142">                knsytiRecord.recUpdJnjNo(),</span>
+<span class="fc" id="L143">                gmtkstsRecord.tkytYmd(),</span>
+<span class="fc" id="L144">                requestState.originFunctionId());</span>
+<span class="fc" id="L145">        return toOutput(knsytiRecord);</span>
+    }
+
+    /**
+     * 概要: ガスメーター定例検針対象管理が存在しない場合のフォールバック分岐を実行する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param requestState リクエスト状態
+     * @return 更新後に返却する出力 DTO
+     */
+    private NextRegularMeterReadingScheduledDateUpdateOutput executeUsingFallbackSearch(
+            Long gasMtstNo,
+            RequestState requestState) {
+<span class="fc" id="L158">        LocalDate systemDate = requestState.systemDate();</span>
+<span class="fc" id="L159">        LocalDate firstDayOfMonth = systemDate.withDayOfMonth(1);</span>
+<span class="fc" id="L160">        LocalDate lastDayOfMonth = systemDate.withDayOfMonth(systemDate.lengthOfMonth());</span>
+<span class="fc" id="L161">        List&lt;String&gt; reasonTypes = List.of(regularReasonType, regularSwCancellationReasonType);</span>
+<span class="fc" id="L162">        boolean hasCurrentMonthMeterReading = gmkskkdDataAccess.findByGasMtstNoAndKnsYmdAndKnkkSksiJysb(</span>
+                        gasMtstNo,
+                        firstDayOfMonth,
+                        lastDayOfMonth,
+                        reasonTypes)
+<span class="fc" id="L167">                .isPresent();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        LocalDate searchBaseDate = hasCurrentMonthMeterReading</span>
+<span class="fc" id="L169">                ? systemDate.plusMonths(1).withDayOfMonth(1)</span>
+<span class="fc" id="L170">                : systemDate;</span>
+<span class="fc" id="L171">        NextMeterReadingScheduledDateAcquisitionOutput nextMeterReading =</span>
+<span class="fc" id="L172">                nextMeterReadingScheduledDateAcquisition.execute(gasMtstNo, searchBaseDate);</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        if (nextMeterReading == null) {</span>
+<span class="fc" id="L174">            throw new IllegalStateException(&quot;SV-022 output is required&quot;);</span>
+        }
+<span class="fc" id="L176">        updateScheduledDate(</span>
+                gasMtstNo,
+<span class="fc" id="L178">                nextMeterReading.tkysYm(),</span>
+<span class="fc" id="L179">                nextMeterReading.recUpdJnjNo(),</span>
+<span class="fc" id="L180">                nextMeterReading.tkytYmd(),</span>
+<span class="fc" id="L181">                requestState.originFunctionId());</span>
+<span class="fc" id="L182">        return toOutput(nextMeterReading);</span>
+    }
+
+    /**
+     * 概要: KNSYTI の次回定例検針予定年月日を更新し、0 件更新時はデータ不整合例外を送出する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param tkysYm 適用開始年月
+     * @param recUpdJnjNo レコード更新排他制御順序番号
+     * @param nextScheduledDate 更新後の次回定例検針予定年月日
+     * @param originFunctionId 監査用の起点機能 ID
+     */
+    private void updateScheduledDate(
+            Long gasMtstNo,
+            YearMonth tkysYm,
+            Integer recUpdJnjNo,
+            LocalDate nextScheduledDate,
+            String originFunctionId) {
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        if (tkysYm == null) {</span>
+<span class="fc" id="L201">            throw new IllegalStateException(&quot;Update tkysYm is required&quot;);</span>
+        }
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (nextScheduledDate == null) {</span>
+<span class="fc" id="L204">            throw new IllegalStateException(&quot;Update jkiTkytYmd is required&quot;);</span>
+        }
+<span class="fc" id="L206">        knsytiDataAccess.updateByGasMtstNoAndTkysYmAndRecUpdJnjNo(</span>
+                new KnsytiWriteRecord(
+                        gasMtstNo,
+                        tkysYm,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        nextScheduledDate,
+                        null,
+                        null,
+                        recUpdJnjNo),
+<span class="fc" id="L220">                Set.of(KnsytiColumn.JKI_TKYT_YMD),</span>
+                new KnsytiUpdateKey(gasMtstNo, tkysYm, recUpdJnjNo),
+<span class="fc" id="L222">                AuditContext.of(SERVICE_USER_ID, originFunctionId));</span>
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * 概要: 実行に必要な RequestContext 値を取得し、監査用機能 ID を解決する。
+     *
+     * @return 実行時に利用するリクエスト状態
+     */
+    private RequestState requireRequestState() {
+<span class="fc" id="L231">        LocalDate systemDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L232">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L233">                .toLocalDate();</span>
+<span class="fc" id="L234">        String hukkSysShbt = requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L235">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.hukkSysShbt is required&quot;));</span>
+<span class="fc" id="L236">        String originFunctionId = requireOriginFunctionId(hukkSysShbt);</span>
+<span class="fc" id="L237">        return new RequestState(systemDate, originFunctionId);</span>
+    }
+
+    /**
+     * 概要: 報告システム種別に対応する起点機能 ID を必須定数として解決する。
+     *
+     * @param hukkSysShbt 報告システム種別
+     * @return 起点機能 ID
+     */
+    private String requireOriginFunctionId(String hukkSysShbt) {
+<span class="fc" id="L247">        String type = ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE;</span>
+<span class="fc" id="L248">        String originFunctionId = kaiheisenConstantService.findNameByTypeAndValue(type, hukkSysShbt);</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (originFunctionId == null) {</span>
+<span class="fc" id="L250">            throw new ConstantDefinitionNotFoundException(</span>
+                    &quot;KaiheisenConstantService&quot;,
+                    &quot;type=&quot; + type + &quot;, value=&quot; + hukkSysShbt);
+        }
+<span class="fc" id="L254">        return originFunctionId;</span>
+    }
+
+    /**
+     * 概要: KNSYTI 取得 0 件時のデータ不整合例外を生成する。
+     *
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param knskKjnYm 検索基準年月
+     * @return データ不整合例外
+     */
+    private RuntimeException createKnsytiReadInconsistency(Long gasMtstNo, YearMonth knskKjnYm) {
+<span class="fc" id="L265">        return DataInconsistencySupport.create(</span>
+<span class="fc" id="L266">                knsytiDataAccess.tableName(),</span>
+<span class="fc" id="L267">                KnsytiDataAccess.CallSpecs.FIND_ALL_BY_GAS_MTST_NO_AND_TKYS_YM_AND_TYEN_YM.identifier(),</span>
+                new FlatJsonBuilder()
+<span class="fc" id="L269">                        .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="fc" id="L270">                        .put(&quot;knskKjnYm&quot;, knskKjnYm.toString()));</span>
+    }
+
+    /**
+     * 概要: KNSYTI レコードから出力 DTO を構築する。
+     *
+     * @param knsytiRecord 検針予定レコード
+     * @return 次回定例検針予定日更新結果
+     */
+    private static NextRegularMeterReadingScheduledDateUpdateOutput toOutput(
+            KnsytiRecord knsytiRecord) {
+<span class="fc" id="L281">        return new NextRegularMeterReadingScheduledDateUpdateOutput(</span>
+                new KnsytiInf(
+<span class="fc" id="L283">                        knsytiRecord.knsHuhuKbn(),</span>
+<span class="fc" id="L284">                        knsytiRecord.stkbKbn(),</span>
+<span class="fc" id="L285">                        knsytiRecord.shtiKskbNo()));</span>
+    }
+
+    /**
+     * 概要: SV-022 の出力から出力 DTO を構築する。
+     *
+     * @param nextMeterReading SV-022 出力
+     * @return 次回定例検針予定日更新結果
+     */
+    private static NextRegularMeterReadingScheduledDateUpdateOutput toOutput(
+            NextMeterReadingScheduledDateAcquisitionOutput nextMeterReading) {
+<span class="fc" id="L296">        return new NextRegularMeterReadingScheduledDateUpdateOutput(</span>
+                new KnsytiInf(
+<span class="fc" id="L298">                        nextMeterReading.knsHuhuKbn(),</span>
+<span class="fc" id="L299">                        nextMeterReading.stkbKbn(),</span>
+<span class="fc" id="L300">                        nextMeterReading.shtiKskbNo()));</span>
+    }
+
+    /**
+     * 概要: LocalDate の年月を YearMonth へ変換する。
+     *
+     * @param date 対象日付
+     * @return YearMonth
+     */
+    private static YearMonth toYearMonth(LocalDate date) {
+<span class="fc" id="L310">        return YearMonth.of(date.getYear(), date.getMonthValue());</span>
+    }
+
+    /** 実行に必要な RequestContext 由来値。 */
+<span class="fc" id="L314">    private record RequestState(</span>
+            LocalDate systemDate,
+            String originFunctionId) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

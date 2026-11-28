@@ -1,0 +1,469 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TskgmstDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-tskgmst</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.tskgmst</a> &gt; <span class="el_source">TskgmstDataAccessImpl.java</span></div><h1>TskgmstDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.tskgmst;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.write.TskgmstWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** TSKGMST の SQL 挙動を模したインメモリ実装。 */
+public class TskgmstDataAccessImpl extends DataAccessBase implements TskgmstDataAccess {
+
+    private static final String INVALID_STATUS_CODE = &quot;00&quot;;
+
+<span class="fc" id="L37">    private static final LocalDate COMPLEMENT_YMD = LocalDate.of(1, 1, 1);</span>
+
+<span class="fc" id="L39">    private static final ReflectiveInMemoryRowMapper&lt;TskgmstColumn, TskgmstRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L40">            ReflectiveInMemoryRowMapper.create(TskgmstColumn.class, TskgmstRecord.class);</span>
+
+<span class="fc" id="L42">    private static final AutoNeutralValueResolver&lt;TskgmstColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L43">            AutoNeutralValueResolver.create(TskgmstColumn.class, TskgmstRecord.class);</span>
+
+<span class="fc" id="L45">    private final List&lt;EnumMap&lt;TskgmstColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;TskgmstWriteRecord, TskgmstColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;TskgmstWriteRecord, TskgmstColumn&gt;
+            updateSupport;
+
+    /** デフォルト設定で初期化する。 */
+    public TskgmstDataAccessImpl() {
+<span class="fc" id="L58">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L59">    }</span>
+
+    TskgmstDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="fc" id="L62">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L63">    }</span>
+
+    TskgmstDataAccessImpl(
+<span class="fc" id="L66">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L67">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L68">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L69">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L70">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(TskgmstWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L72">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        TskgmstWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * テスト用行を追加する。
+     *
+     * @param row 行データ
+     * @return このインスタンス
+     */
+    public TskgmstDataAccessImpl addRow(InternalRow row) {
+<span class="fc" id="L84">        Objects.requireNonNull(row, &quot;row&quot;);</span>
+<span class="fc" id="L85">        return addRecord(</span>
+                new TskgmstRecord(
+<span class="fc" id="L87">                        row.gasMtstNo(),</span>
+<span class="fc" id="L88">                        row.tksuSvkyNo(),</span>
+<span class="fc" id="L89">                        row.skno(),</span>
+<span class="fc" id="L90">                        row.tksuSvkkJtkb(),</span>
+<span class="fc" id="L91">                        toLocalDate(row.tkysYmd()),</span>
+<span class="fc" id="L92">                        toLocalDate(row.tyenYmd()),</span>
+<span class="fc" id="L93">                        row.regTsmp(),</span>
+<span class="fc" id="L94">                        row.regUsrId(),</span>
+<span class="fc" id="L95">                        row.updTsmp(),</span>
+<span class="fc" id="L96">                        row.updUsrId(),</span>
+<span class="fc" id="L97">                        row.updKtnKinoId(),</span>
+<span class="fc" id="L98">                        row.recUpdJnjNo()));</span>
+    }
+
+    private TskgmstDataAccessImpl addRecord(TskgmstRecord row) {
+<span class="fc" id="L102">        TskgmstRecord safeRow = Objects.requireNonNull(row, &quot;row&quot;);</span>
+<span class="fc" id="L103">        EnumMap&lt;TskgmstColumn, Object&gt; values = ROW_MAPPER.toRawValueMap(safeRow);</span>
+<span class="fc" id="L104">        NEUTRAL_VALUE_RESOLVER.complement(values, TskgmstWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L105">        rows.add(values);</span>
+<span class="fc" id="L106">        return this;</span>
+    }
+
+    /**
+     * 保持している行を read record で返す。
+     *
+     * @return 行一覧
+     */
+    public List&lt;TskgmstRecord&gt; getRows() {
+<span class="nc" id="L115">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int insert(TskgmstWriteRecord record, AuditContext context) {
+<span class="fc" id="L120">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L121">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L122">        rows.add(</span>
+<span class="fc" id="L123">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L126">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                TskgmstColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L131">        return 1;</span>
+    }
+
+    @Override
+    public List&lt;TskgmstRecord&gt; findAllByGasMtstNoAndTksuSvkkJtkb(
+            Long gasMtstNo, String tksuSvkkJtkb) {
+<span class="fc" id="L137">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L138">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L139">        return rows.stream()</span>
+<span class="fc" id="L140">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L141">            .filter(</span>
+                row -&gt;
+<span class="fc" id="L143">                    Objects.equals(</span>
+<span class="fc" id="L144">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L146">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L147">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkkJtkb(
+            Long gasMtstNo, String tksuSvkkJtkb) {
+<span class="fc" id="L153">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L154">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L155">        return rows.stream()</span>
+<span class="fc" id="L156">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L157">            .filter(</span>
+                row -&gt;
+<span class="fc" id="L159">                    Objects.equals(</span>
+<span class="fc" id="L160">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L162">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L163">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkkJtkbList(
+            Long gasMtstNo, List&lt;String&gt; tksuSvkkJtkbList) {
+<span class="fc" id="L169">        Objects.requireNonNull(tksuSvkkJtkbList, &quot;tksuSvkkJtkbList&quot;);</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (tksuSvkkJtkbList.isEmpty()) {</span>
+<span class="nc" id="L171">            return Optional.empty();</span>
+        }
+<span class="fc" id="L173">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L174">        List&lt;String&gt; safeStatuses =</span>
+<span class="fc" id="L175">                tksuSvkkJtkbList.stream()</span>
+<span class="fc" id="L176">                        .map(value -&gt; safeTksuSvkkJtkb(value, &quot;tksuSvkkJtkbList&quot;))</span>
+<span class="fc" id="L177">                        .toList();</span>
+<span class="fc" id="L178">        return rows.stream()</span>
+<span class="fc" id="L179">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L180">                .filter(row -&gt; safeStatuses.contains(row.get(TskgmstColumn.TKSU_SVKK_JTKB)))</span>
+<span class="fc" id="L181">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L182">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L183">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tyenYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L189">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L190">        LocalDate safeTyenYmd = safeYmd(tyenYmd, &quot;tyenYmd&quot;);</span>
+<span class="fc" id="L191">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L192">        return rows.stream()</span>
+<span class="fc" id="L193">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L194">            .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.TYEN_YMD), safeTyenYmd))</span>
+<span class="fc" id="L195">            .filter(</span>
+                row -&gt;
+<span class="fc" id="L197">                    Objects.equals(</span>
+<span class="fc" id="L198">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L200">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L201">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L202">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tkysYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L208">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L209">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L210">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L211">        return rows.stream()</span>
+<span class="fc" id="L212">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L213">                .filter(row -&gt; notAfter(row.get(TskgmstColumn.TKYS_YMD), safeTkysYmd))</span>
+<span class="fc" id="L214">            .filter(</span>
+                row -&gt;
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                    !Objects.equals(</span>
+<span class="fc" id="L217">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L219">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L220">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L221">                .findFirst();</span>
+    }
+
+    @Override
+    public List&lt;TskgmstRecord&gt; findAllByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate knskKjnYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L227">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L228">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L229">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L230">        return rows.stream()</span>
+<span class="fc" id="L231">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L232">                .filter(row -&gt; notAfter(row.get(TskgmstColumn.TKYS_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L233">                .filter(row -&gt; notBefore(row.get(TskgmstColumn.TYEN_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L234">            .filter(</span>
+                row -&gt;
+<span class="fc" id="L236">                    Objects.equals(</span>
+<span class="fc" id="L237">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L239">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L240">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTksuSvkyNoAndTksuSvkkJtkb(
+            Long gasMtstNo, Long tksuSvkyNo, String tksuSvkkJtkb) {
+<span class="fc" id="L246">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L247">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L248">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L249">        return rows.stream()</span>
+<span class="fc" id="L250">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L251">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L252">            .filter(</span>
+                row -&gt;
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                    !Objects.equals(</span>
+<span class="fc" id="L255">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L257">                .sorted(descComparator(TskgmstColumn.SKNO))</span>
+<span class="fc" id="L258">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L259">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdAndTyenYmdAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate knskKjnYmd, List&lt;String&gt; tksuSvkkJtkbList) {
+<span class="fc" id="L265">        Objects.requireNonNull(tksuSvkkJtkbList, &quot;tksuSvkkJtkbList&quot;);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (tksuSvkkJtkbList.isEmpty()) {</span>
+<span class="nc" id="L267">            return Optional.empty();</span>
+        }
+<span class="fc" id="L269">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L270">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L271">        List&lt;String&gt; safeStatuses =</span>
+<span class="fc" id="L272">                tksuSvkkJtkbList.stream()</span>
+<span class="fc" id="L273">                        .map(value -&gt; safeTksuSvkkJtkb(value, &quot;tksuSvkkJtkbList&quot;))</span>
+<span class="fc" id="L274">                        .toList();</span>
+<span class="fc" id="L275">        return rows.stream()</span>
+<span class="fc" id="L276">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L277">                .filter(row -&gt; notAfter(row.get(TskgmstColumn.TKYS_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L278">                .filter(row -&gt; notBefore(row.get(TskgmstColumn.TYEN_YMD), safeKnskKjnYmd))</span>
+<span class="fc" id="L279">                .filter(row -&gt; safeStatuses.contains(row.get(TskgmstColumn.TKSU_SVKK_JTKB)))</span>
+<span class="fc" id="L280">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L281">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L282">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByGasMtstNoAndTkysYmdBeforeAndTksuSvkkJtkb(
+            Long gasMtstNo, LocalDate tkysYmd, String tksuSvkkJtkb) {
+<span class="fc" id="L288">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L289">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+<span class="fc" id="L290">        String safeTksuSvkkJtkb = safeTksuSvkkJtkb(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L291">        return rows.stream()</span>
+<span class="fc" id="L292">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L293">                .filter(row -&gt; isBefore(row.get(TskgmstColumn.TKYS_YMD), safeTkysYmd))</span>
+<span class="fc" id="L294">            .filter(</span>
+                row -&gt;
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                    !Objects.equals(</span>
+<span class="fc" id="L297">                        row.get(TskgmstColumn.TKSU_SVKK_JTKB),</span>
+                        safeTksuSvkkJtkb))
+<span class="fc" id="L299">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L300">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L301">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndTksuSvkyNoAndSknoAndRecUpdJnjNo(
+            TskgmstWriteRecord record,
+            Set&lt;TskgmstColumn&gt; targetColumns,
+            TskgmstUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L310">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L311">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L312">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L313">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L314">        Long safeGasMtstNo = safeLong(updateKey.gasMtstNo(), &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L315">        Long safeTksuSvkyNo = safeLong(updateKey.tksuSvkyNo(), &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L316">        Integer safeSkno = safeInt(updateKey.skno(), &quot;skno&quot;);</span>
+
+<span class="fc" id="L318">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+            row -&gt;
+<span class="fc bfc" id="L321" title="All 2 branches covered.">                Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo)</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L323">                        row.get(TskgmstColumn.TKSU_SVKY_NO), safeTksuSvkyNo)</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(row.get(TskgmstColumn.SKNO), safeSkno),</span>
+                row -&gt;
+<span class="fc" id="L326">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L330">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        TskgmstColumn.class, values),
+                                                context,
+                                                clock,
+<span class="fc" id="L335">                                                toInteger(row.get(TskgmstColumn.REC_UPD_JNJ_NO)))),</span>
+<span class="fc" id="L336">                updateSupport::apply,</span>
+                TskgmstColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L338">                updateKey.recUpdJnjNo(),</span>
+                TskgmstDataAccess.CallSpecs
+                        .UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L341">                        .identifier(),</span>
+                () -&gt;
+<span class="nc" id="L343">                        new DataInconsistencyException(</span>
+                                &quot;TSKGMST&quot;,
+                                TskgmstDataAccess.CallSpecs
+                                        .UPDATE_BY_GAS_MTST_NO_AND_TKSU_SVKY_NO_AND_SKNO_AND_REC_UPD_JNJ_NO
+<span class="nc" id="L347">                                        .identifier(),</span>
+                                &quot;{}&quot;),
+                safeGasMtstNo,
+                safeTksuSvkyNo,
+                safeSkno);
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findAtBaseDateExcludeInvalid(
+            Long gasMtstNo, LocalDate baseDate) {
+<span class="fc" id="L357">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L358">        LocalDate safeBaseDate = safeYmd(baseDate, &quot;baseDate&quot;);</span>
+<span class="fc" id="L359">        return rows.stream()</span>
+<span class="fc" id="L360">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L361">                .filter(row -&gt; notAfter(row.get(TskgmstColumn.TKYS_YMD), safeBaseDate))</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">                .filter(row -&gt; !INVALID_STATUS_CODE.equals(row.get(TskgmstColumn.TKSU_SVKK_JTKB)))</span>
+<span class="fc" id="L363">                .sorted(descComparator(TskgmstColumn.TKYS_YMD))</span>
+<span class="fc" id="L364">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L365">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;TskgmstRecord&gt; findByPK(Long gasMtstNo, Long tksuSvkyNo, Integer skno) {
+<span class="fc" id="L370">        Long safeGasMtstNo = safeLong(gasMtstNo, &quot;gasMtstNo&quot;);</span>
+<span class="fc" id="L371">        Long safeTksuSvkyNo = safeLong(tksuSvkyNo, &quot;tksuSvkyNo&quot;);</span>
+<span class="fc" id="L372">        Integer safeSkno = safeInt(skno, &quot;skno&quot;);</span>
+<span class="fc" id="L373">        return rows.stream()</span>
+<span class="fc" id="L374">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.GAS_MTST_NO), safeGasMtstNo))</span>
+<span class="fc" id="L375">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.TKSU_SVKY_NO), safeTksuSvkyNo))</span>
+<span class="fc" id="L376">                .filter(row -&gt; Objects.equals(row.get(TskgmstColumn.SKNO), safeSkno))</span>
+<span class="fc" id="L377">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L378">                .findFirst();</span>
+    }
+
+    private static Comparator&lt;EnumMap&lt;TskgmstColumn, Object&gt;&gt; descComparator(TskgmstColumn column) {
+<span class="fc" id="L382">        return (left, right) -&gt; compareDesc(left.get(column), right.get(column));</span>
+    }
+
+    @SuppressWarnings({&quot;rawtypes&quot;, &quot;unchecked&quot;})
+    private static int compareDesc(Object left, Object right) {
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (left == right) {</span>
+<span class="nc" id="L388">            return 0;</span>
+        }
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">        if (left == null) {</span>
+<span class="nc" id="L391">            return 1;</span>
+        }
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (right == null) {</span>
+<span class="nc" id="L394">            return -1;</span>
+        }
+<span class="fc" id="L396">        return ((Comparable) right).compareTo(left);</span>
+    }
+
+    private static boolean notAfter(Object value, LocalDate baseDate) {
+<span class="fc" id="L400">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L401" title="1 of 4 branches missed.">        return localDate != null &amp;&amp; !localDate.isAfter(baseDate);</span>
+    }
+
+    private static boolean notBefore(Object value, LocalDate baseDate) {
+<span class="fc" id="L405">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L406" title="2 of 4 branches missed.">        return localDate != null &amp;&amp; !localDate.isBefore(baseDate);</span>
+    }
+
+    private static boolean isBefore(Object value, LocalDate baseDate) {
+<span class="fc" id="L410">        LocalDate localDate = (LocalDate) value;</span>
+<span class="pc bpc" id="L411" title="2 of 4 branches missed.">        return localDate != null &amp;&amp; localDate.isBefore(baseDate);</span>
+    }
+
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L415">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeInt(Integer value, String paramName) {
+<span class="fc" id="L419">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L423">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String safeTksuSvkkJtkb(String value, String paramName) {
+<span class="fc" id="L427">        return WhereParamGuard.fixedLengthNotNull(value, paramName, 2);</span>
+    }
+
+    private static Integer toInteger(Object value) {
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L432">            return number.intValue();</span>
+        }
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        return value == null ? null : Integer.valueOf(value.toString());</span>
+    }
+
+    private static LocalDate toLocalDate(int ymd) {
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">        if (ymd &lt;= 0) {</span>
+<span class="nc" id="L439">            return null;</span>
+        }
+<span class="fc" id="L441">        return LocalDate.of(ymd / 10000, (ymd / 100) % 100, ymd % 100);</span>
+    }
+
+    /** TSKGMST のテストデータ行。 */
+    public static record InternalRow(
+            long gasMtstNo,
+            long tksuSvkyNo,
+            int skno,
+            String tksuSvkkJtkb,
+            int tkysYmd,
+            int tyenYmd,
+            LocalDateTime regTsmp,
+            String regUsrId,
+            LocalDateTime updTsmp,
+            String updUsrId,
+            String updKtnKinoId,
+            int recUpdJnjNo) {
+        /** コンパクトコンストラクタ。 */
+<span class="fc" id="L459">        public InternalRow {</span>
+<span class="fc" id="L460">            Objects.requireNonNull(tksuSvkkJtkb, &quot;tksuSvkkJtkb&quot;);</span>
+<span class="fc" id="L461">            Objects.requireNonNull(regTsmp, &quot;regTsmp&quot;);</span>
+<span class="fc" id="L462">            Objects.requireNonNull(regUsrId, &quot;regUsrId&quot;);</span>
+<span class="fc" id="L463">            Objects.requireNonNull(updTsmp, &quot;updTsmp&quot;);</span>
+<span class="fc" id="L464">            Objects.requireNonNull(updUsrId, &quot;updUsrId&quot;);</span>
+<span class="fc" id="L465">            Objects.requireNonNull(updKtnKinoId, &quot;updKtnKinoId&quot;);</span>
+<span class="fc" id="L466">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

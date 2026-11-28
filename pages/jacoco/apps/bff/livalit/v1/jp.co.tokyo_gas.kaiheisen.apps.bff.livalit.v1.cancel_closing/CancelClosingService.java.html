@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CancelClosingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-app-bff-livalit-v1</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.cancel_closing</a> &gt; <span class="el_source">CancelClosingService.java</span></div><h1>CancelClosingService.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.apps.bff.livalit.v1.cancel_closing;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.cancel_closing.CancelClosingRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.bff.livalit.v1.cancel_closing.CancelClosingResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_other.ClosingCancelClosingReportCancelOtherRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_other.ClosingCancelClosingReportCancelOtherRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingCancelClosingReportCancelTgRetailRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingCancelClosingReportCancelTgRetailResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingSupplyStopReportCancelRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_cancel.retail.retail_tg.ClosingSupplyStopReportCancelResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionRequest;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.RetailDivisionResponse;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.pod_other.common.retail_common.retail_division.model.TkssvkyInfoResponse;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.KaiheisenException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationError;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.ValidationException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_cancel_closing_report_cancel_other_retail.ClosingCancelClosingReportCancelOtherRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_cancel_closing_report_cancel_tg_retail.ClosingCancelClosingReportCancelTgRetailMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.closing_supply_stop_report_cancel.ClosingSupplyStopReportCancelMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.v1.retail_division.RetailDivisionMaAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentHistoryDetailCode;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput;
+
+/**
+ * BFF-005 LIVALIT閉栓取消のアプリケーションサービス。
+ */
+@ApplicationScoped
+public class CancelClosingService {
+
+    static final String REPORTING_SYSTEM_TYPE = ConstantLookupKeys.Kaiheisen.ReportingSystemType.LIVALIT;
+
+    static final String RETAIL_DIVISION_SHR_KBN = &quot;2&quot;;
+
+    static final String CLOSING_REGISTRATION_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.CLOSING_REGISTRATION;
+
+    static final String SUPPLY_STOP_REPORT_CODE =
+            ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.SUPPLY_OUTAGE_REPORT_RETAIL;
+
+    private final RequestContext requestContext;
+
+    private final ClosingCancelFeasibilityJudgmentHistoryDetailCode historyDetailCodeService;
+
+    private final RetailDivisionMaAdapter retailDivisionMaAdapter;
+
+    private final ClosingCancelClosingReportCancelTgRetailMaAdapter closingCancelClosingReportCancelTgRetailMaAdapter;
+
+    private final ClosingSupplyStopReportCancelMaAdapter closingSupplyStopReportCancelMaAdapter;
+
+    private final ClosingCancelClosingReportCancelOtherRetailMaAdapter closingCancelClosingReportCancelOtherRetailMaAdapter;
+
+    private final SystemDateTimeProvider clock;
+
+    /**
+     * コンストラクタ。
+     *
+     * @param requestContext リクエストコンテキスト
+     * @param historyDetailCodeService SV-097
+     * @param retailDivisionMaAdapter MA-107 adapter
+     * @param closingCancelClosingReportCancelTgRetailMaAdapter MA-099 adapter
+     * @param closingSupplyStopReportCancelMaAdapter MA-100 adapter
+     * @param closingCancelClosingReportCancelOtherRetailMaAdapter MA-103 adapter
+     * @param clock システム日時プロバイダ
+     */
+    @Inject
+    public CancelClosingService(
+            RequestContext requestContext,
+            ClosingCancelFeasibilityJudgmentHistoryDetailCode historyDetailCodeService,
+            RetailDivisionMaAdapter retailDivisionMaAdapter,
+            ClosingCancelClosingReportCancelTgRetailMaAdapter closingCancelClosingReportCancelTgRetailMaAdapter,
+            ClosingSupplyStopReportCancelMaAdapter closingSupplyStopReportCancelMaAdapter,
+            ClosingCancelClosingReportCancelOtherRetailMaAdapter closingCancelClosingReportCancelOtherRetailMaAdapter,
+<span class="fc" id="L87">            SystemDateTimeProvider clock) {</span>
+<span class="fc" id="L88">        this.requestContext = requestContext;</span>
+<span class="fc" id="L89">        this.historyDetailCodeService = historyDetailCodeService;</span>
+<span class="fc" id="L90">        this.retailDivisionMaAdapter = retailDivisionMaAdapter;</span>
+<span class="fc" id="L91">        this.closingCancelClosingReportCancelTgRetailMaAdapter = closingCancelClosingReportCancelTgRetailMaAdapter;</span>
+<span class="fc" id="L92">        this.closingSupplyStopReportCancelMaAdapter = closingSupplyStopReportCancelMaAdapter;</span>
+<span class="fc" id="L93">        this.closingCancelClosingReportCancelOtherRetailMaAdapter =</span>
+                closingCancelClosingReportCancelOtherRetailMaAdapter;
+<span class="fc" id="L95">        this.clock = clock;</span>
+<span class="fc" id="L96">    }</span>
+
+    /**
+     * BFF-005 の閉栓取消を処理する。
+     *
+     * @param request リクエスト
+     * @return レスポンス
+     */
+    public CancelClosingResponse handle(CancelClosingRequest request) {
+<span class="fc" id="L105">        requestContext.setHukkSysShbt(REPORTING_SYSTEM_TYPE);</span>
+
+<span class="fc" id="L107">        LocalDateTime systemDatetime = requestContext.getSystemDatetime().orElseGet(clock::currentDateTime);</span>
+<span class="fc" id="L108">        String downstreamSystemDatetime = resolveSystemDatetimeForDownstream(request, systemDatetime);</span>
+<span class="fc" id="L109">        String trkKnsYmd = toRfc3339DateText(request.trkKnsYmd());</span>
+
+<span class="fc" id="L111">        ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput =</span>
+<span class="fc" id="L112">                historyDetailCodeService.execute(request.gasMtstNo(), CLOSING_REGISTRATION_CODE);</span>
+
+<span class="fc" id="L114">        RetailDivisionResponse retailDivisionResponse = retailDivisionMaAdapter.invoke(new RetailDivisionRequest(</span>
+                RETAIL_DIVISION_SHR_KBN,
+<span class="fc" id="L116">                request.gasMtstNo().toString(),</span>
+                trkKnsYmd,
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime));
+
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        String requestedRetailerCode = retailDivisionResponse.tkssvkyInf() == null</span>
+<span class="nc" id="L122">                ? null</span>
+<span class="fc" id="L123">                : retailDivisionResponse.tkssvkyInf().tksuKijsCd();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (ConstantLookupKeys.Cirius.RetailerCode.TOKYO_GAS_CO_LTD.equals(requestedRetailerCode)) {</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (SUPPLY_STOP_REPORT_CODE.equals(historyDetailCodeOutput.isrrGymCd())) {</span>
+<span class="fc" id="L126">                ClosingSupplyStopReportCancelResponse response = closingSupplyStopReportCancelMaAdapter.invoke(</span>
+<span class="fc" id="L127">                        buildSupplyStopRequest(request, historyDetailCodeOutput, trkKnsYmd, downstreamSystemDatetime));</span>
+<span class="fc" id="L128">                return mapResponse(response.correlationId(), response.errorCode(), response.errorDescription(),</span>
+<span class="fc" id="L129">                        response.errorDetailList());</span>
+            }
+
+<span class="fc" id="L132">            ClosingCancelClosingReportCancelTgRetailResponse response =</span>
+<span class="fc" id="L133">                    closingCancelClosingReportCancelTgRetailMaAdapter.invoke(</span>
+<span class="fc" id="L134">                            buildTgRetailRequest(</span>
+                                    request,
+                                    retailDivisionResponse,
+                                    historyDetailCodeOutput,
+                                    trkKnsYmd,
+                                    downstreamSystemDatetime));
+<span class="fc" id="L140">            return mapResponse(response.correlationId(), response.errorCode(), response.errorDescription(),</span>
+<span class="fc" id="L141">                    response.errorDetailList());</span>
+        } else {
+<span class="fc" id="L143">            ClosingCancelClosingReportCancelOtherRetailResponse response =</span>
+<span class="fc" id="L144">                    closingCancelClosingReportCancelOtherRetailMaAdapter.invoke(</span>
+<span class="fc" id="L145">                            buildOtherRetailRequest(</span>
+                                    request,
+                                    historyDetailCodeOutput,
+                                    trkKnsYmd,
+                                    downstreamSystemDatetime));
+<span class="fc" id="L150">            return mapResponse(response.correlationId(), response.errorCode(), response.errorDescription(),</span>
+<span class="fc" id="L151">                    response.errorDetailList());</span>
+        }
+    }
+
+    private ClosingCancelClosingReportCancelTgRetailRequest buildTgRetailRequest(
+            CancelClosingRequest request,
+            RetailDivisionResponse retailDivisionResponse,
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput,
+            String trkKnsYmd,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L161">        TkssvkyInfoResponse tkssvkyInfo = requiredTkssvkyInfo(retailDivisionResponse);</span>
+<span class="fc" id="L162">        String ukeIndexNo = requiredUkeIndexNo(request);</span>
+<span class="fc" id="L163">        return new ClosingCancelClosingReportCancelTgRetailRequest(</span>
+<span class="fc" id="L164">                request.gasMtstNo(),</span>
+                trkKnsYmd,
+                CLOSING_REGISTRATION_CODE,
+<span class="fc" id="L167">                request.hukkUsrId(),</span>
+<span class="fc" id="L168">                request.hukkUnmKj(),</span>
+<span class="fc" id="L169">                request.sgytNwkCd(),</span>
+<span class="fc" id="L170">                request.sgttUsrKj(),</span>
+<span class="fc" id="L171">                normalizeOptional(request.rirekiMemo()),</span>
+                ukeIndexNo,
+<span class="fc" id="L173">                new ClosingCancelClosingReportCancelTgRetailRequest.TkssvkyInf(tkssvkyInfo.syoKyoTrno()),</span>
+<span class="fc" id="L174">                toTgRetailHistoryUpdateInfo(historyDetailCodeOutput),</span>
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime);
+    }
+
+    private ClosingSupplyStopReportCancelRequest buildSupplyStopRequest(
+            CancelClosingRequest request,
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput,
+            String trkKnsYmd,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L184">        return new ClosingSupplyStopReportCancelRequest(</span>
+<span class="fc" id="L185">                request.gasMtstNo(),</span>
+                trkKnsYmd,
+                SUPPLY_STOP_REPORT_CODE,
+<span class="fc" id="L188">                request.hukkUsrId(),</span>
+<span class="fc" id="L189">                request.hukkUnmKj(),</span>
+<span class="fc" id="L190">                normalizeOptional(request.rirekiMemo()),</span>
+<span class="fc" id="L191">                toSupplyStopHistoryUpdateInfo(historyDetailCodeOutput),</span>
+                REPORTING_SYSTEM_TYPE,
+<span class="fc" id="L193">                normalizeOptional(request.correlationId()),</span>
+                downstreamSystemDatetime);
+    }
+
+    private ClosingCancelClosingReportCancelOtherRetailRequest buildOtherRetailRequest(
+            CancelClosingRequest request,
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput,
+            String trkKnsYmd,
+            String downstreamSystemDatetime) {
+<span class="fc" id="L202">        return new ClosingCancelClosingReportCancelOtherRetailRequest(</span>
+<span class="fc" id="L203">                request.gasMtstNo(),</span>
+                trkKnsYmd,
+                CLOSING_REGISTRATION_CODE,
+<span class="fc" id="L206">                request.hukkUsrId(),</span>
+<span class="fc" id="L207">                request.hukkUnmKj(),</span>
+<span class="fc" id="L208">                request.sgytNwkCd(),</span>
+<span class="fc" id="L209">                request.sgttUsrId(),</span>
+<span class="fc" id="L210">                request.sgttUsrKj(),</span>
+<span class="fc" id="L211">                normalizeOptional(request.rirekiMemo()),</span>
+<span class="fc" id="L212">                toOtherRetailHistoryUpdateInfo(historyDetailCodeOutput),</span>
+                REPORTING_SYSTEM_TYPE,
+                downstreamSystemDatetime);
+    }
+
+    private ClosingCancelClosingReportCancelTgRetailRequest.IsrrkrUpdInf toTgRetailHistoryUpdateInfo(
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput) {
+<span class="fc" id="L219">        return new ClosingCancelClosingReportCancelTgRetailRequest.IsrrkrUpdInf(</span>
+<span class="fc" id="L220">                historyDetailCodeOutput.duknIsrgCd(),</span>
+<span class="fc" id="L221">                historyDetailCodeOutput.duknIsrsCd(),</span>
+<span class="fc" id="L222">                historyDetailCodeOutput.isrrGymCd(),</span>
+<span class="fc" id="L223">                historyDetailCodeOutput.isrrGmssCd());</span>
+    }
+
+    private ClosingSupplyStopReportCancelRequest.IsrrkrUpdInf toSupplyStopHistoryUpdateInfo(
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput) {
+<span class="fc" id="L228">        return new ClosingSupplyStopReportCancelRequest.IsrrkrUpdInf(</span>
+<span class="fc" id="L229">                historyDetailCodeOutput.duknIsrgCd(),</span>
+<span class="fc" id="L230">                historyDetailCodeOutput.duknIsrsCd(),</span>
+<span class="fc" id="L231">                historyDetailCodeOutput.isrrGymCd(),</span>
+<span class="fc" id="L232">                historyDetailCodeOutput.isrrGmssCd());</span>
+    }
+
+    private ClosingCancelClosingReportCancelOtherRetailRequest.IsrrkrUpdInf toOtherRetailHistoryUpdateInfo(
+            ClosingCancelFeasibilityJudgmentHistoryDetailCodeOutput historyDetailCodeOutput) {
+<span class="fc" id="L237">        return new ClosingCancelClosingReportCancelOtherRetailRequest.IsrrkrUpdInf(</span>
+<span class="fc" id="L238">                historyDetailCodeOutput.duknIsrgCd(),</span>
+<span class="fc" id="L239">                historyDetailCodeOutput.duknIsrsCd(),</span>
+<span class="fc" id="L240">                historyDetailCodeOutput.isrrGymCd(),</span>
+<span class="fc" id="L241">                historyDetailCodeOutput.isrrGmssCd());</span>
+    }
+
+    private CancelClosingResponse mapResponse(
+            String downstreamCorrelationId,
+            String errorCode,
+            String errorDescription,
+            List&lt;String&gt; errorDetailList) {
+<span class="fc" id="L249">        return new CancelClosingResponse(</span>
+<span class="fc" id="L250">                requestContext.getCorrelationId().orElse(downstreamCorrelationId),</span>
+                errorCode,
+                errorDescription,
+                errorDetailList);
+    }
+
+    private TkssvkyInfoResponse requiredTkssvkyInfo(RetailDivisionResponse retailDivisionResponse) {
+<span class="pc bpc" id="L257" title="2 of 4 branches missed.">        if (retailDivisionResponse == null || retailDivisionResponse.tkssvkyInf() == null</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                || retailDivisionResponse.tkssvkyInf().syoKyoTrno() == null) {</span>
+<span class="nc" id="L259">            throw new KaiheisenException(&quot;MA-107 の託送サービス契約情報が不正のため、処理を終了しました&quot;);</span>
+        }
+<span class="fc" id="L261">        return retailDivisionResponse.tkssvkyInf();</span>
+    }
+
+    private String requiredUkeIndexNo(CancelClosingRequest request) {
+<span class="fc" id="L265">        String ukeIndexNo = normalizeOptional(request.utidxNo());</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (ukeIndexNo != null) {</span>
+<span class="fc" id="L267">            return ukeIndexNo;</span>
+        }
+<span class="fc" id="L269">        throw new ValidationException(</span>
+<span class="fc" id="L270">                List.of(ValidationError.ofField(ErrorCodeConstants.ERROR_CODE_010000011, &quot;utidxNo&quot;)),</span>
+                true);
+    }
+
+    private String resolveSystemDatetimeForDownstream(
+            CancelClosingRequest request,
+            LocalDateTime systemDatetime) {
+<span class="fc" id="L277">        String requestedSystemDatetime = normalizeOptional(request.systemDatetime());</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (requestedSystemDatetime != null) {</span>
+<span class="fc" id="L279">            return toRfc3339DateTimeText(requestedSystemDatetime);</span>
+        }
+<span class="fc" id="L281">        return systemDatetime</span>
+<span class="fc" id="L282">                .atOffset(ZoneOffset.UTC)</span>
+<span class="fc" id="L283">                .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L284">                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+    }
+
+    private String toRfc3339DateText(String rawDate) {
+        try {
+<span class="fc" id="L289">            return LocalDate.parse(rawDate).format(DateTimeFormatter.ISO_LOCAL_DATE);</span>
+<span class="nc" id="L290">        } catch (DateTimeParseException ignored) {</span>
+            try {
+<span class="nc" id="L292">                return OffsetDateTime.parse(rawDate).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE);</span>
+<span class="nc" id="L293">            } catch (DateTimeParseException secondary) {</span>
+<span class="nc" id="L294">                return LocalDateTime.parse(rawDate).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE);</span>
+            }
+        }
+    }
+
+    private String toRfc3339DateTimeText(String rawDateTime) {
+        try {
+<span class="fc" id="L301">            return OffsetDateTime.parse(rawDateTime)</span>
+<span class="fc" id="L302">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="fc" id="L303">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+<span class="nc" id="L304">        } catch (DateTimeParseException exception) {</span>
+<span class="nc" id="L305">            return LocalDateTime.parse(rawDateTime)</span>
+<span class="nc" id="L306">                    .truncatedTo(ChronoUnit.MICROS)</span>
+<span class="nc" id="L307">                    .atOffset(ZoneOffset.UTC)</span>
+<span class="nc" id="L308">                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);</span>
+        }
+    }
+
+    private String normalizeOptional(String value) {
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L314">            return null;</span>
+        }
+<span class="fc" id="L316">        String normalized = value.trim();</span>
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">        return normalized.isEmpty() ? null : normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

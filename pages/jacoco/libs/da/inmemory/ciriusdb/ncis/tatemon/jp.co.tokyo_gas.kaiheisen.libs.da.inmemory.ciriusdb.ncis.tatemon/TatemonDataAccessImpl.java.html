@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TatemonDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-ncis-tatemon</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.ncis.tatemon</a> &gt; <span class="el_source">TatemonDataAccessImpl.java</span></div><h1>TatemonDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.ncis.tatemon;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.write.TatemonWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.NcisCisAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-007（R001/U001）の SQL 振る舞いを模した TATEMON インメモリ実装。 */
+public class TatemonDataAccessImpl extends DataAccessBase implements TatemonDataAccess {
+
+<span class="fc" id="L30">    private static final ReflectiveInMemoryRowMapper&lt;TatemonColumn, TatemonRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L31">            ReflectiveInMemoryRowMapper.create(TatemonColumn.class, TatemonRecord.class);</span>
+
+<span class="fc" id="L33">    private static final AutoNeutralValueResolver&lt;TatemonColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L34">            AutoNeutralValueResolver.create(TatemonColumn.class, TatemonRecord.class);</span>
+
+<span class="fc" id="L36">    private final List&lt;EnumMap&lt;TatemonColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final NcisCisAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;TatemonWriteRecord, TatemonColumn&gt;
+            updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public TatemonDataAccessImpl() {
+<span class="fc" id="L47">        this(new DefaultSystemDateTimeProvider(), new NcisCisAuditColumnAutoSetter());</span>
+<span class="fc" id="L48">    }</span>
+
+    TatemonDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L51">        this(clock, new NcisCisAuditColumnAutoSetter());</span>
+<span class="nc" id="L52">    }</span>
+
+    TatemonDataAccessImpl(
+<span class="fc" id="L55">            SystemDateTimeProvider clock, NcisCisAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L56">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L57">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L58">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L59">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        TatemonWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * テスト用の初期データを追加する。
+     *
+     * @param row 追加する行
+     * @return このインスタンス
+     */
+    public TatemonDataAccessImpl addRow(TatemonRecord row) {
+<span class="fc" id="L71">        EnumMap&lt;TatemonColumn, Object&gt; values =</span>
+<span class="fc" id="L72">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L73">        NEUTRAL_VALUE_RESOLVER.complement(values, TatemonWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L74">        rows.add(values);</span>
+<span class="fc" id="L75">        return this;</span>
+    }
+
+    @Override
+    public Optional&lt;TatemonRecord&gt; findByBldNo(String bldNo) {
+<span class="fc" id="L80">        Objects.requireNonNull(bldNo, &quot;bldNo&quot;);</span>
+<span class="fc" id="L81">        return rows.stream()</span>
+<span class="fc" id="L82">                .filter(row -&gt; Objects.equals(row.get(TatemonColumn.BLD_NO), bldNo))</span>
+<span class="fc" id="L83">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L84">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByBldNoAndRecUpdJnjNo(
+            TatemonWriteRecord record,
+            Set&lt;TatemonColumn&gt; targetColumns,
+            TatemonUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L93">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L94">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L95">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L97">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L99">                row -&gt; Objects.equals(row.get(TatemonColumn.BLD_NO), updateKey.bldNo()),</span>
+                row -&gt;
+<span class="fc" id="L101">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="fc" id="L105">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        TatemonColumn.class, values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="nc" id="L111">                                                        ? (Integer) row.get(TatemonColumn.REC_UPD_JNJ_NO)</span>
+<span class="fc" id="L112">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L113">                updateSupport::apply,</span>
+                TatemonColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L115">                updateKey.recUpdJnjNo(),</span>
+                TatemonDataAccess.Identifiers.UPDATE_BY_BLD_NO_AND_REC_UPD_JNJ_NO,
+<span class="fc" id="L117">                updateKey.bldNo());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

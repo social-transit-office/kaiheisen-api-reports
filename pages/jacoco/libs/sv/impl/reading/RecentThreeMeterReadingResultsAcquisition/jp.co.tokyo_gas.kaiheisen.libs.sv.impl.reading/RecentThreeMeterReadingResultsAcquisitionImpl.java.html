@@ -1,0 +1,536 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecentThreeMeterReadingResultsAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-reading-recentthreemeterreadingresultsacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading</a> &gt; <span class="el_source">RecentThreeMeterReadingResultsAcquisitionImpl.java</span></div><h1>RecentThreeMeterReadingResultsAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.reading;
+
+import jakarta.inject.Inject;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.JbossStructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogEvent;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogField;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.LogLayer;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.logging.StructuredLogger;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivation;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.GasUsageForBillingDerivationOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.GasRknKsnInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KnsKkaTseiMaeJh;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KyuMtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SkinKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ZnkiKnkkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentThreeMeterReadingResultsAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.RecentThreeMeterReadingResultsAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.model.KnsnInf;
+
+/** 検針結果情報取得（直近3回）サービス実装。 */
+public class RecentThreeMeterReadingResultsAcquisitionImpl
+        implements RecentThreeMeterReadingResultsAcquisition {
+
+<span class="fc" id="L35">    private static final StructuredLogger LOGGER =</span>
+            new JbossStructuredLogger(RecentThreeMeterReadingResultsAcquisitionImpl.class);
+
+<span class="fc" id="L38">    private static final Long DEFAULT_GAS_METER_INDICATION = 0L;</span>
+
+<span class="fc" id="L40">    private static final Integer DEFAULT_READING_SEQUENCE = 0;</span>
+
+<span class="fc" id="L42">    private static final Integer DEFAULT_USAGE_DAYS = 0;</span>
+
+<span class="fc" id="L44">    private static final BigDecimal DEFAULT_GAS_USAGE = BigDecimal.ZERO;</span>
+
+    private final GasUsageForBillingDerivation gasUsageForBillingDerivation;
+
+    private final RequestContext requestContext;
+
+    private final String relocationClosureReason;
+
+    private final String openingReason;
+
+    private final String supplyResumedReason;
+
+    private final String regularSwCancellationReason;
+
+    private final String temporarySwCancellationReason;
+
+    private final String noRegressionSegment;
+
+    private final String closedValveStatus;
+
+    private final String initialMeterReadingRequiredCode;
+
+    /**
+     * 検針結果情報取得（直近3回）サービスの実行に必要な依存関係と業務定数を初期化する。
+     *
+     * @param gasUsageForBillingDerivation TG導管ガス使用量（料金計算用）取得サービス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUSコンスタント取得サービス
+     */
+    @Inject
+    public RecentThreeMeterReadingResultsAcquisitionImpl(
+            GasUsageForBillingDerivation gasUsageForBillingDerivation,
+            RequestContext requestContext,
+<span class="fc" id="L77">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L78">        GasUsageForBillingDerivation nonNullGasUsageForBillingDerivation =</span>
+<span class="fc" id="L79">                Objects.requireNonNull(</span>
+                        gasUsageForBillingDerivation, &quot;gasUsageForBillingDerivation&quot;);
+<span class="fc" id="L81">        RequestContext nonNullRequestContext =</span>
+<span class="fc" id="L82">                Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L83">        CiriusConstantService nonNullCiriusConstantService =</span>
+<span class="fc" id="L84">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+
+<span class="fc" id="L86">        this.gasUsageForBillingDerivation = nonNullGasUsageForBillingDerivation;</span>
+<span class="fc" id="L87">        this.requestContext = nonNullRequestContext;</span>
+<span class="fc" id="L88">        this.relocationClosureReason =</span>
+<span class="fc" id="L89">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .RELOCATION_CLOSURE);
+<span class="fc" id="L94">        this.openingReason =</span>
+<span class="fc" id="L95">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .OPENING);
+<span class="fc" id="L100">        this.supplyResumedReason =</span>
+<span class="fc" id="L101">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .SUPPLY_RESUMED);
+<span class="fc" id="L106">        this.regularSwCancellationReason =</span>
+<span class="fc" id="L107">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .REGULAR_SW_CANCELLATION);
+<span class="fc" id="L112">        this.temporarySwCancellationReason =</span>
+<span class="fc" id="L113">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                        ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults
+                                .TEMPORARY_SW_CANCELLATION);
+<span class="fc" id="L118">        this.noRegressionSegment =</span>
+<span class="fc" id="L119">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.TYPE,
+                        ConstantLookupKeys.Cirius.IndicatedNumberRegressionSegment.NONE);
+<span class="fc" id="L123">        this.closedValveStatus =</span>
+<span class="fc" id="L124">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.CLOSED);
+<span class="fc" id="L128">        this.initialMeterReadingRequiredCode =</span>
+<span class="fc" id="L129">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        nonNullCiriusConstantService,
+                        ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode.TYPE,
+                        ConstantLookupKeys.Cirius.FirstMeterReadingApplicationCode
+                                .INITIAL_METER_READING_REQUIRED);
+<span class="fc" id="L134">    }</span>
+
+    @Override
+    public RecentThreeMeterReadingResultsAcquisitionOutput execute(Long gasMtstNo, LocalDate knsYmd) {
+<span class="fc" id="L138">        MeterReadingResultState first =</span>
+<span class="fc" id="L139">                invokeBestEffort(</span>
+                        gasMtstNo,
+                        knsYmd,
+                        DEFAULT_GAS_METER_INDICATION,
+                        relocationClosureReason,
+                        noRegressionSegment,
+                        closedValveStatus,
+                        DEFAULT_GAS_USAGE,
+                        new KnsKkaTseiMaeJh(null, null, null));
+
+<span class="fc" id="L149">        MeterReadingResultState second = MeterReadingResultState.defaultState();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (shouldInvokeFollowUp(first.znkiKnkkInf().knkkSsjyShbt())) {</span>
+<span class="fc" id="L151">            second =</span>
+<span class="fc" id="L152">                    invokeBestEffort(</span>
+                            gasMtstNo,
+<span class="fc" id="L154">                            first.znkiKnkkInf().knsYmd(),</span>
+<span class="fc" id="L155">                            first.znkiKnkkInf().gmtShjSu(),</span>
+<span class="fc" id="L156">                            first.znkiKnkkInf().knkkSsjyShbt(),</span>
+<span class="fc" id="L157">                            first.znkiKnkkInf().sjskKbn(),</span>
+                            closedValveStatus,
+                            DEFAULT_GAS_USAGE,
+<span class="fc" id="L160">                            toKnsKkaTseiMaeJh(first.znkiKnkkInf()));</span>
+        }
+
+<span class="fc" id="L163">        MeterReadingResultState third = MeterReadingResultState.defaultState();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (shouldInvokeFollowUp(second.znkiKnkkInf().knkkSsjyShbt())) {</span>
+<span class="fc" id="L165">            third =</span>
+<span class="fc" id="L166">                    invokeBestEffort(</span>
+                            gasMtstNo,
+<span class="fc" id="L168">                            second.znkiKnkkInf().knsYmd(),</span>
+<span class="fc" id="L169">                            second.znkiKnkkInf().gmtShjSu(),</span>
+<span class="fc" id="L170">                            second.znkiKnkkInf().knkkSsjyShbt(),</span>
+<span class="fc" id="L171">                            second.znkiKnkkInf().sjskKbn(),</span>
+                            closedValveStatus,
+                            DEFAULT_GAS_USAGE,
+<span class="fc" id="L174">                            toKnsKkaTseiMaeJh(second.znkiKnkkInf()));</span>
+        }
+
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (isSwCancellation(first.znkiKnkkInf().knkkSsjyShbt())) {</span>
+<span class="fc" id="L178">            second = second.withZeroGasInfo();</span>
+        }
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (isSwCancellation(second.znkiKnkkInf().knkkSsjyShbt())) {</span>
+<span class="fc" id="L181">            third = third.withZeroGasInfo();</span>
+        }
+
+<span class="fc" id="L184">        ArrayList&lt;KnsnInf&gt; knsnInf = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L185">        knsnInf.add(createFirstKnsnInf(knsYmd, first));</span>
+<span class="fc" id="L186">        knsnInf.add(createSecondKnsnInf(first, second));</span>
+<span class="fc" id="L187">        knsnInf.add(createThirdKnsnInf(second, third));</span>
+<span class="fc" id="L188">        return new RecentThreeMeterReadingResultsAcquisitionOutput(knsnInf);</span>
+    }
+
+    /**
+     * ガス使用量取得サービスを best-effort で呼び出し、失敗時は既定値を返す。
+     *
+     * @param gasMtstNo ガスメーター設置番号
+     * @param knsYmd 検針日
+     * @param gmtShjSu ガスメーター指示数
+     * @param knkkSksiJysb 検針結果作成事由
+     * @param sjskKbn 指示数回帰区分
+     * @param gmtKhsJtkb ガスメーター開閉栓状態区分
+     * @param sgyjKytiSyry 作業時協定使用量
+     * @param knsKkaTseiMaeJh 検針結果訂正前情報
+     * @return 取得結果、または既定値で構成した状態
+     */
+    private MeterReadingResultState invokeBestEffort(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long gmtShjSu,
+            String knkkSksiJysb,
+            String sjskKbn,
+            String gmtKhsJtkb,
+            BigDecimal sgyjKytiSyry,
+            KnsKkaTseiMaeJh knsKkaTseiMaeJh) {
+        try {
+<span class="fc" id="L214">            GasUsageForBillingDerivationOutput output =</span>
+<span class="fc" id="L215">                    gasUsageForBillingDerivation.execute(</span>
+                            gasMtstNo,
+                            knsYmd,
+                            gmtShjSu,
+                            knkkSksiJysb,
+                            sjskKbn,
+                            gmtKhsJtkb,
+                            sgyjKytiSyry,
+                            knsKkaTseiMaeJh);
+<span class="fc" id="L224">            return MeterReadingResultState.from(output);</span>
+<span class="fc" id="L225">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L226">            logInvokeBestEffortFailure(</span>
+                    gasMtstNo,
+                    knsYmd,
+                    gmtShjSu,
+                    knkkSksiJysb,
+                    sjskKbn,
+                    gmtKhsJtkb,
+                    exception);
+<span class="fc" id="L234">            return MeterReadingResultState.defaultState();</span>
+        }
+    }
+
+    /**
+     * best-effort 呼び出し失敗時に、フォールバック内容を追跡できる例外ログを出力する。
+     *
+     * @param gasMtstNo ガスメーター設置番号
+     * @param knsYmd 検針日
+     * @param gmtShjSu ガスメーター指示数
+     * @param knkkSksiJysb 検針結果作成事由
+     * @param sjskKbn 指示数回帰区分
+     * @param gmtKhsJtkb ガスメーター開閉栓状態区分
+     * @param exception 発生した実行時例外
+     */
+    private void logInvokeBestEffortFailure(
+            Long gasMtstNo,
+            LocalDate knsYmd,
+            Long gmtShjSu,
+            String knkkSksiJysb,
+            String sjskKbn,
+            String gmtKhsJtkb,
+            RuntimeException exception) {
+<span class="fc" id="L257">        Map&lt;String, Object&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L258">        requestContext.getCorrelationId().ifPresent(v -&gt; attributes.put(LogField.CORRELATION_ID.key(), v));</span>
+<span class="fc" id="L259">        requestContext.getHukkSysShbt().ifPresent(v -&gt; attributes.put(&quot;hukkSysShbt&quot;, v));</span>
+<span class="fc" id="L260">        requestContext.getSystemDatetime().ifPresent(v -&gt; attributes.put(&quot;systemDatetime&quot;, v));</span>
+<span class="fc" id="L261">        attributes.put(LogField.EXCEPTION_CLASS.key(), exception.getClass().getName());</span>
+<span class="fc" id="L262">        attributes.put(&quot;operation&quot;, &quot;GasUsageForBillingDerivation.execute&quot;);</span>
+<span class="fc" id="L263">        attributes.put(&quot;gasMtstNo&quot;, gasMtstNo);</span>
+<span class="fc" id="L264">        attributes.put(&quot;knsYmd&quot;, knsYmd);</span>
+<span class="fc" id="L265">        attributes.put(&quot;gmtShjSu&quot;, gmtShjSu);</span>
+<span class="fc" id="L266">        attributes.put(&quot;knkkSksiJysb&quot;, knkkSksiJysb);</span>
+<span class="fc" id="L267">        attributes.put(&quot;sjskKbn&quot;, sjskKbn);</span>
+<span class="fc" id="L268">        attributes.put(&quot;gmtKhsJtkb&quot;, gmtKhsJtkb);</span>
+
+<span class="fc" id="L270">        LOGGER.error(</span>
+                new LogEvent(
+                        &quot;sv.bestEffortFallback&quot;,
+                        &quot;GasUsageForBillingDerivation.execute failed and default state was used.&quot;,
+                        LogLayer.SV,
+<span class="fc" id="L275">                        500,</span>
+                        ErrorCodeConstants.ERROR_CODE_990000001,
+                        attributes),
+                exception);
+<span class="fc" id="L279">    }</span>
+
+    /**
+     * 直後の検針結果を遡って取得すべき事由かを判定する。
+     *
+     * @param reasonType 検針結果作成事由
+     * @return 後続取得を行う場合は true
+     */
+    private boolean shouldInvokeFollowUp(String reasonType) {
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        return reasonType != null</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">                &amp;&amp; !openingReason.equals(reasonType)</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                &amp;&amp; !regularSwCancellationReason.equals(reasonType)</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                &amp;&amp; !temporarySwCancellationReason.equals(reasonType);</span>
+    }
+
+    /**
+     * 開閉栓中止系の事由かを判定する。
+     *
+     * @param reasonType 検針結果作成事由
+     * @return 開閉栓中止事由の場合は true
+     */
+    private boolean isSwCancellation(String reasonType) {
+<span class="fc bfc" id="L301" title="All 2 branches covered.">        return regularSwCancellationReason.equals(reasonType)</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">                || temporarySwCancellationReason.equals(reasonType);</span>
+    }
+
+    /**
+     * 初回検針申込コードを付与すべき事由に応じてコードを解決する。
+     *
+     * @param reasonType 検針結果作成事由
+     * @return 初回検針申込コード、不要な場合は null
+     */
+    private String resolveInitialMeterReadingCode(String reasonType) {
+<span class="fc bfc" id="L312" title="All 4 branches covered.">        if (openingReason.equals(reasonType) || supplyResumedReason.equals(reasonType)) {</span>
+<span class="fc" id="L313">            return initialMeterReadingRequiredCode;</span>
+        }
+<span class="fc" id="L315">        return null;</span>
+    }
+
+    /**
+     * 前回検針結果から次回呼び出し用の検針結果訂正前情報を生成する。
+     *
+     * @param znkiKnkkInf 前回検針結果情報
+     * @return 検針結果訂正前情報
+     */
+    private KnsKkaTseiMaeJh toKnsKkaTseiMaeJh(ZnkiKnkkInf znkiKnkkInf) {
+<span class="fc" id="L325">        return new KnsKkaTseiMaeJh(</span>
+<span class="fc" id="L326">                znkiKnkkInf.knsYmd(),</span>
+<span class="fc" id="L327">                znkiKnkkInf.knsKkaTsno(),</span>
+<span class="fc" id="L328">                znkiKnkkInf.knkkKtmeFlg());</span>
+    }
+
+    /**
+     * 直近1回目の検針結果情報を組み立てる。
+     *
+     * @param knsYmd 依頼時点の検針日
+     * @param first 1回目の取得結果
+     * @return 直近1回目の検針結果情報
+     */
+    private KnsnInf createFirstKnsnInf(LocalDate knsYmd, MeterReadingResultState first) {
+<span class="fc" id="L339">        return new KnsnInf(</span>
+                knsYmd,
+                null,
+                DEFAULT_GAS_METER_INDICATION,
+<span class="fc" id="L343">                normalizeGasUsage(first.kyuMtrInf().jkarSuKnzmGasSyry()),</span>
+<span class="fc" id="L344">                first.gasRknKsnInf().shyDdsu(),</span>
+<span class="fc" id="L345">                resolveInitialMeterReadingCode(first.znkiKnkkInf().knkkSsjyShbt()));</span>
+    }
+
+    /**
+     * 直近2回目の検針結果情報を組み立てる。
+     *
+     * @param first 1回目の取得結果
+     * @param second 2回目の取得結果
+     * @return 直近2回目の検針結果情報
+     */
+    private KnsnInf createSecondKnsnInf(
+            MeterReadingResultState first, MeterReadingResultState second) {
+<span class="fc" id="L357">        return new KnsnInf(</span>
+<span class="fc" id="L358">                first.znkiKnkkInf().knsYmd(),</span>
+<span class="fc" id="L359">                first.znkiKnkkInf().knsJsjkCd(),</span>
+<span class="fc" id="L360">                first.skinKnkkInf().gmtShjSu(),</span>
+<span class="fc" id="L361">                normalizeGasUsage(second.gasRknKsnInf().jkarSuKnzmGasSyry()),</span>
+<span class="fc" id="L362">                second.gasRknKsnInf().shyDdsu(),</span>
+                null);
+    }
+
+    /**
+     * 直近3回目の検針結果情報を組み立てる。
+     *
+     * @param second 2回目の取得結果
+     * @param third 3回目の取得結果
+     * @return 直近3回目の検針結果情報
+     */
+    private KnsnInf createThirdKnsnInf(
+            MeterReadingResultState second, MeterReadingResultState third) {
+<span class="fc" id="L375">        return new KnsnInf(</span>
+<span class="fc" id="L376">                second.znkiKnkkInf().knsYmd(),</span>
+<span class="fc" id="L377">                second.znkiKnkkInf().knsJsjkCd(),</span>
+<span class="fc" id="L378">                second.skinKnkkInf().gmtShjSu(),</span>
+<span class="fc" id="L379">                normalizeGasUsage(third.gasRknKsnInf().jkarSuKnzmGasSyry()),</span>
+<span class="fc" id="L380">                third.gasRknKsnInf().shyDdsu(),</span>
+                null);
+    }
+
+    /**
+     * ガス使用量を null 非許容の BigDecimal に正規化する。
+     *
+     * @param value 変換元のガス使用量
+     * @return 変換後の値。入力が null の場合は BigDecimal.ZERO
+     */
+    private BigDecimal normalizeGasUsage(BigDecimal value) {
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L392">            return BigDecimal.ZERO;</span>
+        }
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (BigDecimal.ZERO.compareTo(value) == 0) {</span>
+<span class="fc" id="L395">            return BigDecimal.ZERO;</span>
+        }
+<span class="fc" id="L397">        return value;</span>
+    }
+
+    /**
+     * 前回検針結果情報の既定値を生成する。
+     *
+     * &lt;p&gt;検針回数とガスメーター指示数のみ 0 系既定値を設定し、日付や事由など未取得項目は null のまま保持する。
+     *
+     * @return 0/null 方針で初期化した前回検針結果情報
+     */
+    private static ZnkiKnkkInf defaultZnkiKnkkInf() {
+<span class="fc" id="L408">        return new ZnkiKnkkInf(</span>
+                null,
+                DEFAULT_READING_SEQUENCE,
+                DEFAULT_GAS_METER_INDICATION,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 今回検針結果情報の既定値を生成する。
+     *
+     * &lt;p&gt;ガスメーター指示数のみ 0 系既定値を設定し、日付やコード類など未取得項目は null のまま保持する。
+     *
+     * @return 0/null 方針で初期化した今回検針結果情報
+     */
+    private static SkinKnkkInf defaultSkinKnkkInf() {
+<span class="fc" id="L427">        return new SkinKnkkInf(</span>
+                null,
+                null,
+                DEFAULT_GAS_METER_INDICATION,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * ガス料金計算結果の既定値を生成する。
+     *
+     * &lt;p&gt;ガス使用量と使用日数は 0 を設定し、他の未取得項目は null とする。
+     *
+     * @return 0/null 方針で初期化したガス料金計算結果
+     */
+    private static GasRknKsnInf defaultGasRknKsnInf() {
+<span class="fc" id="L445">        return new GasRknKsnInf(</span>
+                null,
+                null,
+                DEFAULT_GAS_USAGE,
+                null,
+                DEFAULT_USAGE_DAYS,
+                null,
+                null,
+                null);
+    }
+
+    /**
+     * 休止メーター情報の既定値を生成する。
+     *
+     * &lt;p&gt;ガス使用量のみ 0 を設定し、他の未取得項目は null とする。
+     *
+     * @return 0/null 方針で初期化した休止メーター情報
+     */
+    private static KyuMtrInf defaultKyuMtrInf() {
+<span class="fc" id="L464">        return new KyuMtrInf(null, DEFAULT_GAS_USAGE, null, null, null);</span>
+    }
+
+    /**
+     * 検針結果組み立て中の中間状態を保持する。
+     *
+     * &lt;p&gt;前回検針結果・今回検針結果・ガス料金計算結果・休止メーター情報をひとまとめに扱い、null 補完や SW 解約時の補正結果もこの record に集約する。
+     */
+<span class="fc" id="L472">    private record MeterReadingResultState(</span>
+            ZnkiKnkkInf znkiKnkkInf,
+            SkinKnkkInf skinKnkkInf,
+            GasRknKsnInf gasRknKsnInf,
+            KyuMtrInf kyuMtrInf) {
+
+        /**
+         * 取得失敗時に返す既定状態を生成する。
+         *
+         * &lt;p&gt;前回検針結果・今回検針結果・ガス料金計算結果・休止メーター情報をそれぞれ 0/null 方針の helper で初期化する。
+         *
+         * @return 各 subDTO を既定値で保持した状態
+         */
+        private static MeterReadingResultState defaultState() {
+<span class="fc" id="L486">            return new MeterReadingResultState(</span>
+<span class="fc" id="L487">                    defaultZnkiKnkkInf(),</span>
+<span class="fc" id="L488">                    defaultSkinKnkkInf(),</span>
+<span class="fc" id="L489">                    defaultGasRknKsnInf(),</span>
+<span class="fc" id="L490">                    defaultKyuMtrInf());</span>
+        }
+
+        /**
+         * サービス出力を状態オブジェクトへ変換する。
+         *
+         * &lt;p&gt;出力全体が null の場合は既定状態を返し、各 subDTO が null の場合も対応する helper の既定値へフォールバックする。
+         *
+         * @param output ガス使用量取得サービスの出力
+         * @return null を既定値へ補完した状態
+         */
+        private static MeterReadingResultState from(GasUsageForBillingDerivationOutput output) {
+<span class="fc bfc" id="L502" title="All 2 branches covered.">            if (output == null) {</span>
+<span class="fc" id="L503">                return defaultState();</span>
+            }
+<span class="fc" id="L505">            return new MeterReadingResultState(</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">                    output.znkiKnkkInf() == null ? defaultZnkiKnkkInf() : output.znkiKnkkInf(),</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">                    output.skinKnkkInf() == null ? defaultSkinKnkkInf() : output.skinKnkkInf(),</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">                    output.gasRknKsnInf() == null ? defaultGasRknKsnInf() : output.gasRknKsnInf(),</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">                    output.kyuMtrInf() == null ? defaultKyuMtrInf() : output.kyuMtrInf());</span>
+        }
+
+        /**
+         * SW 解約系事由向けにガス情報を 0 へ補正した状態を生成する。
+         *
+         * &lt;p&gt;ガス料金計算結果のガス使用量と使用日数のみ 0 に置換し、それ以外の項目と前回検針結果・今回検針結果・休止メーター情報は元の値を保持する。
+         *
+         * @return ガス情報のみ 0 に補正した状態
+         */
+        private MeterReadingResultState withZeroGasInfo() {
+<span class="fc" id="L520">            return new MeterReadingResultState(</span>
+                    znkiKnkkInf,
+                    skinKnkkInf,
+                    new GasRknKsnInf(
+<span class="fc" id="L524">                            gasRknKsnInf.kokiRkksYmd(),</span>
+<span class="fc" id="L525">                            gasRknKsnInf.jkarSuKnzgGasSyry(),</span>
+                            DEFAULT_GAS_USAGE,
+<span class="fc" id="L527">                            gasRknKsnInf.tsmJkarSuKnzgGasSyry(),</span>
+                            DEFAULT_USAGE_DAYS,
+<span class="fc" id="L529">                            gasRknKsnInf.kkyCushDdsu(),</span>
+<span class="fc" id="L530">                            gasRknKsnInf.tksuSvkyNo(),</span>
+<span class="fc" id="L531">                            gasRknKsnInf.sghsFkumFlg()),</span>
+                    kyuMtrInf);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

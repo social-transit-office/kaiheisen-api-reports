@@ -1,0 +1,2205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreOpeningInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-preopeninginfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">PreOpeningInfoAcquisitionImpl.java</span></div><h1>PreOpeningInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.domain.shared.time.YearMonth;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gasmtrd.GasmtrdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmkskkd.GmkskkdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kbagmst.KbagmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mtrgrpd.MtrgrpdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tkssvky.TkssvkyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.tskgmst.TskgmstRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.taksmtr.TaksmtrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.ncis.tatemon.TatemonRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.CustomerInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.DedicatedMeterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.DedicatedMeterInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.PipelineRetailContractInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.PipelineRetailContractInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoAtOpeningDateAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.ContractInfoAtOpeningDateAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreOpeningInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreOpeningInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreviousResidentContractInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.PreviousResidentContractInfoAcquisitionOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.CstMtInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.DktksryInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GasmtrdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmkskkdSwMiKryInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.GmtsetdKsenSaymdOgaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KbagmstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KiycstdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.KnsKkaKsenInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningCstGetHsenjInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningDknKurKiyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdKsenSaymdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningGmtsetdSystemDateInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningItensakInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKiycstkInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningKkytskrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningMnzkiyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningMtgInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSihakyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSnyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvckyaKiyKtymInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvmstkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvmstkrYukuMchInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningSvsihkrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTaksmtrKtrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTatemonInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTkssvkyInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreOpeningTskgmstInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TaksmtrHntrKrkykInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.reading.MeterReadingInfoAcquisitionForOpeningOutput;
+
+/**
+ * 概要: 開栓前情報取得サービス実装。
+ * 主な仕様:
+ * - 設計書 SV-163 の主経路に沿って、開栓前参照情報・契約情報・待ち情報・検針関連情報を集約して返却する。
+ * 既知の制約:
+ * - 託送メーター情報は専用の下位 SV が無いため、本 SV 内で DA 直参照して補完する。
+ */
+public final class PreOpeningInfoAcquisitionImpl implements PreOpeningInfoAcquisition {
+
+    /** 開栓後扱いで顧客情報取得を行う際の区分コード。 */
+    private static final String AFTER_OPENING_KBN = &quot;2&quot;;
+
+    /** 託送メーター情報が複数件ある場合に優先採用する並び順。 */
+<span class="fc" id="L101">    private static final Comparator&lt;TaksmtrRecord&gt; TAKSMTR_PRIORITY_ORDER =</span>
+<span class="fc" id="L102">        Comparator.comparing(</span>
+<span class="fc" id="L103">                        TaksmtrRecord::recUpdYmd, Comparator.nullsFirst(Comparator.naturalOrder()))</span>
+<span class="fc" id="L104">                .thenComparing(</span>
+<span class="fc" id="L105">                        TaksmtrRecord::recUpdJnjNo, Comparator.nullsFirst(Comparator.naturalOrder()))</span>
+<span class="fc" id="L106">                .thenComparing(</span>
+                        TaksmtrRecord::taksSyriYmd,
+<span class="fc" id="L108">                        Comparator.nullsFirst(Comparator.naturalOrder()))</span>
+<span class="fc" id="L109">                .thenComparing(</span>
+                        TaksmtrRecord::taksStartYmd,
+<span class="fc" id="L111">                        Comparator.nullsFirst(Comparator.naturalOrder()))</span>
+<span class="fc" id="L112">                .thenComparing(TaksmtrRecord::takskyNo, Comparator.nullsFirst(String::compareTo))</span>
+<span class="fc" id="L113">                .thenComparing(TaksmtrRecord::hkkmItiNo, Comparator.nullsFirst(Integer::compareTo));</span>
+
+    /** ガスメーター情報を参照する DA。 */
+    private final GasmtrdDataAccess gasmtrdDataAccess;
+
+    /** ガスメーター設置場所情報を参照する DA。 */
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    /** 建物情報を参照する DA。 */
+    private final TatemonDataAccess tatemonDataAccess;
+
+    /** 開閉栓番号グループ情報を参照する DA。 */
+    private final KbagmstDataAccess kbagmstDataAccess;
+
+    /** メーターグループ情報を参照する DA。 */
+    private final MtrgrpdDataAccess mtrgrpdDataAccess;
+
+    /** 託送契約関連情報を参照する DA。 */
+    private final TskgmstDataAccess tskgmstDataAccess;
+
+    /** 託送サービス契約情報を参照する DA。 */
+    private final TkssvkyDataAccess tkssvkyDataAccess;
+
+    /** サービス契約メーター設置場所関連情報を参照する DA。 */
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    /** サービス契約情報を参照する DA。 */
+    private final SvckyaDataAccess svckyaDataAccess;
+
+    /** ガスメーター検針結果情報を参照する DA。 */
+    private final GmkskkdDataAccess gmkskkdDataAccess;
+
+    /** 導管託送使用量情報を参照する DA。 */
+    private final DktksryDataAccess dktksryDataAccess;
+
+    /** 供給停止管理情報を参照する DA。 */
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+    /** 託送メーター情報を参照する DA。 */
+    private final TaksmtrDataAccess taksmtrDataAccess;
+
+    /** 開栓日時点の契約情報を取得する下位 SV。 */
+    private final ContractInfoAtOpeningDateAcquisition contractInfoAtOpeningDateAcquisition;
+
+    /** 前居住者の契約情報を取得する下位 SV。 */
+    private final PreviousResidentContractInfoAcquisition previousResidentContractInfoAcquisition;
+
+    /** 顧客情報を取得する下位 SV。 */
+    private final CustomerInfoAcquisition customerInfoAcquisition;
+
+    /** 専用メーター情報を取得する下位 SV。 */
+    private final DedicatedMeterInfoAcquisition dedicatedMeterInfoAcquisition;
+
+    /** 導管小売契約情報を取得する下位 SV。 */
+    private final PipelineRetailContractInfoAcquisition pipelineRetailContractInfoAcquisition;
+
+    /** 開栓向け検針情報を取得する下位 SV。 */
+    private final MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening;
+
+    /** 実行時のシステム日時などを保持するリクエスト文脈。 */
+    private final RequestContext requestContext;
+
+    /** 東京ガス小売を表す定数値。 */
+    private final String tgRetailCategory;
+
+    /** 無効な託送契約関連状態を表す定数値。 */
+    private final String invalidTransportServiceContractRelatedStatus;
+
+    /** 有効な託送サービス契約状態を表す定数値。 */
+    private final String activeTransportServiceContractStatus;
+
+    /** 契約中または終了済みとして扱う託送サービス契約状態一覧。 */
+    private final List&lt;String&gt; activeOrEndedTransportServiceContractStatuses;
+
+    /** 有効待ちを表す関連状態コード。 */
+    private final String relatedValidWaitingStatus;
+
+    /** サービス契約申込待ちを表す状態コード。 */
+    private final String serviceContractApplyWaitingStatus;
+
+    /** 検針業者保有メーターを表す定数値。 */
+    private final String kngmStbMeterOwningStatus;
+
+    /** 親メーターを表すガスメーター状態コード。 */
+    private final String originalGasMeterStatus;
+
+    /** 子メーターを表すガスメーター状態コード。 */
+    private final String dedicatedGasMeterStatus;
+
+    /** 切替検針として扱う検針事由コード一覧。 */
+    private final List&lt;String&gt; switchingReadingReasons;
+
+    /** 開栓済みガスメーター状態コード。 */
+    private final String gasMeterOpeningStatus;
+
+    /** 本登録または仮閉栓として扱う託送メーター状態一覧。 */
+    private final List&lt;String&gt; mainOrTemporaryClosureTaksmtrStatuses;
+
+    /** 仮登録の託送メーター状態コード。 */
+    private final String temporaryRegistrationTaksmtrStatus;
+
+    /**
+     * 概要: 開栓前情報取得サービスの依存関係と定数を初期化する。
+     * 主な仕様: DA・下位 SV・RequestContext を保持し、共通定数サービスから判定用コード値を解決して以降の処理で再利用する。
+     * 既知の制約: 依存引数の null は許容せず、必要定数が取得できない場合はコンストラクタ内で失敗する。
+     */
+    public PreOpeningInfoAcquisitionImpl(
+                        GasmtrdDataAccess gasmtrdDataAccess,
+                        GmtsetdDataAccess gmtsetdDataAccess,
+                        TatemonDataAccess tatemonDataAccess,
+                        KbagmstDataAccess kbagmstDataAccess,
+                        MtrgrpdDataAccess mtrgrpdDataAccess,
+                        TskgmstDataAccess tskgmstDataAccess,
+                        TkssvkyDataAccess tkssvkyDataAccess,
+                        SvmstkrDataAccess svmstkrDataAccess,
+                        SvckyaDataAccess svckyaDataAccess,
+                        GmkskkdDataAccess gmkskkdDataAccess,
+                        DktksryDataAccess dktksryDataAccess,
+                        KkytskrDataAccess kkytskrDataAccess,
+                        TaksmtrDataAccess taksmtrDataAccess,
+                        ContractInfoAtOpeningDateAcquisition contractInfoAtOpeningDateAcquisition,
+                        PreviousResidentContractInfoAcquisition previousResidentContractInfoAcquisition,
+                        CustomerInfoAcquisition customerInfoAcquisition,
+                        DedicatedMeterInfoAcquisition dedicatedMeterInfoAcquisition,
+                        PipelineRetailContractInfoAcquisition pipelineRetailContractInfoAcquisition,
+                        MeterReadingInfoAcquisitionForOpening meterReadingInfoAcquisitionForOpening,
+                        RequestContext requestContext,
+                        KaiheisenConstantService kaiheisenConstantService,
+<span class="fc" id="L241">                        CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L242">        this.gasmtrdDataAccess = Objects.requireNonNull(gasmtrdDataAccess, &quot;gasmtrdDataAccess&quot;);</span>
+<span class="fc" id="L243">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L244">        this.tatemonDataAccess = Objects.requireNonNull(tatemonDataAccess, &quot;tatemonDataAccess&quot;);</span>
+<span class="fc" id="L245">        this.kbagmstDataAccess = Objects.requireNonNull(kbagmstDataAccess, &quot;kbagmstDataAccess&quot;);</span>
+<span class="fc" id="L246">        this.mtrgrpdDataAccess = Objects.requireNonNull(mtrgrpdDataAccess, &quot;mtrgrpdDataAccess&quot;);</span>
+<span class="fc" id="L247">        this.tskgmstDataAccess = Objects.requireNonNull(tskgmstDataAccess, &quot;tskgmstDataAccess&quot;);</span>
+<span class="fc" id="L248">        this.tkssvkyDataAccess = Objects.requireNonNull(tkssvkyDataAccess, &quot;tkssvkyDataAccess&quot;);</span>
+<span class="fc" id="L249">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L250">        this.svckyaDataAccess = Objects.requireNonNull(svckyaDataAccess, &quot;svckyaDataAccess&quot;);</span>
+<span class="fc" id="L251">        this.gmkskkdDataAccess = Objects.requireNonNull(gmkskkdDataAccess, &quot;gmkskkdDataAccess&quot;);</span>
+<span class="fc" id="L252">        this.dktksryDataAccess = Objects.requireNonNull(dktksryDataAccess, &quot;dktksryDataAccess&quot;);</span>
+<span class="fc" id="L253">        this.kkytskrDataAccess = Objects.requireNonNull(kkytskrDataAccess, &quot;kkytskrDataAccess&quot;);</span>
+<span class="fc" id="L254">        this.taksmtrDataAccess = Objects.requireNonNull(taksmtrDataAccess, &quot;taksmtrDataAccess&quot;);</span>
+<span class="fc" id="L255">        this.contractInfoAtOpeningDateAcquisition =</span>
+<span class="fc" id="L256">                Objects.requireNonNull(</span>
+                        contractInfoAtOpeningDateAcquisition, &quot;contractInfoAtOpeningDateAcquisition&quot;);
+<span class="fc" id="L258">        this.previousResidentContractInfoAcquisition =</span>
+<span class="fc" id="L259">                Objects.requireNonNull(</span>
+                        previousResidentContractInfoAcquisition, &quot;previousResidentContractInfoAcquisition&quot;);
+<span class="fc" id="L261">        this.customerInfoAcquisition =</span>
+<span class="fc" id="L262">                Objects.requireNonNull(customerInfoAcquisition, &quot;customerInfoAcquisition&quot;);</span>
+<span class="fc" id="L263">        this.dedicatedMeterInfoAcquisition =</span>
+<span class="fc" id="L264">                Objects.requireNonNull(</span>
+                        dedicatedMeterInfoAcquisition, &quot;dedicatedMeterInfoAcquisition&quot;);
+<span class="fc" id="L266">        this.pipelineRetailContractInfoAcquisition =</span>
+<span class="fc" id="L267">                Objects.requireNonNull(</span>
+                        pipelineRetailContractInfoAcquisition, &quot;pipelineRetailContractInfoAcquisition&quot;);
+<span class="fc" id="L269">        this.meterReadingInfoAcquisitionForOpening =</span>
+<span class="fc" id="L270">                Objects.requireNonNull(</span>
+                        meterReadingInfoAcquisitionForOpening, &quot;meterReadingInfoAcquisitionForOpening&quot;);
+<span class="fc" id="L272">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+
+<span class="fc" id="L274">        KaiheisenConstantService resolvedKaiheisenConstantService =</span>
+<span class="fc" id="L275">                Objects.requireNonNull(kaiheisenConstantService, &quot;kaiheisenConstantService&quot;);</span>
+<span class="fc" id="L276">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L277">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L278">        this.tgRetailCategory =</span>
+<span class="fc" id="L279">                RequiredConstantResolver.requireKaiheisenConstant(</span>
+                        resolvedKaiheisenConstantService,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TYPE,
+                        ConstantLookupKeys.Kaiheisen.TgAndOtherRetailCategories.TG_RETAIL);
+<span class="fc" id="L283">        this.invalidTransportServiceContractRelatedStatus =</span>
+<span class="fc" id="L284">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractRelatedStatus.INVALID);
+<span class="fc" id="L288">        this.activeTransportServiceContractStatus =</span>
+<span class="fc" id="L289">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.TransportationServiceContractStatus.UNDER_CONTRACT);
+<span class="fc" id="L293">        this.activeOrEndedTransportServiceContractStatuses =</span>
+<span class="fc" id="L294">                List.of(</span>
+                        activeTransportServiceContractStatus,
+<span class="fc" id="L296">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.TYPE,
+                                ConstantLookupKeys.Cirius.TransportationServiceContractStatus.END_OF_CONTRACT));
+<span class="fc" id="L300">        this.relatedValidWaitingStatus =</span>
+<span class="fc" id="L301">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_01);
+<span class="fc" id="L305">        this.serviceContractApplyWaitingStatus =</span>
+<span class="fc" id="L306">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ServiceContractStatus.WAITING_FOR_CONTRACT_APPLICATION);
+<span class="fc" id="L310">        this.kngmStbMeterOwningStatus =</span>
+<span class="fc" id="L311">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.TYPE,
+                        ConstantLookupKeys.Cirius.ServicePipeGasMeterEquipmentStatus.METER_POSSESSION_STATUS);
+<span class="fc" id="L315">        this.originalGasMeterStatus =</span>
+<span class="fc" id="L316">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L320">        this.dedicatedGasMeterStatus =</span>
+<span class="fc" id="L321">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                        ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L325">        this.switchingReadingReasons =</span>
+<span class="fc" id="L326">                List.of(</span>
+<span class="fc" id="L327">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.REGULAR_SW_START),
+<span class="fc" id="L331">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TYPE,
+                                ConstantLookupKeys.Cirius.ReasonTypeForCreatingMeterReadingResults.TEMPORARY_SW_START));
+<span class="fc" id="L335">        this.gasMeterOpeningStatus =</span>
+<span class="fc" id="L336">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.TYPE,
+                        ConstantLookupKeys.Cirius.GasMeterOpenCloseValveStatus.OPENING);
+<span class="fc" id="L340">        this.mainOrTemporaryClosureTaksmtrStatuses =</span>
+<span class="fc" id="L341">                List.of(</span>
+<span class="fc" id="L342">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.BOOK_REGISTRATION),
+<span class="fc" id="L346">                        RequiredConstantResolver.requireCiriusConstant(</span>
+                                resolvedCiriusConstantService,
+                                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                                ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.PROVISIONAL_CANCELLATION));
+<span class="fc" id="L350">        this.temporaryRegistrationTaksmtrStatus =</span>
+<span class="fc" id="L351">                RequiredConstantResolver.requireCiriusConstant(</span>
+                        resolvedCiriusConstantService,
+                        ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TYPE,
+                        ConstantLookupKeys.Cirius.ConsignmentContractStatusCode.TEMPORARY_REGISTRATION);
+<span class="fc" id="L355">    }</span>
+
+    /**
+     * 概要: 開栓報告前に必要な情報を取得する。
+     * 主な仕様: SV-163 の設計書に従い、ガスメーター設置場所番号の解決後にシステム日時点と開栓作業日時点の情報を組み合わせて返却値を構成する。
+     * 既知の制約: RequestContext では systemDatetime のみを必須値として利用し、他の文脈値は本 SV の public execute では直接参照しない。
+     *
+     * @param gmb ガスメーター社番
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param kasgYmd 開栓作業年月日
+     * @param kasJysb 開栓事由種別
+     * @param tgTkurKbn 東京ガス小売区分
+     * @param gmtShjSu ガスメーター指示数
+     * @return 開栓前情報取得結果
+     */
+    @Override
+    public PreOpeningInfoAcquisitionOutput execute(
+        final String gmb,
+        final Long gasMtstNo,
+        final LocalDate kasgYmd,
+        final String kasJysb,
+        final String tgTkurKbn,
+        final Long gmtShjSu) {
+<span class="fc" id="L378">        LocalDateTime systemDatetime = requireSystemDatetime();</span>
+<span class="fc" id="L379">        LocalDate systemDate = systemDatetime.toLocalDate();</span>
+<span class="fc" id="L380">        Long resolvedGasMtstNo = resolveGasMtstNo(gmb, gasMtstNo);</span>
+
+<span class="fc" id="L382">        GmtsetdRecord systemDateGmtsetd =</span>
+                gmtsetdDataAccess
+<span class="fc" id="L384">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(resolvedGasMtstNo, systemDate)</span>
+<span class="fc" id="L385">                        .orElse(null);</span>
+<span class="fc" id="L386">        GmtsetdRecord openingDateGmtsetd =</span>
+                gmtsetdDataAccess
+<span class="fc" id="L388">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(resolvedGasMtstNo, kasgYmd)</span>
+<span class="fc" id="L389">                        .orElse(null);</span>
+        GmtsetdRecord previousGenerationGmtsetd =
+<span class="fc bfc" id="L391" title="All 2 branches covered.">                openingDateGmtsetd == null</span>
+<span class="fc" id="L392">                        ? null</span>
+                        : gmtsetdDataAccess
+<span class="fc" id="L394">                                .findByGasMtstNoAndTkysYmd(resolvedGasMtstNo, openingDateGmtsetd.tkysYmd())</span>
+<span class="fc" id="L395">                                .orElse(null);</span>
+        TatemonRecord tatemonRecord =
+<span class="fc bfc" id="L397" title="All 4 branches covered.">                systemDateGmtsetd == null || !hasText(systemDateGmtsetd.bldNo())</span>
+<span class="fc" id="L398">                        ? null</span>
+<span class="fc" id="L399">                        : tatemonDataAccess.findByBldNo(systemDateGmtsetd.bldNo()).orElse(null);</span>
+
+<span class="fc" id="L401">        GasmtrdRecord gasmtrdRecord = null;</span>
+<span class="fc" id="L402">        KbagmstRecord kbagmstRecord = null;</span>
+<span class="fc" id="L403">        TskgmstRecord tskgmstRecord = null;</span>
+<span class="fc" id="L404">        TkssvkyRecord tkssvkyRecord = null;</span>
+<span class="fc" id="L405">        PreOpeningKiyInf kiyInf = null;</span>
+<span class="fc" id="L406">        PreOpeningCstGetHsenjInf cstGetHsenjInf = null;</span>
+<span class="fc" id="L407">        PreOpeningSvmstkrYukuMchInf svmstkrYukuMchInf = null;</span>
+<span class="fc" id="L408">        PreOpeningSvckyaKiyKtymInf svckyaKiyKtymInf = null;</span>
+<span class="fc" id="L409">        KnsKkaKsenInf knsKkaKsenInf = null;</span>
+<span class="fc" id="L410">        Long kktGmtShjSu = null;</span>
+<span class="fc" id="L411">        GmkskkdSwMiKryInf gmkskkdSwMiKryInf = null;</span>
+<span class="fc" id="L412">        DktksryInf dktksryInf = null;</span>
+<span class="fc" id="L413">        PreOpeningKkytskrInf kkytskrInf = null;</span>
+<span class="fc" id="L414">        TaksmtrHntrKrkykInf taksmtrHntrKrkykInf = null;</span>
+<span class="fc" id="L415">        PreOpeningTaksmtrKtrInf taksmtrKtrInf = null;</span>
+<span class="fc" id="L416">        PreOpeningMtgInf mtgInf = null;</span>
+<span class="fc" id="L417">        List&lt;PreOpeningSnyInf&gt; snyInfList = null;</span>
+<span class="fc" id="L418">        PreOpeningSvsihkrInf svsihkrInf = null;</span>
+<span class="fc" id="L419">        Boolean itensakUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L420">        Boolean ksenYmdTskgmstUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L421">        Boolean ksenYmdTkssvkyUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L422">        Boolean sknrUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L423">        Boolean ksenYmdSvmstkrUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L424">        Boolean svckyaMchUmuFlg = Boolean.FALSE;</span>
+<span class="fc" id="L425">        Boolean swKnsUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L426">        Boolean kkytskrUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L427">        Boolean taksmtrHntrUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L428">        Boolean taksmtrKtrUmFlg = Boolean.FALSE;</span>
+
+<span class="fc bfc" id="L430" title="All 2 branches covered.">        if (systemDateGmtsetd != null) {</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">            if (openingDateGmtsetd != null) {</span>
+<span class="fc" id="L432">                gasmtrdRecord =</span>
+<span class="fc" id="L433">                        findUnremovedGasmtrdByTtkGmsbNo(openingDateGmtsetd.gasMtstNo());</span>
+<span class="fc" id="L434">                kbagmstRecord =</span>
+                        kbagmstDataAccess
+<span class="fc" id="L436">                                .findByGasMtstNoAndTkysYmAndTyenYm(</span>
+<span class="fc" id="L437">                                        openingDateGmtsetd.gasMtstNo(),</span>
+<span class="fc" id="L438">                                        YearMonth.of(kasgYmd.getYear(), kasgYmd.getMonthValue()))</span>
+<span class="fc" id="L439">                                .orElse(null);</span>
+<span class="fc" id="L440">                tskgmstRecord =</span>
+                        tskgmstDataAccess
+<span class="fc" id="L442">                                .findByGasMtstNoAndTkysYmdAndTksuSvkkJtkb(</span>
+<span class="fc" id="L443">                                        openingDateGmtsetd.gasMtstNo(),</span>
+                                        kasgYmd,
+                                        invalidTransportServiceContractRelatedStatus)
+<span class="fc" id="L446">                                .orElse(null);</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">                ksenYmdTskgmstUmFlg = tskgmstRecord != null;</span>
+
+<span class="fc bfc" id="L449" title="All 2 branches covered.">                if (tskgmstRecord != null) {</span>
+<span class="fc" id="L450">                    Long tksuSvkyNo = tskgmstRecord.tksuSvkyNo();</span>
+<span class="fc" id="L451">                    List&lt;TkssvkyRecord&gt; activeTkssvkyRecords =</span>
+<span class="fc" id="L452">                            tkssvkyDataAccess.findAllByTksuSvkyNoAndKnskKjnYmdAndTksuSvkyJtkb(</span>
+                                    tksuSvkyNo, kasgYmd, activeTransportServiceContractStatus);
+<span class="fc bfc" id="L454" title="All 2 branches covered.">                    if (activeTkssvkyRecords.size() == 1) {</span>
+<span class="fc" id="L455">                        tkssvkyRecord = activeTkssvkyRecords.getFirst();</span>
+<span class="fc" id="L456">                        ksenYmdTkssvkyUmFlg = Boolean.TRUE;</span>
+<span class="fc" id="L457">                        ContractInfoAtOpeningDateAcquisitionOutput contractOutput =</span>
+<span class="fc" id="L458">                                contractInfoAtOpeningDateAcquisition.execute(</span>
+<span class="fc" id="L459">                                        openingDateGmtsetd.gasMtstNo(),</span>
+                                        kasgYmd,
+<span class="fc" id="L461">                                        tkssvkyRecord.tksuKijsCd(),</span>
+<span class="fc" id="L462">                                        openingDateGmtsetd.ckrtGmscJtkb(),</span>
+                                        kasJysb);
+<span class="fc bfc" id="L464" title="All 2 branches covered.">                        if (contractOutput != null) {</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">                            if (isEmptyContractInfoAtOpeningOutput(contractOutput)) {</span>
+<span class="fc" id="L466">                                kiyInf =</span>
+                                        new PreOpeningKiyInf(
+<span class="fc" id="L468">                                                emptyPreOpeningSvmstkrInf(),</span>
+<span class="fc" id="L469">                                                emptyPreOpeningSvckyaInf(),</span>
+<span class="fc" id="L470">                                                emptyPreOpeningItensakInf(),</span>
+<span class="fc" id="L471">                                                emptyPreOpeningSvsihkrInf(),</span>
+<span class="fc" id="L472">                                                emptyPreOpeningSihakyInf(),</span>
+                                                Boolean.FALSE,
+                                                null,
+<span class="fc" id="L475">                                                Boolean.TRUE.equals(contractOutput.snyTkmtFlg()),</span>
+<span class="fc" id="L476">                                                emptyPreOpeningMnzkiyInf());</span>
+<span class="fc" id="L477">                                svsihkrInf = emptyPreOpeningSvsihkrInf();</span>
+<span class="fc" id="L478">                                itensakUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L479">                                ksenYmdSvmstkrUmFlg = Boolean.FALSE;</span>
+                            } else {
+<span class="nc" id="L481">                                kiyInf =</span>
+                                        new PreOpeningKiyInf(
+<span class="nc" id="L483">                                                toOpeningSvmstkrInf(contractOutput.svmstkrInf()),</span>
+<span class="nc" id="L484">                                                toOpeningSvckyaInf(contractOutput.svckyaInf()),</span>
+<span class="nc" id="L485">                                                toOpeningItensakInf(contractOutput.itensakInf()),</span>
+<span class="nc" id="L486">                                                toOpeningSvsihkrInf(contractOutput.svsihkrInf()),</span>
+<span class="nc" id="L487">                                                toOpeningSihakyInf(contractOutput.sihakyInf()),</span>
+<span class="nc" id="L488">                                                contractOutput.suguHtkFlg(),</span>
+<span class="nc" id="L489">                                                contractOutput.kzksyAtkCd(),</span>
+<span class="nc" id="L490">                                                Boolean.TRUE.equals(contractOutput.snyTkmtFlg()),</span>
+<span class="nc" id="L491">                                                emptyPreOpeningMnzkiyInf());</span>
+<span class="nc" id="L492">                                svsihkrInf = toOpeningSvsihkrInf(contractOutput.svsihkrInf());</span>
+<span class="nc" id="L493">                                itensakUmFlg = contractOutput.itensakUmFlg();</span>
+<span class="nc" id="L494">                                ksenYmdSvmstkrUmFlg = Boolean.TRUE;</span>
+                            }
+                        }
+<span class="fc" id="L497">                    } else {</span>
+<span class="fc" id="L498">                        tkssvkyRecord = findSingleCurrentOrEndedTkssvkyRecord(tksuSvkyNo, kasgYmd);</span>
+<span class="fc" id="L499">                        ksenYmdTkssvkyUmFlg = Boolean.TRUE;</span>
+<span class="fc" id="L500">                        PreviousResidentContractInfoAcquisitionOutput previousResidentOutput =</span>
+<span class="fc" id="L501">                                previousResidentContractInfoAcquisition.execute(</span>
+<span class="fc" id="L502">                                        openingDateGmtsetd.gasMtstNo(),</span>
+                                        kasgYmd,
+<span class="fc" id="L504">                                        tkssvkyRecord.tksuKijsCd(),</span>
+<span class="fc" id="L505">                                        openingDateGmtsetd.ckrtGmscJtkb(),</span>
+                                        kasJysb);
+<span class="fc bfc" id="L507" title="All 2 branches covered.">                        if (previousResidentOutput != null) {</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">                            if (isEmptyPreviousResidentContractInfoOutput(previousResidentOutput)) {</span>
+<span class="fc" id="L509">                                kiyInf =</span>
+                                        new PreOpeningKiyInf(
+<span class="fc" id="L511">                                                emptyPreOpeningSvmstkrInf(),</span>
+<span class="fc" id="L512">                                                emptyPreOpeningSvckyaInf(),</span>
+<span class="fc" id="L513">                                                emptyPreOpeningItensakInf(),</span>
+<span class="fc" id="L514">                                                emptyPreOpeningSvsihkrInf(),</span>
+<span class="fc" id="L515">                                                emptyPreOpeningSihakyInf(),</span>
+                                                Boolean.FALSE,
+                                                null,
+<span class="fc" id="L518">                                                Boolean.TRUE.equals(previousResidentOutput.snyTkmtFlg()),</span>
+<span class="fc" id="L519">                                                emptyPreOpeningMnzkiyInf());</span>
+<span class="fc" id="L520">                                svsihkrInf = emptyPreOpeningSvsihkrInf();</span>
+<span class="fc" id="L521">                                itensakUmFlg = Boolean.FALSE;</span>
+<span class="fc" id="L522">                                ksenYmdSvmstkrUmFlg = Boolean.FALSE;</span>
+                            } else {
+<span class="fc" id="L524">                                kiyInf =</span>
+                                        new PreOpeningKiyInf(
+<span class="fc" id="L526">                                                toOpeningSvmstkrInf(previousResidentOutput.svmstkrInf()),</span>
+<span class="fc" id="L527">                                                toOpeningSvckyaInf(previousResidentOutput.svckyaKsenSaymdInf()),</span>
+<span class="fc" id="L528">                                                toOpeningItensakInf(previousResidentOutput.itensakInf()),</span>
+<span class="fc" id="L529">                                                toOpeningSvsihkrInf(previousResidentOutput.svsihkrInf()),</span>
+<span class="fc" id="L530">                                                toOpeningSihakyInf(previousResidentOutput.sihakyInf()),</span>
+<span class="fc" id="L531">                                                previousResidentOutput.suguHtkFlg(),</span>
+<span class="fc" id="L532">                                                previousResidentOutput.kzksyAtkCd(),</span>
+<span class="fc" id="L533">                                                Boolean.TRUE.equals(previousResidentOutput.snyTkmtFlg()),</span>
+<span class="fc" id="L534">                                                toPreOpeningMnzkiyInf(previousResidentOutput.mnzkiyInf()));</span>
+<span class="fc" id="L535">                                svsihkrInf = toOpeningSvsihkrInf(previousResidentOutput.svsihkrInf());</span>
+<span class="fc" id="L536">                                itensakUmFlg = previousResidentOutput.itensakUmFlg();</span>
+<span class="fc" id="L537">                                ksenYmdSvmstkrUmFlg = Boolean.TRUE;</span>
+                            }
+                        }
+                    }
+
+<span class="pc bpc" id="L542" title="2 of 4 branches missed.">                    if (tkssvkyRecord != null &amp;&amp; tkssvkyRecord.syoKyoTrno() != null) {</span>
+<span class="fc" id="L543">                        CustomerInfoAcquisitionOutput customerInfoOutput =</span>
+<span class="fc" id="L544">                                customerInfoAcquisition.execute(</span>
+<span class="fc" id="L545">                                        tkssvkyRecord.syoKyoTrno(), tgTkurKbn, AFTER_OPENING_KBN);</span>
+<span class="fc" id="L546">                        cstGetHsenjInf = toCstGetHsenjInf(customerInfoOutput);</span>
+                    }
+                }
+            }
+
+<span class="fc bfc" id="L551" title="All 2 branches covered.">            if (isTokyoGasRetail(tgTkurKbn)) {</span>
+<span class="fc" id="L552">                SvmstkrRecord relatedWaitingRecord =</span>
+                        svmstkrDataAccess
+<span class="fc" id="L554">                                .findByMtstNoAndRkkiKnrnJtkb(</span>
+<span class="fc" id="L555">                                        systemDateGmtsetd.gasMtstNo(), relatedValidWaitingStatus)</span>
+<span class="fc" id="L556">                                .orElse(null);</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">                if (relatedWaitingRecord != null) {</span>
+<span class="fc" id="L558">                    svmstkrYukuMchInf = toSvmstkrYukuMchInf(relatedWaitingRecord);</span>
+<span class="fc bfc" id="L559" title="All 2 branches covered.">                    if (Boolean.TRUE.equals(relatedWaitingRecord.sknrFlg())) {</span>
+<span class="fc" id="L560">                        sknrUmFlg = Boolean.TRUE;</span>
+<span class="fc" id="L561">                        List&lt;SvckyaRecord&gt; waitingContracts =</span>
+<span class="fc" id="L562">                                svckyaDataAccess.findAllBySvkyNoAndSvkyJtkb(</span>
+<span class="fc" id="L563">                                        relatedWaitingRecord.svkyNo(), serviceContractApplyWaitingStatus);</span>
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">                        if (waitingContracts.size() == 1) {</span>
+<span class="fc" id="L565">                            svckyaKiyKtymInf = toSvckyaKiyKtymInf(waitingContracts.getFirst());</span>
+<span class="fc" id="L566">                            svckyaMchUmuFlg = Boolean.TRUE;</span>
+                        }
+                    }
+                }
+            }
+
+<span class="fc bfc" id="L572" title="All 2 branches covered.">            if (openingDateGmtsetd != null</span>
+<span class="fc bfc" id="L573" title="All 2 branches covered.">                    &amp;&amp; kngmStbMeterOwningStatus.equals(openingDateGmtsetd.kngmStbJtkb())) {</span>
+<span class="fc" id="L574">                MeterReadingInfoAcquisitionForOpeningOutput meterReadingOutput =</span>
+<span class="fc" id="L575">                        meterReadingInfoAcquisitionForOpening.execute(openingDateGmtsetd.gasMtstNo());</span>
+<span class="fc bfc" id="L576" title="All 2 branches covered.">                if (meterReadingOutput != null) {</span>
+<span class="fc" id="L577">                    knsKkaKsenInf =</span>
+                            new KnsKkaKsenInf(
+<span class="fc" id="L579">                                    meterReadingOutput.knsYmd(),</span>
+<span class="fc" id="L580">                                    meterReadingOutput.gmtShjSu(),</span>
+<span class="fc" id="L581">                                    meterReadingOutput.ksenHkkKnuKigenYmd());</span>
+<span class="fc" id="L582">                    kktGmtShjSu =</span>
+<span class="fc" id="L583">                            determineConfirmedMeterInstructionCount(gmtShjSu, meterReadingOutput.gmtShjSu());</span>
+<span class="fc" id="L584">                    gmkskkdSwMiKryInf =</span>
+<span class="fc" id="L585">                            Optional.ofNullable(</span>
+<span class="fc" id="L586">                                            findSingleSwitchingReadingRecord(</span>
+<span class="fc" id="L587">                                                    openingDateGmtsetd.gasMtstNo(),</span>
+<span class="fc" id="L588">                                                    meterReadingOutput.knsYmd(),</span>
+                                                    kasgYmd))
+<span class="fc" id="L590">                                    .map(PreOpeningInfoAcquisitionImpl::toGmkskkdSwMiKryInf)</span>
+<span class="fc" id="L591">                                    .orElse(null);</span>
+<span class="fc bfc" id="L592" title="All 2 branches covered.">                    swKnsUmFlg = gmkskkdSwMiKryInf != null;</span>
+                }
+
+                dktksryInf =
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">                        openingDateGmtsetd.hesnYmd() == null</span>
+<span class="fc" id="L597">                                ? null</span>
+                                : dktksryDataAccess
+<span class="nc" id="L599">                                        .findByGasMtstNoAndKnsYmd(</span>
+<span class="nc" id="L600">                                                openingDateGmtsetd.gasMtstNo(), openingDateGmtsetd.hesnYmd())</span>
+<span class="nc" id="L601">                                        .map(PreOpeningInfoAcquisitionImpl::toDktksryInf)</span>
+<span class="pc" id="L602">                                        .orElse(null);</span>
+<span class="fc" id="L603">                kkytskrInf =</span>
+                        kkytskrDataAccess
+<span class="fc" id="L605">                                .findByGasMtstNo(openingDateGmtsetd.gasMtstNo())</span>
+<span class="fc" id="L606">                                .map(PreOpeningInfoAcquisitionImpl::toKkytskrInf)</span>
+<span class="fc" id="L607">                                .orElse(null);</span>
+<span class="fc bfc" id="L608" title="All 2 branches covered.">                kkytskrUmFlg = kkytskrInf != null;</span>
+
+<span class="fc bfc" id="L610" title="All 2 branches covered.">                if (dedicatedGasMeterStatus.equals(openingDateGmtsetd.ckrtGmscJtkb())) {</span>
+                    GmtsetdRecord originMeterRecord =
+<span class="pc bpc" id="L612" title="1 of 2 branches missed.">                            openingDateGmtsetd.mtgMtstNo() == null</span>
+<span class="nc" id="L613">                                    ? null</span>
+                                    : gmtsetdDataAccess
+<span class="fc" id="L615">                                            .findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+<span class="fc" id="L616">                                                    openingDateGmtsetd.mtgMtstNo(), systemDate)</span>
+<span class="fc" id="L617">                                            .orElse(null);</span>
+<span class="pc bpc" id="L618" title="1 of 2 branches missed.">                    if (originMeterRecord != null</span>
+<span class="fc bfc" id="L619" title="All 2 branches covered.">                            &amp;&amp; gasMeterOpeningStatus.equals(originMeterRecord.gmtKhsJtkb())</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">                            &amp;&amp; originMeterRecord.kasYmd() != null</span>
+<span class="pc bpc" id="L621" title="1 of 2 branches missed.">                            &amp;&amp; kasgYmd.compareTo(originMeterRecord.kasYmd()) &gt;= 0) {</span>
+<span class="fc" id="L622">                        PipelineRetailContractInfoAcquisitionOutput pipelineRetailOutput =</span>
+<span class="fc" id="L623">                                pipelineRetailContractInfoAcquisition.execute(</span>
+<span class="fc" id="L624">                                        originMeterRecord.gasMtstNo(), kasgYmd);</span>
+                        CustomerInfoAcquisitionOutput originCustomerInfoOutput =
+                                pipelineRetailOutput != null
+<span class="fc bfc" id="L627" title="All 2 branches covered.">                                                &amp;&amp; pipelineRetailOutput.tkssvkyInf() != null</span>
+<span class="pc bpc" id="L628" title="1 of 4 branches missed.">                                                &amp;&amp; pipelineRetailOutput.tkssvkyInf().syoKyoTrno() != null</span>
+<span class="fc" id="L629">                                        ? customerInfoAcquisition.execute(</span>
+<span class="fc" id="L630">                                                pipelineRetailOutput.tkssvkyInf().syoKyoTrno(),</span>
+                                                tgTkurKbn,
+                                                AFTER_OPENING_KBN)
+<span class="fc" id="L633">                                        : null;</span>
+<span class="fc" id="L634">                        mtgInf = toMtgInf(originMeterRecord, pipelineRetailOutput, originCustomerInfoOutput);</span>
+                    }
+<span class="fc bfc" id="L636" title="All 2 branches covered.">                } else if (originalGasMeterStatus.equals(openingDateGmtsetd.ckrtGmscJtkb())) {</span>
+<span class="fc" id="L637">                    DedicatedMeterInfoAcquisitionOutput dedicatedMeterOutput =</span>
+<span class="fc" id="L638">                            dedicatedMeterInfoAcquisition.execute(</span>
+<span class="fc" id="L639">                                    openingDateGmtsetd.gasMtstNo(),</span>
+<span class="fc" id="L640">                                    openingDateGmtsetd.szcGkkCd(),</span>
+<span class="fc" id="L641">                                    openingDateGmtsetd.szcMchCd(),</span>
+<span class="fc" id="L642">                                    openingDateGmtsetd.szcCmazCd(),</span>
+                                    kasgYmd,
+<span class="pc bpc" id="L644" title="1 of 2 branches missed.">                                    tkssvkyRecord == null ? null : tkssvkyRecord.tksuKijsCd());</span>
+<span class="fc" id="L645">                    snyInfList = toSnyInfList(dedicatedMeterOutput);</span>
+                }
+
+<span class="fc" id="L648">                List&lt;TaksmtrRecord&gt; mainOrTemporaryClosureTaksmtrRecords =</span>
+<span class="fc" id="L649">                        taksmtrDataAccess.findAllByGmtSetNoAndTaksKyJtCdList(</span>
+<span class="fc" id="L650">                                openingDateGmtsetd.gasMtstNo(), mainOrTemporaryClosureTaksmtrStatuses);</span>
+<span class="fc" id="L651">                TaksmtrRecord mainOrTemporaryClosureTaksmtrRecord =</span>
+<span class="fc" id="L652">                        selectPreferredTaksmtrRecord(mainOrTemporaryClosureTaksmtrRecords);</span>
+<span class="fc bfc" id="L653" title="All 2 branches covered.">                if (mainOrTemporaryClosureTaksmtrRecord != null) {</span>
+<span class="fc" id="L654">                    taksmtrHntrKrkykInf =</span>
+<span class="fc" id="L655">                            toTaksmtrHntrKrkykInf(mainOrTemporaryClosureTaksmtrRecord);</span>
+<span class="fc" id="L656">                    taksmtrHntrUmFlg = Boolean.TRUE;</span>
+                }
+
+<span class="fc" id="L659">                List&lt;TaksmtrRecord&gt; temporaryRegistrationTaksmtrRecords =</span>
+<span class="fc" id="L660">                        taksmtrDataAccess.findAllByGmtSetNoAndTaksKyJtCd(</span>
+<span class="fc" id="L661">                                openingDateGmtsetd.gasMtstNo(), temporaryRegistrationTaksmtrStatus);</span>
+<span class="fc" id="L662">                TaksmtrRecord temporaryRegistrationTaksmtrRecord =</span>
+<span class="fc" id="L663">                        selectPreferredTaksmtrRecord(temporaryRegistrationTaksmtrRecords);</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">                if (temporaryRegistrationTaksmtrRecord != null) {</span>
+<span class="fc" id="L665">                    taksmtrKtrInf = toTaksmtrKtrInf(temporaryRegistrationTaksmtrRecord);</span>
+<span class="fc" id="L666">                    taksmtrKtrUmFlg = Boolean.TRUE;</span>
+                }
+
+            }
+        }
+
+<span class="fc" id="L672">        return new PreOpeningInfoAcquisitionOutput(</span>
+<span class="fc" id="L673">                toGasmtrdInf(gasmtrdRecord),</span>
+<span class="fc" id="L674">                toGmtsetdSystemDateInf(systemDateGmtsetd),</span>
+<span class="fc" id="L675">                toGmtsetdKsenSaymdInf(openingDateGmtsetd),</span>
+<span class="fc" id="L676">                toGmtsetdKsenSaymdOgaInf(previousGenerationGmtsetd),</span>
+<span class="fc" id="L677">                toTatemonInf(tatemonRecord),</span>
+<span class="fc" id="L678">                toKbagmstInf(kbagmstRecord),</span>
+<span class="fc" id="L679">                toTskgmstInf(tskgmstRecord),</span>
+<span class="fc" id="L680">                toTkssvkyInf(tkssvkyRecord),</span>
+<span class="fc bfc" id="L681" title="All 2 branches covered.">                normalizeKiyInf(kiyInf),</span>
+                cstGetHsenjInf,
+                svmstkrYukuMchInf,
+                svckyaKiyKtymInf,
+                knsKkaKsenInf,
+                kktGmtShjSu,
+                gmkskkdSwMiKryInf,
+                dktksryInf,
+                kkytskrInf,
+                taksmtrHntrKrkykInf,
+                taksmtrKtrInf,
+                mtgInf,
+                snyInfList,
+                svsihkrInf,
+<span class="fc bfc" id="L695" title="All 2 branches covered.">                openingDateGmtsetd != null,</span>
+<span class="fc bfc" id="L696" title="All 2 branches covered.">                gasmtrdRecord != null,</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">                tatemonRecord != null,</span>
+<span class="fc" id="L698">                systemDateGmtsetd != null</span>
+                        &amp;&amp; mtrgrpdDataAccess
+<span class="fc" id="L700">                                .findByGasMtstNoAndTkysYmdAndTyenYmd(systemDateGmtsetd.gasMtstNo(), systemDate)</span>
+<span class="pc bpc" id="L701" title="1 of 2 branches missed.">                                .isPresent(),</span>
+                kkytskrUmFlg,
+                ksenYmdTskgmstUmFlg,
+                ksenYmdTkssvkyUmFlg,
+                sknrUmFlg,
+                ksenYmdSvmstkrUmFlg,
+                svckyaMchUmuFlg,
+                swKnsUmFlg,
+                taksmtrHntrUmFlg,
+                taksmtrKtrUmFlg,
+            itensakUmFlg);
+    }
+
+    /**
+     * 概要: 実行対象のガスメーター設置場所番号を解決する。
+     * 主な仕様: 入力の `gasMtstNo` が `null` 以外ならその値を返し、`null` の場合のみ `gmb` から未撤去のメーターを逆引きする。
+     * 既知の制約: `gasMtstNo` が `null` かつ逆引き不成立の場合は `null` のまま返し、後続 DA の前提違反として表出させる。
+     */
+    private Long resolveGasMtstNo(String gmb, Long gasMtstNo) {
+<span class="fc bfc" id="L720" title="All 2 branches covered.">        if (gasMtstNo != null) {</span>
+<span class="fc" id="L721">            return gasMtstNo;</span>
+        }
+<span class="fc" id="L723">        return findUnremovedGasmtrdByGmb(gmb)</span>
+<span class="fc" id="L724">                .map(GasmtrdRecord::ttkGmsbNo)</span>
+<span class="fc" id="L725">                .orElse(gasMtstNo);</span>
+    }
+
+    /**
+     * 概要: ガスメーター設置場所番号から未撤去のガスメーター情報を取得する。
+     * 主な仕様: 未撤去条件で `GASMTRD` を一覧取得し、`gmbTsno` が最大の行を返す。
+     * 既知の制約: 該当なしや撤去済みの場合は `null` を返す。
+     */
+    private GasmtrdRecord findUnremovedGasmtrdByTtkGmsbNo(Long ttkGmsbNo) {
+<span class="fc" id="L734">        return gasmtrdDataAccess.findAllByTtkGmsbNoAndGmtThkgYmd(ttkGmsbNo, null).stream()</span>
+<span class="fc" id="L735">                .max(Comparator.comparingInt(GasmtrdRecord::gmbTsno))</span>
+<span class="fc" id="L736">                .orElse(null);</span>
+    }
+
+    /**
+     * 概要: ガスメーター社番から未撤去のガスメーター情報を取得する。
+     * 主な仕様: 取外年月日 `null` 条件（DA-110-R006）で `GASMTRD` を検索し、未撤去の最新行を返す。
+     * 既知の制約: 見つからない場合は `Optional.empty()` を返し、0 件以外の表現は行わない。
+     */
+    private Optional&lt;GasmtrdRecord&gt; findUnremovedGasmtrdByGmb(String gmb) {
+<span class="fc" id="L745">        return gasmtrdDataAccess.findByGmbAndGmtThkgYmd(gmb, null);</span>
+    }
+
+    /**
+     * 概要: 契約適用中または契約終了の託送サービス契約を 1 件だけ取得する。
+     * 主な仕様: `DA-099-R007` で適用開始年月日降順の最新 1 件を取得し、その行を返す。
+     * 既知の制約: 該当なしはデータ不整合として例外化し、正常系の欠損扱いにしない。
+     */
+    private TkssvkyRecord findSingleCurrentOrEndedTkssvkyRecord(Long tksuSvkyNo, LocalDate baseDate) {
+<span class="fc" id="L754">        return tkssvkyDataAccess</span>
+<span class="fc" id="L755">                .findByTksuSvkyNoAndTkysYmdAndTksuSvkyJtkbList(</span>
+                        tksuSvkyNo, baseDate, activeOrEndedTransportServiceContractStatuses)
+<span class="fc" id="L757">                .orElseThrow(</span>
+                        () -&gt;
+<span class="fc" id="L759">                                DataInconsistencySupport.create(</span>
+<span class="fc" id="L760">                                        tkssvkyDataAccess.tableName(),</span>
+                                        TkssvkyDataAccess.CallSpecs
+                                                .FIND_BY_TKSU_SVKY_NO_AND_TKYS_YMD_AND_TKSU_SVKY_JTKB_LIST
+<span class="fc" id="L763">                                                .identifier(),</span>
+                                        new FlatJsonBuilder()
+<span class="fc" id="L765">                                                .put(&quot;tksuSvkyNo&quot;, tksuSvkyNo)</span>
+<span class="fc" id="L766">                                                .put(&quot;tkysYmd&quot;, baseDate)</span>
+<span class="fc" id="L767">                                                .put(</span>
+                                                        &quot;tksuSvkyJtkbList&quot;,
+                                                        activeOrEndedTransportServiceContractStatuses)));
+    }
+
+    /**
+     * 概要: 切替検針候補を 1 件だけ抽出する。
+     * 主な仕様: `DA-027-R007` で切替検針事由かつ託送サービス契約番号 `null` の最新 1 件を取得する。
+     * 既知の制約: 該当なしの場合は `null` を返し、例外化はしない。
+     */
+    private GmkskkdRecord findSingleSwitchingReadingRecord(
+            Long gasMtstNo, LocalDate knsYmdFrom, LocalDate knsYmdTo) {
+<span class="fc" id="L779">        return gmkskkdDataAccess.findByGasMtstNoAndKnsYmdAndKnkkSksiJysbAndTksuSvkyNo(</span>
+                        gasMtstNo,
+                        knsYmdFrom,
+                        knsYmdTo,
+                        switchingReadingReasons,
+                        null)
+<span class="fc" id="L785">                .orElse(null);</span>
+    }
+
+    /**
+     * 概要: 文字列に実質的な値が入っているかを判定する。
+     * 主な仕様: null と空白のみ文字列を `false`、それ以外を `true` として扱う。
+     * 既知の制約: 前後空白の正規化や文字種変換までは行わない。
+     */
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L794" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    /**
+     * 概要: 専用メーター取得結果を SV-163 の出力 DTO に詰め替える。
+     * 主な仕様: 下位 SV の `snyInfList` が存在する場合だけ opening 側 `SnyInf` の一覧へ変換する。
+     * 既知の制約: 下位 SV 自体または一覧が `null` の場合は空配列ではなく `null` を返す。
+     */
+    private static List&lt;PreOpeningSnyInf&gt; toSnyInfList(
+            DedicatedMeterInfoAcquisitionOutput dedicatedMeterOutput) {
+<span class="pc bpc" id="L804" title="2 of 4 branches missed.">        if (dedicatedMeterOutput == null || dedicatedMeterOutput.snyInfList() == null) {</span>
+<span class="nc" id="L805">            return null;</span>
+        }
+<span class="fc" id="L807">        return dedicatedMeterOutput.snyInfList().stream()</span>
+<span class="fc" id="L808">                                .map(snyInf -&gt; new PreOpeningSnyInf(</span>
+<span class="fc" id="L809">                        snyInf.gasMtstNo(),</span>
+<span class="fc" id="L810">                        snyInf.hesnJysb(),</span>
+<span class="fc" id="L811">                        snyInf.gmtKhsJtkb(),</span>
+<span class="fc" id="L812">                        snyInf.tksuSvkyNo(),</span>
+<span class="fc" id="L813">                        snyInf.svkyNo()))</span>
+<span class="fc" id="L814">                .toList();</span>
+    }
+
+    /**
+     * 概要: 東京ガス小売扱いかを判定する。
+     * 主な仕様: `null` 以外で空文字または東京ガス小売コードなら `true` を返す。
+     * 既知の制約: 空文字を東京ガス小売扱いに寄せるのは既存仕様に合わせた振る舞いである。
+     */
+    private boolean isTokyoGasRetail(String tgTkurKbn) {
+<span class="pc bpc" id="L823" title="1 of 2 branches missed.">        return tgTkurKbn != null</span>
+<span class="pc bpc" id="L824" title="1 of 4 branches missed.">                &amp;&amp; (tgTkurKbn.isEmpty() || tgRetailCategory.equals(tgTkurKbn));</span>
+    }
+
+    /**
+     * 概要: RequestContext からシステム日時を取得する。
+     * 主な仕様: `systemDatetime` がある場合だけ返し、欠落時は即座に例外化する。
+     * 既知の制約: 本 SV は `RequestContext.systemDatetime` を必須前提としている。
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L833">        return requestContext</span>
+<span class="fc" id="L834">                .getSystemDatetime()</span>
+<span class="fc" id="L835">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 確定ガスメーター指示数を決定する。
+     * 主な仕様: 入力値と最近指示数を比較し、大きい方を返す。片方が `null` の場合は他方を採用する。
+     * 既知の制約: 両方 `null` の場合は `null` を返し、数値妥当性の追加検証は行わない。
+     */
+    private static Long determineConfirmedMeterInstructionCount(
+        Long inputGmtShjSu, Long recentGmtShjSu) {
+<span class="pc bpc" id="L845" title="1 of 2 branches missed.">        if (inputGmtShjSu == null) {</span>
+<span class="nc" id="L846">            return recentGmtShjSu;</span>
+        }
+<span class="pc bpc" id="L848" title="1 of 2 branches missed.">        if (recentGmtShjSu == null) {</span>
+<span class="nc" id="L849">            return inputGmtShjSu;</span>
+        }
+<span class="pc bpc" id="L851" title="1 of 2 branches missed.">        return inputGmtShjSu &gt;= recentGmtShjSu ? inputGmtShjSu : recentGmtShjSu;</span>
+    }
+
+    /**
+     * 概要: ガスメーター情報レコードを出力 DTO に変換する。
+     * 主な仕様: 入力がある場合は SV-163 の返却項目へそのまま詰め替える。
+     * 既知の制約: 入力が `null` の場合は空 DTO を作らず `null` を返す。
+     */
+    private static GasmtrdInf toGasmtrdInf(GasmtrdRecord record) {
+<span class="fc bfc" id="L860" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L861">            return null;</span>
+        }
+<span class="fc" id="L863">        return new GasmtrdInf(</span>
+<span class="fc" id="L864">                record.gmb(),</span>
+<span class="fc" id="L865">                record.gmbTsno(),</span>
+<span class="fc" id="L866">                record.ttkGmsbNo(),</span>
+<span class="fc" id="L867">                record.gmtThkgJysb(),</span>
+<span class="fc" id="L868">                record.gmkShbt(),</span>
+<span class="fc" id="L869">                record.recUpdJnjNo(),</span>
+<span class="fc" id="L870">                record.gmtGusu(),</span>
+<span class="fc" id="L871">                record.gmtHanGusu(),</span>
+<span class="fc" id="L872">                record.sjsuHyjKtsu(),</span>
+<span class="fc" id="L873">                record.sjsuMincSu(),</span>
+<span class="fc" id="L874">                record.sjskHticSu());</span>
+    }
+
+    /**
+     * 概要: システム日時点の設置場所情報を出力 DTO に変換する。
+     * 主な仕様: GmtsetdRecord の主要項目をシステム日時点用 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は `null` を返し、項目補完は行わない。
+     */
+    private static PreOpeningGmtsetdSystemDateInf toGmtsetdSystemDateInf(GmtsetdRecord record) {
+<span class="fc bfc" id="L883" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L884">            return null;</span>
+        }
+<span class="fc" id="L886">        return new PreOpeningGmtsetdSystemDateInf(</span>
+<span class="fc" id="L887">                record.gasMtstNo(),</span>
+<span class="fc" id="L888">                record.tkysYmd(),</span>
+<span class="fc" id="L889">                record.tyenYmd(),</span>
+<span class="fc" id="L890">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L891">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L892">                record.szcGkkCd(),</span>
+<span class="fc" id="L893">                record.szcCmazCd(),</span>
+<span class="fc" id="L894">                record.szcMchCd(),</span>
+<span class="fc" id="L895">                record.cbgSuj1(),</span>
+<span class="fc" id="L896">                record.cbgKn2(),</span>
+<span class="fc" id="L897">                record.cbgKn3(),</span>
+<span class="fc" id="L898">                record.cbgKn4(),</span>
+<span class="fc" id="L899">                record.bldNo(),</span>
+<span class="fc" id="L900">                record.tunoKn(),</span>
+<span class="fc" id="L901">                record.hynKn(),</span>
+<span class="fc" id="L902">                record.htuFlg(),</span>
+<span class="fc" id="L903">                record.ohmKj(),</span>
+<span class="fc" id="L904">                record.kasYmd(),</span>
+<span class="fc" id="L905">                record.hesnYmd(),</span>
+<span class="fc" id="L906">                record.kasJysb(),</span>
+<span class="fc" id="L907">                record.hesnJysb(),</span>
+<span class="fc" id="L908">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L909">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L910">                record.tksuMtscCd(),</span>
+<span class="fc" id="L911">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L912">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L913">                record.mtgMtstNo(),</span>
+<span class="fc" id="L914">                record.snstGkjYm(),</span>
+<span class="fc" id="L915">                record.snstGkjShbt(),</span>
+<span class="fc" id="L916">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L917">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L918">                record.knckKbn(),</span>
+<span class="fc" id="L919">                record.bldKbn(),</span>
+<span class="fc" id="L920">                record.akySnstFlg(),</span>
+<span class="fc" id="L921">                record.gasYtCd(),</span>
+<span class="fc" id="L922">                record.lpgKbn(),</span>
+<span class="fc" id="L923">                record.ntryKbn(),</span>
+<span class="fc" id="L924">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L925">                record.jkarSu(),</span>
+<span class="fc" id="L926">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L927">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L928">                record.knsKhFlg(),</span>
+<span class="fc" id="L929">                record.gmicTsjhMem(),</span>
+<span class="fc" id="L930">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L931">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L932">                record.niknSdksShbt(),</span>
+<span class="fc" id="L933">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L934">                record.chukThkgFlg(),</span>
+<span class="fc" id="L935">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L936">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L937">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L938">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L939">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L940">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L941">                record.smpCd(),</span>
+<span class="fc" id="L942">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L943">                record.kusYmd(),</span>
+<span class="fc" id="L944">                record.kysfYmd(),</span>
+<span class="fc" id="L945">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L946">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 開栓作業日時点の設置場所情報を出力 DTO に変換する。
+     * 主な仕様: 更新機能 ID を含む開栓作業日時点向け DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningGmtsetdKsenSaymdInf toGmtsetdKsenSaymdInf(GmtsetdRecord record) {
+<span class="fc bfc" id="L955" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L956">            return null;</span>
+        }
+<span class="fc" id="L958">        return new PreOpeningGmtsetdKsenSaymdInf(</span>
+<span class="fc" id="L959">                record.gasMtstNo(),</span>
+<span class="fc" id="L960">                record.tkysYmd(),</span>
+<span class="fc" id="L961">                record.tyenYmd(),</span>
+<span class="fc" id="L962">                record.kngmStbJtkb(),</span>
+<span class="fc" id="L963">                record.gmtKhsJtkb(),</span>
+<span class="fc" id="L964">                record.szcGkkCd(),</span>
+<span class="fc" id="L965">                record.szcCmazCd(),</span>
+<span class="fc" id="L966">                record.szcMchCd(),</span>
+<span class="fc" id="L967">                record.cbgSuj1(),</span>
+<span class="fc" id="L968">                record.cbgKn2(),</span>
+<span class="fc" id="L969">                record.cbgKn3(),</span>
+<span class="fc" id="L970">                record.cbgKn4(),</span>
+<span class="fc" id="L971">                record.bldNo(),</span>
+<span class="fc" id="L972">                record.tunoKn(),</span>
+<span class="fc" id="L973">                record.hynKn(),</span>
+<span class="fc" id="L974">                record.htuFlg(),</span>
+<span class="fc" id="L975">                record.ohmKj(),</span>
+<span class="fc" id="L976">                record.kasYmd(),</span>
+<span class="fc" id="L977">                record.hesnYmd(),</span>
+<span class="fc" id="L978">                record.kasJysb(),</span>
+<span class="fc" id="L979">                record.hesnJysb(),</span>
+<span class="fc" id="L980">                record.tkshGmsbShbt(),</span>
+<span class="fc" id="L981">                record.gtyMtscKbn(),</span>
+<span class="fc" id="L982">                record.tksuMtscCd(),</span>
+<span class="fc" id="L983">                record.kkyuGmtKbn(),</span>
+<span class="fc" id="L984">                record.ckrtGmscJtkb(),</span>
+<span class="fc" id="L985">                record.mtgMtstNo(),</span>
+<span class="fc" id="L986">                record.snstGkjYm(),</span>
+<span class="fc" id="L987">                record.snstGkjShbt(),</span>
+<span class="fc" id="L988">                record.tusoGmtkYmd(),</span>
+<span class="fc" id="L989">                record.gmtTkeYmd(),</span>
+<span class="fc" id="L990">                record.knckKbn(),</span>
+<span class="fc" id="L991">                record.bldKbn(),</span>
+<span class="fc" id="L992">                record.akySnstFlg(),</span>
+<span class="fc" id="L993">                record.gasYtCd(),</span>
+<span class="fc" id="L994">                record.lpgKbn(),</span>
+<span class="fc" id="L995">                record.ntryKbn(),</span>
+<span class="fc" id="L996">                record.gmtKykaShbt(),</span>
+<span class="fc" id="L997">                record.jkarSu(),</span>
+<span class="fc" id="L998">                record.gmicDbriShbt(),</span>
+<span class="fc" id="L999">                record.gmicSbriShbt(),</span>
+<span class="fc" id="L1000">                record.knsKhFlg(),</span>
+<span class="fc" id="L1001">                record.gmicTsjhMem(),</span>
+<span class="fc" id="L1002">                record.kkysSgykKbn(),</span>
+<span class="fc" id="L1003">                record.kktkYuhrShbt(),</span>
+<span class="fc" id="L1004">                record.niknSdksShbt(),</span>
+<span class="fc" id="L1005">                record.niknTkkyYmd(),</span>
+<span class="fc" id="L1006">                record.chukThkgFlg(),</span>
+<span class="fc" id="L1007">                record.hesnSdnShbt(),</span>
+<span class="fc" id="L1008">                record.mcnTkfnJysb(),</span>
+<span class="fc" id="L1009">                record.sdtgSchFlg(),</span>
+<span class="fc" id="L1010">                record.sdtgTrkrShbt(),</span>
+<span class="fc" id="L1011">                record.sdtgTtkYmd(),</span>
+<span class="fc" id="L1012">                record.sdtgTkfnJysb(),</span>
+<span class="fc" id="L1013">                record.smpCd(),</span>
+<span class="fc" id="L1014">                record.ksjGhtbCd(),</span>
+<span class="fc" id="L1015">                record.kusYmd(),</span>
+<span class="fc" id="L1016">                record.kysfYmd(),</span>
+<span class="fc" id="L1017">                record.kngmSbmsYmd(),</span>
+<span class="fc" id="L1018">                record.updKtnKinoId(),</span>
+<span class="fc" id="L1019">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 前世代の設置場所情報を出力 DTO に変換する。
+     * 主な仕様: 前世代比較に使う項目を SV-163 用 DTO へ詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static GmtsetdKsenSaymdOgaInf toGmtsetdKsenSaymdOgaInf(GmtsetdRecord record) {
+<span class="pc bpc" id="L1028" title="1 of 2 branches missed.">        if (record == null) {</span>
+<span class="fc" id="L1029">            return null;</span>
+        }
+<span class="nc" id="L1031">        return new GmtsetdKsenSaymdOgaInf(</span>
+<span class="nc" id="L1032">                record.gasMtstNo(),</span>
+<span class="nc" id="L1033">                record.tkysYmd(),</span>
+<span class="nc" id="L1034">                record.tyenYmd(),</span>
+<span class="nc" id="L1035">                record.kngmStbJtkb(),</span>
+<span class="nc" id="L1036">                record.gmtKhsJtkb(),</span>
+<span class="nc" id="L1037">                record.szcGkkCd(),</span>
+<span class="nc" id="L1038">                record.szcCmazCd(),</span>
+<span class="nc" id="L1039">                record.szcMchCd(),</span>
+<span class="nc" id="L1040">                record.cbgSuj1(),</span>
+<span class="nc" id="L1041">                record.cbgKn2(),</span>
+<span class="nc" id="L1042">                record.cbgKn3(),</span>
+<span class="nc" id="L1043">                record.cbgKn4(),</span>
+<span class="nc" id="L1044">                record.bldNo(),</span>
+<span class="nc" id="L1045">                record.tunoKn(),</span>
+<span class="nc" id="L1046">                record.hynKn(),</span>
+<span class="nc" id="L1047">                record.htuFlg(),</span>
+<span class="nc" id="L1048">                record.ohmKj(),</span>
+<span class="nc" id="L1049">                record.kasYmd(),</span>
+<span class="nc" id="L1050">                record.hesnYmd(),</span>
+<span class="nc" id="L1051">                record.kasJysb(),</span>
+<span class="nc" id="L1052">                record.hesnJysb(),</span>
+<span class="nc" id="L1053">                record.tkshGmsbShbt(),</span>
+<span class="nc" id="L1054">                record.gtyMtscKbn(),</span>
+<span class="nc" id="L1055">                record.tksuMtscCd(),</span>
+<span class="nc" id="L1056">                record.kkyuGmtKbn(),</span>
+<span class="nc" id="L1057">                record.ckrtGmscJtkb(),</span>
+<span class="nc" id="L1058">                record.mtgMtstNo(),</span>
+<span class="nc" id="L1059">                record.snstGkjYm(),</span>
+<span class="nc" id="L1060">                record.snstGkjShbt(),</span>
+<span class="nc" id="L1061">                record.tusoGmtkYmd(),</span>
+<span class="nc" id="L1062">                record.gmtTkeYmd(),</span>
+<span class="nc" id="L1063">                record.knckKbn(),</span>
+<span class="nc" id="L1064">                record.bldKbn(),</span>
+<span class="nc" id="L1065">                record.akySnstFlg(),</span>
+<span class="nc" id="L1066">                record.gasYtCd(),</span>
+<span class="nc" id="L1067">                record.lpgKbn(),</span>
+<span class="nc" id="L1068">                record.ntryKbn(),</span>
+<span class="nc" id="L1069">                record.gmtKykaShbt(),</span>
+<span class="nc" id="L1070">                record.jkarSu(),</span>
+<span class="nc" id="L1071">                record.gmicDbriShbt(),</span>
+<span class="nc" id="L1072">                record.gmicSbriShbt(),</span>
+<span class="nc" id="L1073">                record.knsKhFlg(),</span>
+<span class="nc" id="L1074">                record.gmicTsjhMem(),</span>
+<span class="nc" id="L1075">                record.kkysSgykKbn(),</span>
+<span class="nc" id="L1076">                record.kktkYuhrShbt(),</span>
+<span class="nc" id="L1077">                record.niknSdksShbt(),</span>
+<span class="nc" id="L1078">                record.niknTkkyYmd(),</span>
+<span class="nc" id="L1079">                record.chukThkgFlg(),</span>
+<span class="nc" id="L1080">                record.hesnSdnShbt(),</span>
+<span class="nc" id="L1081">                record.mcnTkfnJysb(),</span>
+<span class="nc" id="L1082">                record.sdtgSchFlg(),</span>
+<span class="nc" id="L1083">                record.sdtgTrkrShbt(),</span>
+<span class="nc" id="L1084">                record.sdtgTtkYmd(),</span>
+<span class="nc" id="L1085">                record.sdtgTkfnJysb(),</span>
+<span class="nc" id="L1086">                record.smpCd(),</span>
+<span class="nc" id="L1087">                record.ksjGhtbCd(),</span>
+<span class="nc" id="L1088">                record.kusYmd(),</span>
+<span class="nc" id="L1089">                record.kysfYmd(),</span>
+<span class="nc" id="L1090">                record.kngmSbmsYmd(),</span>
+<span class="nc" id="L1091">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 建物情報レコードを出力 DTO に変換する。
+     * 主な仕様: 建物情報の各項目を opening 側 DTO に写像し、真偽値項目はコード化する。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningTatemonInf toTatemonInf(TatemonRecord record) {
+<span class="fc bfc" id="L1100" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L1101">            return null;</span>
+        }
+<span class="fc" id="L1103">        return new PreOpeningTatemonInf(</span>
+<span class="fc" id="L1104">                record.bldNo(),</span>
+<span class="fc" id="L1105">                record.bldNamKn(),</span>
+<span class="fc" id="L1106">                record.bldNamKj(),</span>
+<span class="fc" id="L1107">                record.tymkBantGo1(),</span>
+<span class="fc" id="L1108">                record.tymkBantGo2(),</span>
+<span class="fc" id="L1109">                record.tymkBantGo3(),</span>
+<span class="fc" id="L1110">                record.autolockCd(),</span>
+<span class="fc" id="L1111">                record.autolockAnsNo(),</span>
+<span class="fc" id="L1112">                record.autolockComent(),</span>
+<span class="fc" id="L1113">                toBooleanCode(record.bldKjHyojiCd()),</span>
+<span class="fc" id="L1114">                record.jyutakuKbnCd(),</span>
+<span class="fc" id="L1115">                record.jutakKbnStCd(),</span>
+<span class="fc" id="L1116">                record.syozaGyokCd(),</span>
+<span class="fc" id="L1117">                record.syozaMatiCd(),</span>
+<span class="fc" id="L1118">                record.syozaTymkazCd(),</span>
+<span class="fc" id="L1119">                record.recRegYmd(),</span>
+<span class="fc" id="L1120">                record.recUpdYmd(),</span>
+<span class="fc" id="L1121">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 開閉栓番号グループ情報レコードを出力 DTO に変換する。
+     * 主な仕様: 必要な 2 項目だけを軽量 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static KbagmstInf toKbagmstInf(KbagmstRecord record) {
+<span class="pc bpc" id="L1130" title="1 of 2 branches missed.">        return record == null ? null : new KbagmstInf(record.kbabCktkCd(), record.kbabKtnCd());</span>
+    }
+
+    /**
+     * 概要: 託送契約関連情報レコードを出力 DTO に変換する。
+     * 主な仕様: 開栓判定に必要な託送契約関連項目を opening 側 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は全項目 `null` の空 DTO を返す。
+     */
+    private static PreOpeningTskgmstInf toTskgmstInf(TskgmstRecord record) {
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">        return record == null</span>
+<span class="fc" id="L1140">                ? emptyPreOpeningTskgmstInf()</span>
+<span class="fc" id="L1141">                : new PreOpeningTskgmstInf(</span>
+<span class="fc" id="L1142">                        record.gasMtstNo(),</span>
+<span class="fc" id="L1143">                        record.tkysYmd(),</span>
+<span class="fc" id="L1144">                        record.tyenYmd(),</span>
+<span class="fc" id="L1145">                        record.tksuSvkyNo(),</span>
+<span class="fc" id="L1146">                        record.skno(),</span>
+<span class="fc" id="L1147">                        record.tksuSvkkJtkb(),</span>
+<span class="fc" id="L1148">                        record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 託送サービス契約レコードを出力 DTO に変換する。
+     * 主な仕様: 託送サービス契約の主要項目を SV-163 用 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は全項目 `null` の空 DTO を返す。
+     */
+    private static PreOpeningTkssvkyInf toTkssvkyInf(TkssvkyRecord record) {
+<span class="fc bfc" id="L1157" title="All 2 branches covered.">        if (record == null) {</span>
+<span class="fc" id="L1158">            return emptyPreOpeningTkssvkyInf();</span>
+        }
+<span class="fc" id="L1160">        return new PreOpeningTkssvkyInf(</span>
+<span class="fc" id="L1161">                record.tksuSvkyNo(),</span>
+<span class="fc" id="L1162">                record.skno(),</span>
+<span class="fc" id="L1163">                record.tksuSvkyJtkb(),</span>
+<span class="fc" id="L1164">                record.tksuSvksJysb(),</span>
+<span class="fc" id="L1165">                record.tksuSvkeJysb(),</span>
+<span class="fc" id="L1166">                record.tkysYmd(),</span>
+<span class="fc" id="L1167">                record.tyenYmd(),</span>
+<span class="fc" id="L1168">                record.hesnYtiYmd(),</span>
+<span class="fc" id="L1169">                record.tkykShbt(),</span>
+<span class="fc" id="L1170">                record.tksuKijsCd(),</span>
+<span class="fc" id="L1171">                record.sutiKskhFlg(),</span>
+<span class="fc" id="L1172">                record.syoKyoTrno(),</span>
+<span class="fc" id="L1173">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 有効待ち中のサービス契約メーター情報を出力 DTO に変換する。
+     * 主な仕様: 待ち判定に使う最小限の項目だけを DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static PreOpeningSvmstkrYukuMchInf toSvmstkrYukuMchInf(SvmstkrRecord record) {
+<span class="fc" id="L1182">        return new PreOpeningSvmstkrYukuMchInf(</span>
+<span class="fc" id="L1183">                record.mtstNo(), record.svkyNo(), record.skno(), record.recUpdJnjNo(), record.sknrFlg());</span>
+    }
+
+    /**
+     * 概要: 申込待ちサービス契約情報を出力 DTO に変換する。
+     * 主な仕様: 契約予定日と識別項目だけを待ち情報 DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static PreOpeningSvckyaKiyKtymInf toSvckyaKiyKtymInf(SvckyaRecord record) {
+<span class="fc" id="L1192">        return new PreOpeningSvckyaKiyKtymInf(</span>
+<span class="fc" id="L1193">                record.svkyNo(), record.kykYtiYmd(), record.skno(), record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 切替未完了検針情報を出力 DTO に変換する。
+     * 主な仕様: 検針日と検針結果通し番号だけを DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static GmkskkdSwMiKryInf toGmkskkdSwMiKryInf(GmkskkdRecord record) {
+<span class="fc" id="L1202">        return new GmkskkdSwMiKryInf(record.knsYmd(), record.knsKkaTsno());</span>
+    }
+
+    /**
+     * 概要: 導管託送使用量情報を出力 DTO に変換する。
+     * 主な仕様: 検針日と開栓状態だけを軽量 DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static DktksryInf toDktksryInf(DktksryRecord record) {
+<span class="nc" id="L1211">        return new DktksryInf(record.knsYmd(), record.gmtKhsJtkb());</span>
+    }
+
+    /**
+     * 概要: 供給停止管理情報を出力 DTO に変換する。
+     * 主な仕様: 停止再開判定に必要な項目を opening 側 DTO に写像する。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static PreOpeningKkytskrInf toKkytskrInf(KkytskrRecord record) {
+<span class="fc" id="L1220">        return new PreOpeningKkytskrInf(</span>
+<span class="fc" id="L1221">                record.hesnYmd(),</span>
+<span class="fc" id="L1222">                record.kasYmd(),</span>
+<span class="fc" id="L1223">                record.kkysSisnJtkb(),</span>
+<span class="fc" id="L1224">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 本登録・仮閉栓候補の託送メーター情報を出力 DTO に変換する。
+     * 主な仕様: 託送契約番号だけを返却用 DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static TaksmtrHntrKrkykInf toTaksmtrHntrKrkykInf(TaksmtrRecord record) {
+<span class="fc" id="L1233">        return new TaksmtrHntrKrkykInf(record.takskyNo());</span>
+    }
+
+    /**
+     * 概要: 仮登録託送メーター情報を出力 DTO に変換する。
+     * 主な仕様: 託送契約番号や事業者コードなど必要項目を DTO に詰め替える。
+     * 既知の制約: 呼び出し側で `null` を除外しており、このメソッド自体は `null` を考慮しない。
+     */
+    private static PreOpeningTaksmtrKtrInf toTaksmtrKtrInf(TaksmtrRecord record) {
+<span class="fc" id="L1242">        return new PreOpeningTaksmtrKtrInf(</span>
+<span class="fc" id="L1243">                record.takskyNo(),</span>
+<span class="fc" id="L1244">                record.hkkmItiNo(),</span>
+<span class="fc" id="L1245">                record.taksCisHntCd(),</span>
+<span class="fc" id="L1246">                record.gasKourGysCd(),</span>
+<span class="fc" id="L1247">                record.tnbiSakGysCd(),</span>
+<span class="fc" id="L1248">                record.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 託送メーター候補から優先順位の高い 1 件を選択する。
+     * 主な仕様: あらかじめ定義した comparator に従って最大要素を採用する。
+     * 既知の制約: 候補が空の場合は `null` を返す。
+     */
+    private static TaksmtrRecord selectPreferredTaksmtrRecord(List&lt;TaksmtrRecord&gt; records) {
+<span class="fc" id="L1257">        return records.stream().max(TAKSMTR_PRIORITY_ORDER).orElse(null);</span>
+    }
+
+    /**
+     * 概要: 顧客情報取得結果を開栓前出力 DTO に変換する。
+     * 主な仕様: 契約者と請求先の両情報を opening 側 DTO に詰め替えて返す。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningCstGetHsenjInf toCstGetHsenjInf(CustomerInfoAcquisitionOutput output) {
+<span class="fc bfc" id="L1266" title="All 2 branches covered.">        if (output == null) {</span>
+<span class="fc" id="L1267">            return null;</span>
+        }
+<span class="fc" id="L1269">        return new PreOpeningCstGetHsenjInf(</span>
+<span class="fc" id="L1270">                toOpeningKiycstdInf(output.kiycstdInf()), toOpeningKiycstkInf(output.kiycstkInf()));</span>
+    }
+
+    /**
+     * 概要: 免税契約情報を開栓前出力 DTO に変換する。
+     * 主な仕様: 前居住者経路で取得した免税契約項目をそのまま opening 側 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningMnzkiyInf toPreOpeningMnzkiyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.MnzkiyInf inf) {
+<span class="pc bpc" id="L1280" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="fc" id="L1281">            return null;</span>
+        }
+<span class="nc" id="L1283">        return new PreOpeningMnzkiyInf(</span>
+<span class="nc" id="L1284">                inf.svkyNo(),</span>
+<span class="nc" id="L1285">                inf.mnziTkysYmd(),</span>
+<span class="nc" id="L1286">                inf.mnziTyenYmd(),</span>
+<span class="nc" id="L1287">                inf.mnziTyehYmd(),</span>
+<span class="nc" id="L1288">                inf.sseTiskNo(),</span>
+<span class="nc" id="L1289">                inf.mnziKysjYmd(),</span>
+<span class="nc" id="L1290">                inf.mnziTysjYmd(),</span>
+<span class="nc" id="L1291">                inf.mnziHksjYmd(),</span>
+<span class="nc" id="L1292">                inf.mzkhHjonKj(),</span>
+<span class="nc" id="L1293">                inf.mzkhHjonKn(),</span>
+<span class="nc" id="L1294">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 親メーター関連情報を開栓前出力 DTO に組み立てる。
+     * 主な仕様: 親メーター設置場所情報に加えて、導管小売契約情報と顧客情報があれば入れ子 DTO を構成する。
+     * 既知の制約: 親メーターレコードが `null` の場合は全体を `null` とする。
+     */
+    private static PreOpeningMtgInf toMtgInf(
+            GmtsetdRecord originMeterRecord,
+            PipelineRetailContractInfoAcquisitionOutput pipelineRetailOutput,
+            CustomerInfoAcquisitionOutput customerInfoOutput) {
+<span class="pc bpc" id="L1306" title="1 of 2 branches missed.">        if (originMeterRecord == null) {</span>
+<span class="nc" id="L1307">            return null;</span>
+        }
+        PreOpeningSvckyaInf originSvckyaInf =
+<span class="fc bfc" id="L1310" title="All 2 branches covered.">                pipelineRetailOutput == null ? null : toOpeningSvckyaInf(pipelineRetailOutput.svckyaInf());</span>
+<span class="fc" id="L1311">        return new PreOpeningMtgInf(</span>
+<span class="fc bfc" id="L1312" title="All 2 branches covered.">                originSvckyaInf == null ? null : originSvckyaInf.svkySttJysb(),</span>
+<span class="fc bfc" id="L1313" title="All 2 branches covered.">                originSvckyaInf == null ? null : originSvckyaInf.sziKziKbn(),</span>
+                new PreOpeningGmtsetdInf(
+<span class="fc" id="L1315">                        originMeterRecord.hesnYmd(),</span>
+<span class="fc" id="L1316">                        originMeterRecord.gmtKhsJtkb(),</span>
+<span class="fc" id="L1317">                        originMeterRecord.kasYmd()),</span>
+<span class="fc bfc" id="L1318" title="All 2 branches covered.">                pipelineRetailOutput == null</span>
+<span class="fc" id="L1319">                        ? null</span>
+<span class="fc" id="L1320">                        : new PreOpeningDknKurKiyInf(</span>
+<span class="fc" id="L1321">                                toOpeningTkssvkyInf(pipelineRetailOutput.tkssvkyInf()),</span>
+                                originSvckyaInf,
+<span class="fc" id="L1323">                                toOpeningItensakInf(pipelineRetailOutput.itensakInf()),</span>
+<span class="fc" id="L1324">                                toOpeningSvsihkrInf(pipelineRetailOutput.svsihkrInf()),</span>
+<span class="fc" id="L1325">                                toOpeningSihakyInf(pipelineRetailOutput.sihakyInf())),</span>
+<span class="pc bpc" id="L1326" title="1 of 2 branches missed.">                customerInfoOutput == null</span>
+<span class="fc" id="L1327">                        ? null</span>
+<span class="nc" id="L1328">                        : new CstMtInf(</span>
+<span class="nc" id="L1329">                                toOpeningKiycstdInf(customerInfoOutput.kiycstdInf()),</span>
+<span class="pc" id="L1330">                                toOpeningKiycstkInf(customerInfoOutput.kiycstkInf())));</span>
+    }
+
+    /**
+     * 概要: 契約者情報を開栓前出力 DTO に変換する。
+     * 主な仕様: GET 系 SV の契約者情報項目を opening 側 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static KiycstdInf toOpeningKiycstdInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstdInf inf) {
+<span class="pc bpc" id="L1340" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1341">            return null;</span>
+        }
+<span class="fc" id="L1343">        return new KiycstdInf(</span>
+<span class="fc" id="L1344">                inf.kyoTrkNo(),</span>
+<span class="fc" id="L1345">                inf.ctnmKj1(),</span>
+<span class="fc" id="L1346">                inf.ctnmKn1(),</span>
+<span class="fc" id="L1347">                inf.ctnm1HujnShbt(),</span>
+<span class="fc" id="L1348">                inf.ctnm1HshiShbt(),</span>
+<span class="fc" id="L1349">                inf.ctnmKj2(),</span>
+<span class="fc" id="L1350">                inf.ctnmKn2(),</span>
+<span class="fc" id="L1351">                inf.ctnm2HujnShbt(),</span>
+<span class="fc" id="L1352">                inf.ctnm2HshiShbt(),</span>
+<span class="fc" id="L1353">                inf.ctnmKjhkFlg(),</span>
+<span class="fc" id="L1354">                inf.shkiLvShbt(),</span>
+<span class="fc" id="L1355">                inf.yubnNo(),</span>
+<span class="fc" id="L1356">                inf.gkkCd(),</span>
+<span class="fc" id="L1357">                inf.mchCd(),</span>
+<span class="fc" id="L1358">                inf.cmazCd(),</span>
+<span class="fc" id="L1359">                inf.cbgSuj1(),</span>
+<span class="fc" id="L1360">                inf.cbgKn2(),</span>
+<span class="fc" id="L1361">                inf.cbgKn3(),</span>
+<span class="fc" id="L1362">                inf.cbgKn4(),</span>
+<span class="fc" id="L1363">                inf.bldNo(),</span>
+<span class="fc" id="L1364">                inf.bldnKj(),</span>
+<span class="fc" id="L1365">                inf.bldnKn(),</span>
+<span class="fc" id="L1366">                inf.bldnKjhkFlg(),</span>
+<span class="fc" id="L1367">                inf.jutKbn(),</span>
+<span class="fc" id="L1368">                inf.tunoKn(),</span>
+<span class="fc" id="L1369">                inf.hynKn(),</span>
+<span class="fc" id="L1370">                inf.htuFlg(),</span>
+<span class="fc" id="L1371">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 請求先情報を開栓前出力 DTO に変換する。
+     * 主な仕様: GET 系 SV の請求先情報項目を opening 側 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningKiycstkInf toOpeningKiycstkInf(
+                        jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.KiycstkInf inf) {
+<span class="pc bpc" id="L1381" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1382">            return null;</span>
+        }
+<span class="fc" id="L1384">        return new PreOpeningKiycstkInf(</span>
+<span class="fc" id="L1385">                inf.kyoTrkNo(),</span>
+<span class="fc" id="L1386">                inf.ctnmKj1(),</span>
+<span class="fc" id="L1387">                inf.ctnmKn1(),</span>
+<span class="fc" id="L1388">                inf.ctnm1HujnShbt(),</span>
+<span class="fc" id="L1389">                inf.ctnm1HshiShbt(),</span>
+<span class="fc" id="L1390">                inf.ctnmKj2(),</span>
+<span class="fc" id="L1391">                inf.ctnmKn2(),</span>
+<span class="fc" id="L1392">                inf.ctnm2HujnShbt(),</span>
+<span class="fc" id="L1393">                inf.ctnm2HshiShbt(),</span>
+<span class="fc" id="L1394">                inf.ctnmKjhkFlg(),</span>
+<span class="fc" id="L1395">                inf.kynmKj(),</span>
+<span class="fc" id="L1396">                inf.kynmKn(),</span>
+<span class="fc" id="L1397">                inf.kynmHujnShbt(),</span>
+<span class="fc" id="L1398">                inf.kynmHshiShbt(),</span>
+<span class="fc" id="L1399">                inf.kynmKjhkFlg(),</span>
+<span class="fc" id="L1400">                inf.shkiLvShbt(),</span>
+<span class="fc" id="L1401">                inf.yubnNo(),</span>
+<span class="fc" id="L1402">                inf.gkkCd(),</span>
+<span class="fc" id="L1403">                inf.mchCd(),</span>
+<span class="fc" id="L1404">                inf.cmazCd(),</span>
+<span class="fc" id="L1405">                inf.cbgSuj1(),</span>
+<span class="fc" id="L1406">                inf.cbgKn2(),</span>
+<span class="fc" id="L1407">                inf.cbgKn3(),</span>
+<span class="fc" id="L1408">                inf.cbgKn4(),</span>
+<span class="fc" id="L1409">                inf.bldNo(),</span>
+<span class="fc" id="L1410">                inf.bldnKj(),</span>
+<span class="fc" id="L1411">                inf.bldnKn(),</span>
+<span class="fc" id="L1412">                inf.bldnKjhkFlg(),</span>
+<span class="fc" id="L1413">                inf.jutKbn(),</span>
+<span class="fc" id="L1414">                inf.tunoKn(),</span>
+<span class="fc" id="L1415">                inf.hynKn(),</span>
+<span class="fc" id="L1416">                inf.htuFlg(),</span>
+<span class="fc" id="L1417">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 空のサービス契約メーター関連情報 DTO を生成する。
+     * 主な仕様: SV-166 で契約情報が取得できない場合に全項目 `null` の DTO を返す。
+     * 既知の制約: 既定値の補完は行わず、全項目を `null` で初期化する。
+     */
+    private static PreOpeningSvmstkrInf emptyPreOpeningSvmstkrInf() {
+<span class="fc" id="L1426">        return new PreOpeningSvmstkrInf(</span>
+                null, // mtstNo
+                null, // svkyNo
+                null, // skno
+                null, // suguKbn
+                Boolean.FALSE, // sknrFlg
+                null, // rkkiKnrnJtkb
+                null, // rkkiSttYmd
+                null, // rkkiEndYmd
+                null, // hishYtiYmd
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 空の託送サービス契約・ガスメーター設置場所関連情報 DTO を生成する。
+     * 主な仕様: 指定項目を持つ DTO を全項目 `null` で初期化して返す。
+     * 既知の制約: 状態コードなどの既定値補完は行わない。
+     */
+    private static PreOpeningTskgmstInf emptyPreOpeningTskgmstInf() {
+<span class="fc" id="L1446">        return new PreOpeningTskgmstInf(</span>
+                null, // gasMtstNo
+                null, // tkysYmd
+                null, // tyenYmd
+                null, // tksuSvkyNo
+                null, // skno
+                null, // tksuSvkkJtkb
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 空の託送サービス契約 DTO を生成する。
+     * 主な仕様: 指定項目を持つ DTO を全項目 `null` で初期化して返す。
+     * 既知の制約: 依頼事業者コードなどの既定値補完は行わない。
+     */
+    private static PreOpeningTkssvkyInf emptyPreOpeningTkssvkyInf() {
+<span class="fc" id="L1463">        return new PreOpeningTkssvkyInf(</span>
+                null, // tksuSvkyNo
+                null, // skno
+                null, // tksuSvkyJtkb
+                null, // tksuSvksJysb
+                null, // tksuSvkeJysb
+                null, // tkysYmd
+                null, // tyenYmd
+                null, // hesnYtiYmd
+                null, // tkykShbt
+                null, // tksuKijsCd
+                Boolean.FALSE, // sutiKskhFlg
+                null, // syoKyoTrno
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 契約情報 DTO を null 非許容形へ正規化する。
+     * 主な仕様: 契約情報本体または配下 DTO が `null` の場合に、全項目 `null` の空 DTO へ置換する。
+     * 既知の制約: 真偽値やコード値の既定値補完は行わない。
+     */
+    private static PreOpeningKiyInf normalizeKiyInf(PreOpeningKiyInf kiyInf) {
+<span class="fc bfc" id="L1486" title="All 2 branches covered.">        if (kiyInf == null) {</span>
+<span class="fc" id="L1487">            return emptyPreOpeningKiyInf();</span>
+        }
+<span class="fc" id="L1489">        return new PreOpeningKiyInf(</span>
+<span class="fc bfc" id="L1490" title="All 2 branches covered.">                kiyInf.svmstkrInf() == null ? emptyPreOpeningSvmstkrInf() : kiyInf.svmstkrInf(),</span>
+<span class="pc bpc" id="L1491" title="1 of 2 branches missed.">                kiyInf.svckyaInf() == null ? emptyPreOpeningSvckyaInf() : kiyInf.svckyaInf(),</span>
+<span class="fc bfc" id="L1492" title="All 2 branches covered.">                kiyInf.itensakInf() == null ? emptyPreOpeningItensakInf() : kiyInf.itensakInf(),</span>
+<span class="fc bfc" id="L1493" title="All 2 branches covered.">                kiyInf.svsihkrInf() == null ? emptyPreOpeningSvsihkrInf() : kiyInf.svsihkrInf(),</span>
+<span class="fc bfc" id="L1494" title="All 2 branches covered.">                kiyInf.sihakyInf() == null ? emptyPreOpeningSihakyInf() : kiyInf.sihakyInf(),</span>
+<span class="fc" id="L1495">                kiyInf.suguHtkFlg(),</span>
+<span class="fc" id="L1496">                kiyInf.kzksyAtkCd(),</span>
+<span class="fc" id="L1497">                kiyInf.snyTkmtFlg(),</span>
+<span class="fc bfc" id="L1498" title="All 2 branches covered.">                kiyInf.mnzkiyInf() == null ? emptyPreOpeningMnzkiyInf() : kiyInf.mnzkiyInf());</span>
+    }
+
+    /**
+     * 概要: 空の契約情報 DTO を生成する。
+     * 主な仕様: 契約情報本体を生成し、配下の DTO は全項目 `null` の空 DTO で構成する。
+     * 既知の制約: 真偽値やコード値の既定値補完は行わない。
+     */
+    private static PreOpeningKiyInf emptyPreOpeningKiyInf() {
+<span class="fc" id="L1507">        return new PreOpeningKiyInf(</span>
+<span class="fc" id="L1508">                emptyPreOpeningSvmstkrInf(),</span>
+<span class="fc" id="L1509">                emptyPreOpeningSvckyaInf(),</span>
+<span class="fc" id="L1510">                emptyPreOpeningItensakInf(),</span>
+<span class="fc" id="L1511">                emptyPreOpeningSvsihkrInf(),</span>
+<span class="fc" id="L1512">                emptyPreOpeningSihakyInf(),</span>
+                Boolean.FALSE,
+                null,
+                Boolean.FALSE,
+<span class="fc" id="L1516">                emptyPreOpeningMnzkiyInf());</span>
+    }
+
+    /**
+     * 概要: 空の免税契約情報 DTO を生成する。
+     * 主な仕様: 免税契約情報の全項目を `null` で初期化して返す。
+     * 既知の制約: 既定値補完は行わない。
+     */
+    private static PreOpeningMnzkiyInf emptyPreOpeningMnzkiyInf() {
+<span class="fc" id="L1525">        return new PreOpeningMnzkiyInf(</span>
+                null, // svkyNo
+                null, // mnziTkysYmd
+                null, // mnziTyenYmd
+                null, // mnziTyehYmd
+                null, // sseTiskNo
+                null, // mnziKysjYmd
+                null, // mnziTysjYmd
+                null, // mnziHksjYmd
+                null, // mzkhHjonKj
+                null, // mzkhHjonKn
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 開栓日時点契約情報のサービス契約メーター関連 DTO を変換する。
+     * 主な仕様: opening 系 SV から返る `SvmstkrInf` を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvmstkrInf toOpeningSvmstkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvmstkrInf inf) {
+<span class="nc bnc" id="L1547" title="All 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1548">            return null;</span>
+        }
+<span class="nc" id="L1550">        return new PreOpeningSvmstkrInf(</span>
+<span class="nc" id="L1551">                inf.mtstNo(),</span>
+<span class="nc" id="L1552">                inf.svkyNo(),</span>
+<span class="nc" id="L1553">                inf.skno(),</span>
+<span class="nc" id="L1554">                inf.suguKbn(),</span>
+<span class="nc" id="L1555">                inf.sknrFlg(),</span>
+<span class="nc" id="L1556">                inf.rkkiKnrnJtkb(),</span>
+<span class="nc" id="L1557">                inf.rkkiSttYmd(),</span>
+<span class="nc" id="L1558">                inf.rkkiEndYmd(),</span>
+<span class="nc" id="L1559">                inf.hishYtiYmd(),</span>
+<span class="nc" id="L1560">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 前居住者契約情報のサービス契約メーター関連 DTO を変換する。
+     * 主な仕様: 前居住者契約情報取得 SV の `SvmstkrInf` を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvmstkrInf toOpeningSvmstkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreviousResidentContractInfoSvmstkrInf inf) {
+<span class="pc bpc" id="L1570" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="fc" id="L1571">            return null;</span>
+        }
+<span class="nc" id="L1573">        return new PreOpeningSvmstkrInf(</span>
+<span class="nc" id="L1574">                inf.mtstNo(),</span>
+<span class="nc" id="L1575">                inf.svkyNo(),</span>
+<span class="nc" id="L1576">                inf.skno(),</span>
+<span class="nc" id="L1577">                inf.suguKbn(),</span>
+<span class="nc" id="L1578">                inf.sknrFlg(),</span>
+<span class="nc" id="L1579">                inf.rkkiKnrnJtkb(),</span>
+<span class="nc" id="L1580">                inf.rkkiSttYmd(),</span>
+<span class="nc" id="L1581">                inf.rkkiEndYmd(),</span>
+<span class="nc" id="L1582">                inf.hishYtiYmd(),</span>
+<span class="nc" id="L1583">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 空の移転先管理情報 DTO を生成する。
+     * 主な仕様: 契約情報欠損時に返却形をそろえるため、最小コンストラクタで全項目 `null` の DTO を返す。
+     * 既知の制約: 欠損時でも空文字や既定コードは設定しない。
+     */
+    private static PreOpeningItensakInf emptyPreOpeningItensakInf() {
+<span class="fc" id="L1592">        return new PreOpeningItensakInf(</span>
+                null, // gasMtstNo
+                null, // syokyNo
+                null, // iskrTsno
+                null, // tssiJkyCd
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 開栓日時点契約情報の移転先管理 DTO を変換する。
+     * 主な仕様: 契約情報取得 SV の最小項目を opening 側 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningItensakInf toOpeningItensakInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateItensakInf inf) {
+<span class="nc bnc" id="L1608" title="All 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1609">            return null;</span>
+        }
+<span class="nc" id="L1611">        return PreOpeningItensakInf.fromContractInfoItensak(</span>
+<span class="nc" id="L1612">                inf.gasMtstNo(),</span>
+<span class="nc" id="L1613">                inf.syokyNo(),</span>
+<span class="nc" id="L1614">                inf.iskrTsno(),</span>
+<span class="nc" id="L1615">                inf.tssiJkyCd(),</span>
+<span class="nc" id="L1616">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 前居住者契約情報の移転先管理 DTO を変換する。
+     * 主な仕様: 前居住者契約情報取得 SV の最小項目を opening 側 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningItensakInf toOpeningItensakInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreviousResidentContractInfoItensakInf inf) {
+<span class="pc bpc" id="L1626" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="fc" id="L1627">            return null;</span>
+        }
+<span class="nc" id="L1629">        return PreOpeningItensakInf.fromContractInfoItensak(</span>
+<span class="nc" id="L1630">                inf.gasMtstNo(),</span>
+<span class="nc" id="L1631">                inf.syokyNo(),</span>
+<span class="nc" id="L1632">                inf.iskrTsno(),</span>
+<span class="nc" id="L1633">                inf.tssiJkyCd(),</span>
+<span class="nc" id="L1634">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: GET 系の移転先管理情報を開栓前 DTO に変換する。
+     * 主な仕様: 取得元の全項目を opening 側 DTO へ詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningItensakInf toOpeningItensakInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.ItensakInf inf) {
+<span class="fc bfc" id="L1644" title="All 2 branches covered.">        if (inf == null) {</span>
+<span class="fc" id="L1645">            return null;</span>
+        }
+<span class="fc" id="L1647">        return new PreOpeningItensakInf(</span>
+                null,
+<span class="fc" id="L1649">                inf.syokyNo(),</span>
+<span class="fc" id="L1650">                inf.gmtSetNo(),</span>
+<span class="fc" id="L1651">                inf.itenSyokyNo(),</span>
+<span class="fc" id="L1652">                inf.iskrTsno(),</span>
+<span class="fc" id="L1653">                inf.tymkBantGo1(),</span>
+<span class="fc" id="L1654">                inf.tymkBantGo2(),</span>
+<span class="fc" id="L1655">                inf.tymkBantGo3(),</span>
+<span class="fc" id="L1656">                inf.itenMunebanKn(),</span>
+<span class="fc" id="L1657">                inf.itenHeyabanNo(),</span>
+<span class="fc" id="L1658">                inf.itenskTelNo(),</span>
+<span class="fc" id="L1659">                inf.itenTelSybCd(),</span>
+<span class="fc" id="L1660">                inf.itenJohoMx(),</span>
+<span class="fc" id="L1661">                inf.itenAddrYkCd(),</span>
+<span class="fc" id="L1662">                inf.itenHybtUmCd(),</span>
+<span class="fc" id="L1663">                inf.itsYubnNo(),</span>
+<span class="fc" id="L1664">                inf.itenRrkSybCd(),</span>
+<span class="fc" id="L1665">                inf.itsSikeNo(),</span>
+<span class="fc" id="L1666">                inf.tenNamYagoKj(),</span>
+<span class="fc" id="L1667">                inf.tenNamYagoKn(),</span>
+<span class="fc" id="L1668">                inf.itmSynogymsMx(),</span>
+<span class="fc" id="L1669">                inf.itmRrksTelNo(),</span>
+<span class="fc" id="L1670">                inf.itmRrksSybCd(),</span>
+<span class="fc" id="L1671">                inf.itmRnrkskMx(),</span>
+<span class="fc" id="L1672">                inf.itmSihKiyNo(),</span>
+<span class="fc" id="L1673">                inf.tsykIrmtSjCd(),</span>
+<span class="fc" id="L1674">                inf.tsykIrskSjCd(),</span>
+<span class="fc" id="L1675">                inf.tssiJkyCd(),</span>
+<span class="fc" id="L1676">                inf.ssyaKirikaeCd(),</span>
+<span class="fc" id="L1677">                inf.itmKktSsyaCd(),</span>
+<span class="fc" id="L1678">                inf.itmKktEgsyCd(),</span>
+<span class="fc" id="L1679">                inf.itmKktKitiCd(),</span>
+<span class="fc" id="L1680">                inf.itsKktSsyaCd(),</span>
+<span class="fc" id="L1681">                inf.itsKktEgsyCd(),</span>
+<span class="fc" id="L1682">                inf.itsKktKitiCd(),</span>
+<span class="fc" id="L1683">                inf.itenHnmeiCd(),</span>
+<span class="fc" id="L1684">                inf.itenRegJyCd(),</span>
+<span class="fc" id="L1685">                inf.onCsYmd(),</span>
+<span class="fc" id="L1686">                inf.onCsCd(),</span>
+<span class="fc" id="L1687">                inf.yksCsYmd(),</span>
+<span class="fc" id="L1688">                inf.yksCsCd(),</span>
+<span class="fc" id="L1689">                inf.itenTelRkYmd(),</span>
+<span class="fc" id="L1690">                inf.itenTelRkCd(),</span>
+<span class="fc" id="L1691">                inf.itenHmCsYmd(),</span>
+<span class="fc" id="L1692">                inf.itenHmCd(),</span>
+<span class="fc" id="L1693">                inf.itenNysCsYmd(),</span>
+<span class="fc" id="L1694">                inf.itenNysCsCd(),</span>
+<span class="fc" id="L1695">                inf.itenSnIknYmd(),</span>
+<span class="fc" id="L1696">                inf.itenHkykYmd(),</span>
+<span class="fc" id="L1697">                inf.ithRyuCd(),</span>
+<span class="fc" id="L1698">                inf.itenTksCd(),</span>
+<span class="fc" id="L1699">                inf.itenStCsJh(),</span>
+<span class="fc" id="L1700">                inf.itsGkkCd(),</span>
+<span class="fc" id="L1701">                inf.itsMchCd(),</span>
+<span class="fc" id="L1702">                inf.itsCmazCd(),</span>
+<span class="fc" id="L1703">                inf.itsBldNo(),</span>
+<span class="fc" id="L1704">                inf.itenGmtSetNo(),</span>
+<span class="fc" id="L1705">                inf.recRegYmd(),</span>
+<span class="fc" id="L1706">                inf.recUpdYmd(),</span>
+<span class="fc" id="L1707">                inf.recUpdJnjNo(),</span>
+<span class="fc" id="L1708">                inf.kosinUserId(),</span>
+<span class="fc" id="L1709">                inf.kosinTranNo(),</span>
+<span class="fc" id="L1710">                inf.kosinTaskNo(),</span>
+<span class="fc" id="L1711">                inf.itenGoNo(),</span>
+<span class="fc" id="L1712">                inf.ksyIraiGysCd(),</span>
+<span class="fc" id="L1713">                inf.ksyIraiMemo(),</span>
+<span class="fc" id="L1714">                inf.iraiHnkykMemo());</span>
+    }
+
+    /**
+     * 概要: 空のサービス契約支払契約関連 DTO を生成する。
+     * 主な仕様: 契約情報欠損時に形をそろえるため、全項目 `null` の DTO を返す。
+     * 既知の制約: 補助的な既定値は設定しない。
+     */
+    private static PreOpeningSvsihkrInf emptyPreOpeningSvsihkrInf() {
+<span class="fc" id="L1723">        return new PreOpeningSvsihkrInf(</span>
+                null, // sihKiyNo
+                null, // svkyNo
+                null, // skno
+                null, // tkysYmd
+                null, // tyenYmd
+                null, // sihKiyJtkb
+                null, // snskSvkyNo
+                null, // ikskSttYm
+                null, // ikskEndYm
+                null, // ikskGrpNo
+                null, // tdssSbtShbt
+                Boolean.FALSE, // gsnKhFlg
+                null, // gsptShbt
+                null, // sikTmngShbt
+                null, // shziKbn
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: GET 系のサービス契約支払契約関連情報を変換する。
+     * 主な仕様: 取得元の項目を opening 側 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvsihkrInf toOpeningSvsihkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SvsihkrInf inf) {
+<span class="fc bfc" id="L1750" title="All 2 branches covered.">        if (inf == null) {</span>
+<span class="fc" id="L1751">            return null;</span>
+        }
+<span class="fc" id="L1753">        return new PreOpeningSvsihkrInf(</span>
+<span class="fc" id="L1754">                inf.sihKiyNo(),</span>
+<span class="fc" id="L1755">                inf.svkyNo(),</span>
+<span class="fc" id="L1756">                inf.skno(),</span>
+<span class="fc" id="L1757">                inf.tkysYmd(),</span>
+<span class="fc" id="L1758">                inf.tyenYmd(),</span>
+<span class="fc" id="L1759">                inf.sihKiyJtkb(),</span>
+<span class="fc" id="L1760">                inf.snskSvkyNo(),</span>
+<span class="fc" id="L1761">                inf.ikskSttYm(),</span>
+<span class="fc" id="L1762">                inf.ikskEndYm(),</span>
+<span class="fc" id="L1763">                inf.ikskGrpNo(),</span>
+<span class="fc" id="L1764">                inf.tdssSbtShbt(),</span>
+<span class="fc" id="L1765">                inf.gsnKhFlg(),</span>
+<span class="fc" id="L1766">                inf.gsptShbt(),</span>
+<span class="fc" id="L1767">                inf.sikTmngShbt(),</span>
+<span class="fc" id="L1768">                inf.shziKbn(),</span>
+<span class="fc" id="L1769">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 開栓日時点契約情報のサービス契約支払契約関連 DTO を変換する。
+     * 主な仕様: opening 系 SV から返る関連情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返し、更新順序番号は補完しない。
+     */
+    private static PreOpeningSvsihkrInf toOpeningSvsihkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateSvsihkrInf inf) {
+<span class="nc bnc" id="L1779" title="All 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1780">            return null;</span>
+        }
+<span class="nc" id="L1782">        return new PreOpeningSvsihkrInf(</span>
+<span class="nc" id="L1783">                inf.sihKiyNo(),</span>
+<span class="nc" id="L1784">                inf.svkyNo(),</span>
+<span class="nc" id="L1785">                inf.skno(),</span>
+<span class="nc" id="L1786">                inf.tkysYmd(),</span>
+<span class="nc" id="L1787">                inf.tyenYmd(),</span>
+<span class="nc" id="L1788">                inf.sihKiyJtkb(),</span>
+<span class="nc" id="L1789">                inf.snskSvkyNo(),</span>
+<span class="nc" id="L1790">                inf.ikskSttYm(),</span>
+<span class="nc" id="L1791">                inf.ikskEndYm(),</span>
+<span class="nc" id="L1792">                inf.ikskGrpNo(),</span>
+<span class="nc" id="L1793">                inf.tdssSbtShbt(),</span>
+<span class="nc" id="L1794">                inf.gsnKhFlg(),</span>
+<span class="nc" id="L1795">                inf.gsptShbt(),</span>
+<span class="nc" id="L1796">                inf.sikTmngShbt(),</span>
+<span class="nc" id="L1797">                inf.shziKbn(),</span>
+                null);
+    }
+
+    /**
+     * 概要: 前居住者契約情報のサービス契約支払契約関連 DTO を変換する。
+     * 主な仕様: 前居住者契約情報取得 SV の関連情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvsihkrInf toOpeningSvsihkrInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreviousResidentContractInfoSvsihkrInf inf) {
+<span class="pc bpc" id="L1808" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="fc" id="L1809">            return null;</span>
+        }
+<span class="nc" id="L1811">        return new PreOpeningSvsihkrInf(</span>
+<span class="nc" id="L1812">                inf.sihKiyNo(),</span>
+<span class="nc" id="L1813">                inf.svkyNo(),</span>
+<span class="nc" id="L1814">                inf.skno(),</span>
+<span class="nc" id="L1815">                inf.tkysYmd(),</span>
+<span class="nc" id="L1816">                inf.tyenYmd(),</span>
+<span class="nc" id="L1817">                inf.sihKiyJtkb(),</span>
+<span class="nc" id="L1818">                inf.snskSvkyNo(),</span>
+<span class="nc" id="L1819">                inf.ikskSttYm(),</span>
+<span class="nc" id="L1820">                inf.ikskEndYm(),</span>
+<span class="nc" id="L1821">                inf.ikskGrpNo(),</span>
+<span class="nc" id="L1822">                inf.tdssSbtShbt(),</span>
+<span class="nc" id="L1823">                inf.gsnKhFlg(),</span>
+<span class="nc" id="L1824">                inf.gsptShbt(),</span>
+<span class="nc" id="L1825">                inf.sikTmngShbt(),</span>
+<span class="nc" id="L1826">                inf.shziKbn(),</span>
+<span class="nc" id="L1827">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: GET 系の支払契約情報を開栓前 DTO に変換する。
+     * 主な仕様: 取得元の支払契約項目を opening 側 DTO に写像する。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSihakyInf toOpeningSihakyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SihakyInf inf) {
+<span class="fc bfc" id="L1837" title="All 2 branches covered.">        if (inf == null) {</span>
+<span class="fc" id="L1838">            return null;</span>
+        }
+<span class="fc" id="L1840">        return new PreOpeningSihakyInf(</span>
+<span class="fc" id="L1841">                inf.sihKiyNo(),</span>
+<span class="fc" id="L1842">                inf.skno(),</span>
+<span class="fc" id="L1843">                inf.tkysYmd(),</span>
+<span class="fc" id="L1844">                inf.tyenYmd(),</span>
+<span class="fc" id="L1845">                inf.sihKiyJtkb(),</span>
+<span class="fc" id="L1846">                inf.sihHuhuShbt(),</span>
+<span class="fc" id="L1847">                inf.sikSvcShbt(),</span>
+<span class="fc" id="L1848">                inf.sikKibNo(),</span>
+<span class="fc" id="L1849">                inf.yggsTkyShbt(),</span>
+<span class="fc" id="L1850">                inf.thsCdNo(),</span>
+<span class="fc" id="L1851">                inf.sikCycsNo(),</span>
+<span class="fc" id="L1852">                inf.sikKrno(),</span>
+<span class="fc" id="L1853">                inf.shtiSqddKbn(),</span>
+<span class="fc" id="L1854">                inf.jduKykShbt(),</span>
+<span class="fc" id="L1855">                inf.jduKykYmd(),</span>
+<span class="fc" id="L1856">                inf.shsyKyoTrno(),</span>
+<span class="fc" id="L1857">                inf.byssUmFlg(),</span>
+<span class="fc" id="L1858">                inf.skshHyjsKrno(),</span>
+<span class="fc" id="L1859">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 空の支払契約情報 DTO を生成する。
+     * 主な仕様: 契約情報欠損時に返却形をそろえるため、全項目 `null` の DTO を返す。
+     * 既知の制約: 空 DTO でも既定コードは設定しない。
+     */
+    private static PreOpeningSihakyInf emptyPreOpeningSihakyInf() {
+<span class="fc" id="L1868">        return new PreOpeningSihakyInf(</span>
+                null, // sihKiyNo
+                null, // skno
+                null, // tkysYmd
+                null, // tyenYmd
+                null, // sihKiyJtkb
+                null, // sihHuhuShbt
+                null, // sikSvcShbt
+                null, // sikKibNo
+                null, // yggsTkyShbt
+                null, // thsCdNo
+                null, // sikCycsNo
+                null, // sikKrno
+                null, // shtiSqddKbn
+                null, // jduKykShbt
+                null, // jduKykYmd
+                null, // shsyKyoTrno
+                Boolean.FALSE, // byssUmFlg
+                null, // skshHyjsKrno
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: 開栓日時点契約情報の支払契約 DTO を変換する。
+     * 主な仕様: opening 系 SV の支払契約情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返し、更新順序番号は補完しない。
+     */
+    private static PreOpeningSihakyInf toOpeningSihakyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.ContractInfoAtOpeningDateSihakyInf inf) {
+<span class="nc bnc" id="L1898" title="All 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L1899">            return null;</span>
+        }
+<span class="nc" id="L1901">        return new PreOpeningSihakyInf(</span>
+<span class="nc" id="L1902">                inf.sihKiyNo(),</span>
+<span class="nc" id="L1903">                inf.skno(),</span>
+<span class="nc" id="L1904">                inf.tkysYmd(),</span>
+<span class="nc" id="L1905">                inf.tyenYmd(),</span>
+<span class="nc" id="L1906">                inf.sihKiyJtkb(),</span>
+<span class="nc" id="L1907">                inf.sihHuhuShbt(),</span>
+<span class="nc" id="L1908">                inf.sikSvcShbt(),</span>
+<span class="nc" id="L1909">                inf.sikKibNo(),</span>
+<span class="nc" id="L1910">                inf.yggsTkyShbt(),</span>
+<span class="nc" id="L1911">                inf.thsCdNo(),</span>
+<span class="nc" id="L1912">                inf.sikCycsNo(),</span>
+<span class="nc" id="L1913">                inf.sikKrno(),</span>
+<span class="nc" id="L1914">                inf.shtiSqddKbn(),</span>
+<span class="nc" id="L1915">                inf.jduKykShbt(),</span>
+<span class="nc" id="L1916">                inf.jduKykYmd(),</span>
+<span class="nc" id="L1917">                inf.shsyKyoTrno(),</span>
+<span class="nc" id="L1918">                inf.byssUmFlg(),</span>
+<span class="nc" id="L1919">                inf.skshHyjsKrno(),</span>
+                null);
+    }
+
+    /**
+     * 概要: 前居住者契約情報の支払契約 DTO を変換する。
+     * 主な仕様: 前居住者契約情報取得 SV の支払契約情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSihakyInf toOpeningSihakyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.PreviousResidentContractInfoSihakyInf inf) {
+<span class="pc bpc" id="L1930" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="fc" id="L1931">            return null;</span>
+        }
+<span class="nc" id="L1933">        return new PreOpeningSihakyInf(</span>
+<span class="nc" id="L1934">                inf.sihKiyNo(),</span>
+<span class="nc" id="L1935">                inf.skno(),</span>
+<span class="nc" id="L1936">                inf.tkysYmd(),</span>
+<span class="nc" id="L1937">                inf.tyenYmd(),</span>
+<span class="nc" id="L1938">                inf.sihKiyJtkb(),</span>
+<span class="nc" id="L1939">                inf.sihHuhuShbt(),</span>
+<span class="nc" id="L1940">                inf.sikSvcShbt(),</span>
+<span class="nc" id="L1941">                inf.sikKibNo(),</span>
+<span class="nc" id="L1942">                inf.yggsTkyShbt(),</span>
+<span class="nc" id="L1943">                inf.thsCdNo(),</span>
+<span class="nc" id="L1944">                inf.sikCycsNo(),</span>
+<span class="nc" id="L1945">                inf.sikKrno(),</span>
+<span class="nc" id="L1946">                inf.shtiSqddKbn(),</span>
+<span class="nc" id="L1947">                inf.jduKykShbt(),</span>
+<span class="nc" id="L1948">                inf.jduKykYmd(),</span>
+<span class="nc" id="L1949">                inf.shsyKyoTrno(),</span>
+<span class="nc" id="L1950">                inf.byssUmFlg(),</span>
+<span class="nc" id="L1951">                inf.skshHyjsKrno(),</span>
+<span class="nc" id="L1952">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 空のサービス契約情報 DTO を生成する。
+     * 主な仕様: 契約情報欠損時に全項目 `null` のサービス契約 DTO を返す。
+     * 既知の制約: 状態コードなどの既定値補完は行わない。
+     */
+    private static PreOpeningSvckyaInf emptyPreOpeningSvckyaInf() {
+<span class="fc" id="L1961">        return new PreOpeningSvckyaInf(</span>
+                null, // svkyNo
+                null, // skno
+                null, // kyttSkno
+                null, // kyttTsno
+                null, // svkyJtkb
+                null, // svkySttJysb
+                null, // ksbTkyJysb
+                null, // svkyEndJysb
+                null, // rkkiSttYmd
+                null, // rkkiEndYmd
+                null, // ksbSttYmd
+                null, // ksbEndYmd
+                null, // ksbStytYmd
+                null, // ksbEnytYmd
+                null, // kykYtiYmd
+                null, // svcRyksYmd
+                null, // svkyTiktYmd
+                null, // ksbTiktYmd
+                null, // szirHtyoYmd
+                null, // sqtiKiyNo
+                null, // syoKyoTrno
+                null, // kysKyoTrno
+                Boolean.FALSE, // byssUmFlg
+                null, // shziKbn
+                null, // kiyShbt
+                null, // gasYtCd
+                null, // sziKziKbn
+                Boolean.FALSE, // rknKhumFlg
+                null, // kkysSisnJtkb
+                null, // kiyKnrkCd
+                null, // syaKbn
+                null, // tsziKysbNo
+                null, // regTsmp
+                null, // regUsrId
+                null, // updTsmp
+                null, // updUsrId
+                null, // updKtnKinoId
+                null  // recUpdJnjNo
+        );
+    }
+
+    /**
+     * 概要: GET 系のサービス契約情報を開栓前 DTO に変換する。
+     * 主な仕様: 取得元のサービス契約項目を opening 側 DTO にそのまま写像する。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvckyaInf toOpeningSvckyaInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.SvckyaInf inf) {
+<span class="fc bfc" id="L2010" title="All 2 branches covered.">        if (inf == null) {</span>
+<span class="fc" id="L2011">            return null;</span>
+        }
+<span class="fc" id="L2013">        return new PreOpeningSvckyaInf(</span>
+<span class="fc" id="L2014">                inf.svkyNo(),</span>
+<span class="fc" id="L2015">                inf.skno(),</span>
+<span class="fc" id="L2016">                inf.kyttSkno(),</span>
+<span class="fc" id="L2017">                inf.kyttTsno(),</span>
+<span class="fc" id="L2018">                inf.svkyJtkb(),</span>
+<span class="fc" id="L2019">                inf.svkySttJysb(),</span>
+<span class="fc" id="L2020">                inf.ksbTkyJysb(),</span>
+<span class="fc" id="L2021">                inf.svkyEndJysb(),</span>
+<span class="fc" id="L2022">                inf.rkkiSttYmd(),</span>
+<span class="fc" id="L2023">                inf.rkkiEndYmd(),</span>
+<span class="fc" id="L2024">                inf.ksbSttYmd(),</span>
+<span class="fc" id="L2025">                inf.ksbEndYmd(),</span>
+<span class="fc" id="L2026">                inf.ksbStytYmd(),</span>
+<span class="fc" id="L2027">                inf.ksbEnytYmd(),</span>
+<span class="fc" id="L2028">                inf.kykYtiYmd(),</span>
+<span class="fc" id="L2029">                inf.svcRyksYmd(),</span>
+<span class="fc" id="L2030">                inf.svkyTiktYmd(),</span>
+<span class="fc" id="L2031">                inf.ksbTiktYmd(),</span>
+<span class="fc" id="L2032">                inf.szirHtyoYmd(),</span>
+<span class="fc" id="L2033">                inf.sqtiKiyNo(),</span>
+<span class="fc" id="L2034">                inf.syoKyoTrno(),</span>
+<span class="fc" id="L2035">                inf.kysKyoTrno(),</span>
+<span class="fc" id="L2036">                inf.byssUmFlg(),</span>
+<span class="fc" id="L2037">                inf.shziKbn(),</span>
+<span class="fc" id="L2038">                inf.kiyShbt(),</span>
+<span class="fc" id="L2039">                inf.gasYtCd(),</span>
+<span class="fc" id="L2040">                inf.sziKziKbn(),</span>
+<span class="fc" id="L2041">                inf.rknKhumFlg(),</span>
+<span class="fc" id="L2042">                inf.kkysSisnJtkb(),</span>
+<span class="fc" id="L2043">                inf.kiyKnrkCd(),</span>
+<span class="fc" id="L2044">                inf.syaKbn(),</span>
+<span class="fc" id="L2045">                inf.tsziKysbNo(),</span>
+<span class="fc" id="L2046">                inf.regTsmp(),</span>
+<span class="fc" id="L2047">                inf.regUsrId(),</span>
+<span class="fc" id="L2048">                inf.updTsmp(),</span>
+<span class="fc" id="L2049">                inf.updUsrId(),</span>
+<span class="fc" id="L2050">                inf.updKtnKinoId(),</span>
+<span class="fc" id="L2051">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 開栓日時点契約情報のサービス契約 DTO を変換する。
+     * 主な仕様: opening 系 SV のサービス契約情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningSvckyaInf toOpeningSvckyaInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaInf inf) {
+<span class="nc bnc" id="L2061" title="All 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L2062">            return null;</span>
+        }
+<span class="nc" id="L2064">        return new PreOpeningSvckyaInf(</span>
+<span class="nc" id="L2065">                inf.svkyNo(),</span>
+<span class="nc" id="L2066">                inf.skno(),</span>
+<span class="nc" id="L2067">                inf.kyttSkno(),</span>
+<span class="nc" id="L2068">                inf.kyttTsno(),</span>
+<span class="nc" id="L2069">                inf.svkyJtkb(),</span>
+<span class="nc" id="L2070">                inf.svkySttJysb(),</span>
+<span class="nc" id="L2071">                inf.ksbTkyJysb(),</span>
+<span class="nc" id="L2072">                inf.svkyEndJysb(),</span>
+<span class="nc" id="L2073">                inf.rkkiSttYmd(),</span>
+<span class="nc" id="L2074">                inf.rkkiEndYmd(),</span>
+<span class="nc" id="L2075">                inf.ksbSttYmd(),</span>
+<span class="nc" id="L2076">                inf.ksbEndYmd(),</span>
+<span class="nc" id="L2077">                inf.ksbStytYmd(),</span>
+<span class="nc" id="L2078">                inf.ksbEnytYmd(),</span>
+<span class="nc" id="L2079">                inf.kykYtiYmd(),</span>
+<span class="nc" id="L2080">                inf.svcRyksYmd(),</span>
+<span class="nc" id="L2081">                inf.svkyTiktYmd(),</span>
+<span class="nc" id="L2082">                inf.ksbTiktYmd(),</span>
+<span class="nc" id="L2083">                inf.szirHtyoYmd(),</span>
+<span class="nc" id="L2084">                inf.sqtiKiyNo(),</span>
+<span class="nc" id="L2085">                inf.syoKyoTrno(),</span>
+<span class="nc" id="L2086">                inf.kysKyoTrno(),</span>
+<span class="nc" id="L2087">                inf.byssUmFlg(),</span>
+<span class="nc" id="L2088">                inf.shziKbn(),</span>
+<span class="nc" id="L2089">                inf.kiyShbt(),</span>
+<span class="nc" id="L2090">                inf.gasYtCd(),</span>
+<span class="nc" id="L2091">                inf.sziKziKbn(),</span>
+<span class="nc" id="L2092">                inf.rknKhumFlg(),</span>
+<span class="nc" id="L2093">                inf.kkysSisnJtkb(),</span>
+<span class="nc" id="L2094">                inf.kiyKnrkCd(),</span>
+<span class="nc" id="L2095">                inf.syaKbn(),</span>
+<span class="nc" id="L2096">                inf.tsziKysbNo(),</span>
+<span class="nc" id="L2097">                inf.regTsmp(),</span>
+<span class="nc" id="L2098">                inf.regUsrId(),</span>
+<span class="nc" id="L2099">                inf.updTsmp(),</span>
+<span class="nc" id="L2100">                inf.updUsrId(),</span>
+<span class="nc" id="L2101">                inf.updKtnKinoId(),</span>
+<span class="nc" id="L2102">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 前居住者契約情報のサービス契約 DTO を変換する。
+     * 主な仕様: 前居住者契約情報取得 SV のサービス契約情報を opening 出力 DTO に詰め替える。
+     * 既知の制約: 登録更新系の監査項目は取得元に無いため `null` のままとする。
+     */
+    private static PreOpeningSvckyaInf toOpeningSvckyaInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.SvckyaKsenSaymdInf inf) {
+<span class="pc bpc" id="L2112" title="1 of 2 branches missed.">        if (inf == null) {</span>
+<span class="nc" id="L2113">            return null;</span>
+        }
+<span class="fc" id="L2115">        return new PreOpeningSvckyaInf(</span>
+<span class="fc" id="L2116">                inf.svkyNo(),</span>
+<span class="fc" id="L2117">                inf.skno(),</span>
+<span class="fc" id="L2118">                inf.kyttSkno(),</span>
+<span class="fc" id="L2119">                inf.kyttTsno(),</span>
+<span class="fc" id="L2120">                inf.svkyJtkb(),</span>
+<span class="fc" id="L2121">                inf.svkySttJysb(),</span>
+<span class="fc" id="L2122">                inf.ksbTkyJysb(),</span>
+<span class="fc" id="L2123">                inf.svkyEndJysb(),</span>
+<span class="fc" id="L2124">                inf.rkkiSttYmd(),</span>
+<span class="fc" id="L2125">                inf.rkkiEndYmd(),</span>
+<span class="fc" id="L2126">                inf.ksbSttYmd(),</span>
+<span class="fc" id="L2127">                inf.ksbEndYmd(),</span>
+<span class="fc" id="L2128">                inf.ksbStytYmd(),</span>
+<span class="fc" id="L2129">                inf.ksbEnytYmd(),</span>
+<span class="fc" id="L2130">                inf.kykYtiYmd(),</span>
+<span class="fc" id="L2131">                inf.svcRyksYmd(),</span>
+<span class="fc" id="L2132">                inf.svkyTiktYmd(),</span>
+<span class="fc" id="L2133">                inf.ksbTiktYmd(),</span>
+<span class="fc" id="L2134">                inf.szirHtyoYmd(),</span>
+<span class="fc" id="L2135">                inf.sqtiKiyNo(),</span>
+<span class="fc" id="L2136">                inf.syoKyoTrno(),</span>
+<span class="fc" id="L2137">                inf.kysKyoTrno(),</span>
+<span class="fc" id="L2138">                inf.byssUmFlg(),</span>
+<span class="fc" id="L2139">                inf.shziKbn(),</span>
+<span class="fc" id="L2140">                inf.kiyShbt(),</span>
+<span class="fc" id="L2141">                inf.gasYtCd(),</span>
+<span class="fc" id="L2142">                inf.sziKziKbn(),</span>
+<span class="fc" id="L2143">                inf.rknKhumFlg(),</span>
+<span class="fc" id="L2144">                inf.kkysSisnJtkb(),</span>
+<span class="fc" id="L2145">                inf.kiyKnrkCd(),</span>
+<span class="fc" id="L2146">                inf.syaKbn(),</span>
+<span class="fc" id="L2147">                inf.tsziKysbNo(),</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+<span class="fc" id="L2153">                inf.recUpdJnjNo());</span>
+    }
+
+    private static boolean isEmptyContractInfoAtOpeningOutput(
+            ContractInfoAtOpeningDateAcquisitionOutput output) {
+<span class="pc bpc" id="L2158" title="2 of 4 branches missed.">        return output.svckyaInf() == null || output.svckyaInf().svkyNo() == null;</span>
+    }
+
+    private static boolean isEmptyPreviousResidentContractInfoOutput(
+            PreviousResidentContractInfoAcquisitionOutput output) {
+<span class="pc bpc" id="L2163" title="1 of 2 branches missed.">        return output.svckyaKsenSaymdInf() == null</span>
+<span class="fc bfc" id="L2164" title="All 2 branches covered.">                || output.svckyaKsenSaymdInf().svkyNo() == null;</span>
+    }
+
+    /**
+     * 概要: GET 系の託送サービス契約情報を開栓前 DTO に変換する。
+     * 主な仕様: 取得元の託送サービス契約項目を opening 側 DTO に詰め替える。
+     * 既知の制約: 入力が `null` の場合は `null` を返す。
+     */
+    private static PreOpeningTkssvkyInf toOpeningTkssvkyInf(
+            jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.model.TkssvkyInf inf) {
+<span class="fc bfc" id="L2174" title="All 2 branches covered.">        if (inf == null) {</span>
+<span class="fc" id="L2175">            return null;</span>
+        }
+<span class="fc" id="L2177">        return new PreOpeningTkssvkyInf(</span>
+<span class="fc" id="L2178">                inf.tksuSvkyNo(),</span>
+<span class="fc" id="L2179">                inf.skno(),</span>
+<span class="fc" id="L2180">                inf.tksuSvkyJtkb(),</span>
+<span class="fc" id="L2181">                inf.tksuSvksJysb(),</span>
+<span class="fc" id="L2182">                inf.tksuSvkeJysb(),</span>
+<span class="fc" id="L2183">                inf.tkysYmd(),</span>
+<span class="fc" id="L2184">                inf.tyenYmd(),</span>
+<span class="fc" id="L2185">                inf.hesnYtiYmd(),</span>
+<span class="fc" id="L2186">                inf.tkykShbt(),</span>
+<span class="fc" id="L2187">                inf.tksuKijsCd(),</span>
+<span class="fc" id="L2188">                inf.sutiKskhFlg(),</span>
+<span class="fc" id="L2189">                inf.syoKyoTrno(),</span>
+<span class="fc" id="L2190">                inf.recUpdJnjNo());</span>
+    }
+
+    /**
+     * 概要: 真偽値を設計書準拠の文字コードへ変換する。
+     * 主な仕様:  `true` を `&quot;1&quot;`、`false` を `&quot;0&quot;`、`null` を `null` に変換する。
+     * 既知の制約: 3 値以外の表現やローカライズは扱わない。
+     */
+    private static String toBooleanCode(Boolean value) {
+<span class="pc bpc" id="L2199" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L2200">            return null;</span>
+        }
+<span class="pc bpc" id="L2202" title="1 of 2 branches missed.">        return Boolean.TRUE.equals(value) ? &quot;1&quot; : &quot;0&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

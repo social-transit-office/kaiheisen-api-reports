@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MnzkiyDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-mnzkiy</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.mnzkiy</a> &gt; <span class="el_source">MnzkiyDataAccessImpl.java</span></div><h1>MnzkiyDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.mnzkiy;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.MnzkiyRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiySvkyTkysUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.mnzkiy.write.MnzkiyWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-123（MNZKIY）のインメモリ実装。 */
+public class MnzkiyDataAccessImpl extends DataAccessBase implements MnzkiyDataAccess {
+
+<span class="fc" id="L38">    private static final DateTimeFormatter BASIC_ISO_DATE = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L40">    private static final LocalDate COMPLEMENT_YMD = LocalDate.of(1, 1, 1);</span>
+
+    /** 行データとレコードの相互変換を担うマッパー。 */
+<span class="fc" id="L43">    private static final ReflectiveInMemoryRowMapper&lt;MnzkiyColumn, MnzkiyRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L44">            ReflectiveInMemoryRowMapper.create(MnzkiyColumn.class, MnzkiyRecord.class);</span>
+
+    /** write レコードの未設定項目を補完する中立値リゾルバ。 */
+<span class="fc" id="L47">    private static final AutoNeutralValueResolver&lt;MnzkiyColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L48">            AutoNeutralValueResolver.create(MnzkiyColumn.class, MnzkiyRecord.class);</span>
+
+    /** R002 の開始年月日降順ソート順。 */
+<span class="fc" id="L51">    private static final Comparator&lt;EnumMap&lt;MnzkiyColumn, Object&gt;&gt; R002_ORDER =</span>
+<span class="fc" id="L52">            Comparator.&lt;EnumMap&lt;MnzkiyColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L53">                            row -&gt; (LocalDate) row.get(MnzkiyColumn.MNZI_TKYS_YMD),</span>
+<span class="fc" id="L54">                            Comparator.nullsLast(Comparator.reverseOrder()));</span>
+
+    /** R003 の開始年月日昇順ソート順。 */
+<span class="fc" id="L57">    private static final Comparator&lt;EnumMap&lt;MnzkiyColumn, Object&gt;&gt; R003_ORDER =</span>
+<span class="fc" id="L58">            Comparator.&lt;EnumMap&lt;MnzkiyColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="nc" id="L59">                            row -&gt; (LocalDate) row.get(MnzkiyColumn.MNZI_TKYS_YMD),</span>
+<span class="fc" id="L60">                            Comparator.nullsLast(Comparator.naturalOrder()));</span>
+
+    /** R004 の開始年月日降順ソート順。 */
+<span class="fc" id="L63">    private static final Comparator&lt;EnumMap&lt;MnzkiyColumn, Object&gt;&gt; R004_ORDER = R002_ORDER;</span>
+
+    /** インメモリ上で保持する MNZKIY の全行。 */
+<span class="fc" id="L66">    private final List&lt;EnumMap&lt;MnzkiyColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /** 監査列補完に利用する現在時刻プロバイダ。 */
+    private final SystemDateTimeProvider clock;
+
+    /** CIRIUS 共通の監査列自動設定ロジック。 */
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    /** Insert 用の行生成支援。 */
+    private final InMemoryInsertSupport&lt;MnzkiyWriteRecord, MnzkiyColumn&gt; insertSupport;
+
+    /** Update 用の更新行生成支援。 */
+    private final InMemoryTargetColumnUpdateSupport&lt;MnzkiyWriteRecord, MnzkiyColumn&gt;
+            updateSupport;
+
+    /** デフォルト依存でインスタンスを生成する。 */
+    public MnzkiyDataAccessImpl() {
+<span class="nc" id="L83">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * テスト用に依存を差し替えてインスタンスを生成する。
+     *
+     * @param clock 時刻プロバイダ
+     * @param auditColumnAutoSetter 監査列自動設定
+     */
+    MnzkiyDataAccessImpl(
+<span class="fc" id="L93">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L94">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L95">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L96">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L97">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(MnzkiyWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L99">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        MnzkiyWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L102">    }</span>
+
+    /** テストデータを 1 行追加する。 */
+    public MnzkiyDataAccessImpl addRow(MnzkiyRecord row) {
+<span class="fc" id="L106">        EnumMap&lt;MnzkiyColumn, Object&gt; values =</span>
+<span class="fc" id="L107">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L108">        normalizeComplementedDates(values);</span>
+<span class="fc" id="L109">        NEUTRAL_VALUE_RESOLVER.complement(values, MnzkiyWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L110">        rows.add(values);</span>
+<span class="fc" id="L111">        return this;</span>
+    }
+
+    /** 保持中の行をレコードとして返す。 */
+    public List&lt;MnzkiyRecord&gt; getRows() {
+<span class="nc" id="L116">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    /** 1 行登録する。 */
+    @Override
+    public int insert(MnzkiyWriteRecord record, AuditContext context) {
+<span class="fc" id="L122">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L123">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L124">        rows.add(</span>
+<span class="fc" id="L125">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="fc" id="L128">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(MnzkiyColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="fc" id="L132">        return 1;</span>
+    }
+
+    /** 主キーと排他制御順序番号を条件に 1 行削除する。 */
+    @Override
+    public int deleteBySvkyNoAndMnziTkysYmdAndRecUpdJnjNo(
+            Long svkyNo, LocalDate mnziTkysYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L139">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L140">        LocalDate safeMnziTkysYmd = safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L141">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc" id="L143">                row -&gt; matchesPrimaryKey(row, safeSvkyNo, safeMnziTkysYmd),</span>
+                MnzkiyColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+<span class="fc" id="L146">                MnzkiyDataAccess.CallSpecs.DELETE_BY_SVKY_NO_AND_MNZI_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                () -&gt;
+<span class="nc" id="L148">                        new DataInconsistencyException(</span>
+                                &quot;MNZKIY&quot;,
+<span class="nc" id="L150">                                MnzkiyDataAccess.CallSpecs.DELETE_BY_SVKY_NO_AND_MNZI_TKYS_YMD_AND_REC_UPD_JNJ_NO.identifier(),</span>
+                                &quot;{}&quot;),
+                safeSvkyNo,
+                safeMnziTkysYmd);
+    }
+
+    /** 主キーで 1 行取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmd(Long svkyNo, LocalDate mnziTkysYmd) {
+<span class="fc" id="L159">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L160">        LocalDate safeMnziTkysYmd = safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L161">        return rows.stream()</span>
+<span class="fc" id="L162">                .filter(row -&gt; matchesPrimaryKey(row, safeSvkyNo, safeMnziTkysYmd))</span>
+<span class="fc" id="L163">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L164">                .findFirst();</span>
+    }
+
+    /** サービス契約番号と免税適用終了年月日で 1 行取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTyenYmd(Long svkyNo, LocalDate mnziTyenYmd) {
+<span class="fc" id="L170">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L171">        LocalDate safeMnziTyenYmd = safeYmd(mnziTyenYmd, &quot;mnziTyenYmd&quot;);</span>
+<span class="fc" id="L172">        return rows.stream()</span>
+<span class="fc" id="L173">                .filter(row -&gt; Objects.equals(row.get(MnzkiyColumn.SVKY_NO), safeSvkyNo))</span>
+<span class="fc" id="L174">                .filter(row -&gt; sameComplementedYmd(row.get(MnzkiyColumn.MNZI_TYEN_YMD), safeMnziTyenYmd))</span>
+<span class="fc" id="L175">                .sorted(R002_ORDER)</span>
+<span class="fc" id="L176">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L177">                .findFirst();</span>
+    }
+
+    /** 指定開始年月日より後の最初の 1 行を取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmdGreaterThan(
+            Long svkyNo, LocalDate mnziTkysYmd) {
+<span class="fc" id="L184">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L185">        LocalDate safeMnziTkysYmd = safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L186">        return rows.stream()</span>
+<span class="fc" id="L187">                .filter(row -&gt; Objects.equals(row.get(MnzkiyColumn.SVKY_NO), safeSvkyNo))</span>
+<span class="fc" id="L188">                .filter(</span>
+                        row -&gt; {
+<span class="fc" id="L190">                            LocalDate rowYmd = (LocalDate) row.get(MnzkiyColumn.MNZI_TKYS_YMD);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                            return complementedYmdValue(rowYmd) &gt; complementedYmdValue(safeMnziTkysYmd);</span>
+                        })
+<span class="fc" id="L193">                .sorted(R003_ORDER)</span>
+<span class="fc" id="L194">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L195">                .findFirst();</span>
+    }
+
+    /** 基準日を含む有効期間のうち最新開始日の 1 行を取得する。 */
+    @Override
+    public Optional&lt;MnzkiyRecord&gt; findBySvkyNoAndMnziTkysYmdAndMnziTyenYmd(
+            Long svkyNo, LocalDate knskKjnYmd) {
+<span class="fc" id="L202">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L203">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+<span class="fc" id="L204">        return rows.stream()</span>
+<span class="fc" id="L205">                .filter(row -&gt; Objects.equals(row.get(MnzkiyColumn.SVKY_NO), safeSvkyNo))</span>
+<span class="fc" id="L206">                .filter(row -&gt; isStartOnOrBefore(row, safeKnskKjnYmd))</span>
+<span class="fc" id="L207">                .filter(row -&gt; isEndOnOrAfter(row, safeKnskKjnYmd))</span>
+<span class="fc" id="L208">                .sorted(R004_ORDER)</span>
+<span class="fc" id="L209">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L210">                .findFirst();</span>
+    }
+
+    /** U001 条件で 1 行更新する。 */
+    @Override
+    public int updateBySvkyNoAndMnziTkysYmdAndRecUpdJnjNo(
+            MnzkiyWriteRecord record,
+            Set&lt;MnzkiyColumn&gt; targetColumns,
+            MnzkiySvkyTkysUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L220">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L221">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L222">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L223">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L224">        return update(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L227">                updateKey.svkyNo(),</span>
+<span class="fc" id="L228">                updateKey.mnziTkysYmd(),</span>
+<span class="fc" id="L229">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L231">                MnzkiyDataAccess.CallSpecs.UPDATE_BY_SVKY_NO_AND_MNZI_TKYS_YMD_AND_REC_UPD_JNJ_NO_U001.identifier());</span>
+    }
+
+    /**
+     * 主キー一致行を更新する。
+     *
+     * @param record 更新内容
+     * @param targetColumns 更新対象列
+     * @param svkyNo サービス契約番号
+     * @param mnziTkysYmd 免税適用開始年月日
+     * @param recUpdJnjNo 排他制御順序番号
+     * @param context 監査コンテキスト
+     * @param daId DA 識別子
+     * @return 更新件数
+     */
+    private int update(
+            MnzkiyWriteRecord record,
+            Set&lt;MnzkiyColumn&gt; targetColumns,
+            Long svkyNo,
+            LocalDate mnziTkysYmd,
+            Integer recUpdJnjNo,
+            AuditContext context,
+            String daId) {
+<span class="fc" id="L254">        Long safeSvkyNo = safeLong(svkyNo, &quot;svkyNo&quot;);</span>
+<span class="fc" id="L255">        LocalDate safeMnziTkysYmd = safeYmd(mnziTkysYmd, &quot;mnziTkysYmd&quot;);</span>
+<span class="fc" id="L256">        Set&lt;MnzkiyColumn&gt; canonicalTargetColumns = canonicalTargetColumns(targetColumns);</span>
+<span class="fc" id="L257">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L259">                row -&gt; matchesPrimaryKey(row, safeSvkyNo, safeMnziTkysYmd),</span>
+                row -&gt;
+<span class="fc" id="L261">                        updateSupport.prepare(</span>
+                                record,
+                                canonicalTargetColumns,
+                                values -&gt;
+<span class="fc" id="L265">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(MnzkiyColumn.class, values),
+                                                context,
+                                                clock,
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                                                recUpdJnjNo == null</span>
+<span class="fc" id="L270">                                                        ? (Integer) row.get(MnzkiyColumn.REC_UPD_JNJ_NO)</span>
+<span class="nc" id="L271">                                                        : recUpdJnjNo)),</span>
+<span class="fc" id="L272">                updateSupport::apply,</span>
+                MnzkiyColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                daId,
+                safeSvkyNo,
+                safeMnziTkysYmd);
+    }
+
+    /**
+     * 更新対象列を EnumSet 化して canonical 形式に整える。
+     *
+     * @param targetColumns 更新対象列
+     * @return canonical 化した更新対象列
+     */
+    private static Set&lt;MnzkiyColumn&gt; canonicalTargetColumns(Set&lt;MnzkiyColumn&gt; targetColumns) {
+<span class="fc" id="L287">        EnumSet&lt;MnzkiyColumn&gt; canonicalColumns = EnumSet.noneOf(MnzkiyColumn.class);</span>
+<span class="fc" id="L288">        canonicalColumns.addAll(targetColumns);</span>
+<span class="fc" id="L289">        return canonicalColumns;</span>
+    }
+
+    /**
+     * 行が主キー条件に一致するか判定する。
+     *
+     * @param row 判定対象行
+     * @param safeSvkyNo サービス契約番号
+     * @param safeMnziTkysYmd 免税適用開始年月日
+     * @return 主キー一致時 true
+     */
+    private static boolean matchesPrimaryKey(
+            Map&lt;MnzkiyColumn, Object&gt; row, Long safeSvkyNo, LocalDate safeMnziTkysYmd) {
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        return Objects.equals(row.get(MnzkiyColumn.SVKY_NO), safeSvkyNo)</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                &amp;&amp; sameComplementedYmd(row.get(MnzkiyColumn.MNZI_TKYS_YMD), safeMnziTkysYmd);</span>
+    }
+
+    /**
+     * 行の開始年月日が基準日以前か判定する。
+     *
+     * @param row 判定対象行
+     * @param baseDate 基準日
+     * @return 基準日以前の場合 true
+     */
+    private static boolean isStartOnOrBefore(Map&lt;MnzkiyColumn, Object&gt; row, LocalDate baseDate) {
+<span class="fc" id="L314">        LocalDate rowDate = (LocalDate) row.get(MnzkiyColumn.MNZI_TKYS_YMD);</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        return complementedYmdValue(rowDate) &lt;= complementedYmdValue(baseDate);</span>
+    }
+
+    /**
+     * 行の終了年月日が基準日以後か判定する。
+     *
+     * @param row 判定対象行
+     * @param baseDate 基準日
+     * @return 基準日以後の場合 true
+     */
+    private static boolean isEndOnOrAfter(Map&lt;MnzkiyColumn, Object&gt; row, LocalDate baseDate) {
+<span class="fc" id="L326">        LocalDate rowDate = (LocalDate) row.get(MnzkiyColumn.MNZI_TYEN_YMD);</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">        return complementedYmdValue(rowDate) &gt;= complementedYmdValue(baseDate);</span>
+    }
+
+    /**
+     * 補完用のダミー日付を通常の null 表現へ正規化する。
+     *
+     * @param values 正規化対象の値マップ
+     */
+    private static void normalizeComplementedDates(EnumMap&lt;MnzkiyColumn, Object&gt; values) {
+<span class="fc" id="L336">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_TKYS_YMD);</span>
+<span class="fc" id="L337">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_TYEN_YMD);</span>
+<span class="fc" id="L338">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_TYEH_YMD);</span>
+<span class="fc" id="L339">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_KYSJ_YMD);</span>
+<span class="fc" id="L340">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_TYSJ_YMD);</span>
+<span class="fc" id="L341">        normalizeComplementedDate(values, MnzkiyColumn.MNZI_HKSJ_YMD);</span>
+<span class="fc" id="L342">    }</span>
+
+    /**
+     * 指定列の補完用ダミー日付を null へ置き換える。
+     *
+     * @param values 変換対象の値マップ
+     * @param column 対象列
+     */
+    private static void normalizeComplementedDate(
+            EnumMap&lt;MnzkiyColumn, Object&gt; values, MnzkiyColumn column) {
+<span class="fc" id="L352">        Object value = values.get(column);</span>
+<span class="pc bpc" id="L353" title="1 of 4 branches missed.">        if (value instanceof LocalDate localDate &amp;&amp; COMPLEMENT_YMD.equals(localDate)) {</span>
+<span class="nc" id="L354">            values.put(column, null);</span>
+        }
+<span class="fc" id="L356">    }</span>
+
+    /**
+     * 補完値を考慮して年月日同士の一致を判定する。
+     *
+     * @param left 行側の年月日
+     * @param right 条件側の年月日
+     * @return 一致する場合 true
+     */
+    private static boolean sameComplementedYmd(Object left, LocalDate right) {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        return complementedYmdValue((LocalDate) left) == complementedYmdValue(right);</span>
+    }
+
+    /**
+     * 年月日を比較用の数値に変換する。
+     *
+     * @param value 変換対象の年月日
+     * @return 比較用数値
+     */
+    private static int complementedYmdValue(LocalDate value) {
+<span class="fc" id="L376">        LocalDate normalized = normalizeComplementedYmd(value);</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        if (normalized == null) {</span>
+<span class="fc" id="L378">            return 0;</span>
+        }
+<span class="fc" id="L380">        return Integer.parseInt(normalized.format(BASIC_ISO_DATE));</span>
+    }
+
+    /**
+     * 補完用のダミー日付を null として扱う。
+     *
+     * @param value 判定対象の年月日
+     * @return 正規化後の年月日
+     */
+    private static LocalDate normalizeComplementedYmd(LocalDate value) {
+<span class="fc bfc" id="L390" title="All 4 branches covered.">        if (value == null || COMPLEMENT_YMD.equals(value)) {</span>
+<span class="fc" id="L391">            return null;</span>
+        }
+<span class="fc" id="L393">        return value;</span>
+    }
+
+    /**
+     * Long 条件値を null-safe に補完する。
+     *
+     * @param value 入力値
+     * @param paramName パラメータ名
+     * @return 補完後の値
+     */
+    private static Long safeLong(Long value, String paramName) {
+<span class="fc" id="L404">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    /**
+     * 年月日条件値を null-safe に補完する。
+     *
+     * @param value 入力値
+     * @param paramName パラメータ名
+     * @return 補完後の値
+     */
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L415">        return normalizeComplementedYmd(</span>
+<span class="fc" id="L416">                WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-get-comprehensiveoriginmeterdedicatedmeterinfoacquisition</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get</a> &gt; <span class="el_source">ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionImpl.java</span></div><h1>ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.get;
+
+import jakarta.inject.Inject;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOriginMeterDedicatedMeterInfoAcquisition;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.get.ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput;
+
+/**
+ * 概要: SV-124（総合元メーター時の専用メーター情報取得）の実装クラス。
+ * 主な仕様:
+ * - 元ガスメーターの場合のみ総合先候補を取得し、候補ごとに専用契約中の有無を参照する。
+ * - 同一の設置場所番号が連続した場合は重複候補としてスキップする。
+ * - J0244 の元ガスメーター、および J0611 の関連有効 / 関連終了待ちをコンストラクタで必須解決する。
+ * 既知の制約:
+ * - `systemDatetime` は RequestContext から取得し、未設定時は fail-fast する。
+ * - public 引数の null ガードは SV 規約に従い実装しない。
+ */
+public final class ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionImpl
+        implements ComprehensiveOriginMeterDedicatedMeterInfoAcquisition {
+
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+    private final RequestContext requestContext;
+
+    private final String originalGasMeterStatus;
+
+    private final String relatedValidStatus;
+
+    private final String relatedEndWaitingStatus;
+
+    /**
+     * 概要: 依存 DA、RequestContext、および必須定数を解決して初期化する。
+     * 主な仕様:
+     * - 依存 DA と RequestContext の null を許容せず fail-fast する。
+     * - J0244 の元ガスメーター、J0611 の関連有効 / 関連終了待ちを保持する。
+     *
+     * @param gmtsetdDataAccess ガスメーター設置場所＜導管＞データアクセス
+     * @param svmstkrDataAccess サービス契約・メーター設置場所関連データアクセス
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS コンスタント取得サービス
+     */
+    @Inject
+    public ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionImpl(
+            GmtsetdDataAccess gmtsetdDataAccess,
+            SvmstkrDataAccess svmstkrDataAccess,
+            RequestContext requestContext,
+<span class="fc" id="L60">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L61">        this.gmtsetdDataAccess = Objects.requireNonNull(gmtsetdDataAccess, &quot;gmtsetdDataAccess&quot;);</span>
+<span class="fc" id="L62">        this.svmstkrDataAccess = Objects.requireNonNull(svmstkrDataAccess, &quot;svmstkrDataAccess&quot;);</span>
+<span class="fc" id="L63">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L64">        CiriusConstantService resolvedConstantService =</span>
+<span class="fc" id="L65">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L66">        this.originalGasMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.ORIGINAL_GAS_METER);
+<span class="fc" id="L70">        this.relatedValidStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.RELATED_VALID);
+<span class="fc" id="L74">        this.relatedEndWaitingStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedConstantService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.BLANK_03);
+<span class="fc" id="L78">    }</span>
+
+    /**
+     * 概要: SV-124 を実行し、総合元メーター時の専用契約中フラグを返却する。
+     * 主な仕様:
+     * - 元ガスメーター以外の場合は下位依存を呼ばず false を返却する。
+     * - 候補設置場所番号を順に評価し、専用契約中の候補が 1 件でもあれば true を返却する。
+     *
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @param szcGkkCd 所在地行政区画コード
+     * @param szcCmazCd 所在地丁目・字コード
+     * @param szcMchCd 所在地町コード
+     * @param gasMtstNo ガスメーター設置場所番号
+     * @param rkkiKnrnJtkb 料金計算関連状態区分
+     * @return 総合元メーター時の専用メーター情報取得結果
+     */
+    @Override
+    public ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput execute(
+            String ckrtGmscJtkb,
+            String szcGkkCd,
+            String szcCmazCd,
+            String szcMchCd,
+            Long gasMtstNo,
+            String rkkiKnrnJtkb) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (!originalGasMeterStatus.equals(ckrtGmscJtkb)) {</span>
+<span class="fc" id="L103">            return toOutput(false);</span>
+        }
+
+<span class="fc" id="L106">        LocalDate searchBaseDate = requestContext.getSystemDatetime()</span>
+<span class="fc" id="L107">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;))</span>
+<span class="fc" id="L108">                .toLocalDate();</span>
+
+<span class="fc" id="L110">        List&lt;GmtsetdRecord&gt; candidates = Objects.requireNonNull(</span>
+                gmtsetdDataAccess
+<span class="fc" id="L112">                        .findAllBySzcGkkCdAndSzcCmazCdAndSzcMchCdAndMtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                                szcGkkCd,
+                                szcCmazCd,
+                                szcMchCd,
+                                gasMtstNo,
+                                gasMtstNo,
+                                searchBaseDate),
+                &quot;gmtsetdDataAccess.findAllBySzcGkkCdAndSzcCmazCdAndSzcMchCdAndMtgMtstNoAndGasMtstNoAndTkysYmdAndTyenYmd&quot;);
+
+        // 候補 gasMtstNo に 0 が返らない前提はコード上にないため、初回判定は null で表現する。
+<span class="fc" id="L122">        Long previousMeterLocationNumber = null;</span>
+<span class="fc" id="L123">        List&lt;String&gt; relatedStatuses = List.of(relatedValidStatus, relatedEndWaitingStatus);</span>
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (GmtsetdRecord candidate : candidates) {</span>
+<span class="fc" id="L126">            Long candidateMeterLocationNumber = candidate.gasMtstNo();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            if (!Objects.equals(previousMeterLocationNumber, candidateMeterLocationNumber)) {</span>
+<span class="fc" id="L128">                Optional&lt;SvmstkrRecord&gt; dedicatedContract = Objects.requireNonNull(</span>
+<span class="fc" id="L129">                        svmstkrDataAccess.findByMtstNoAndRkkiKnrnJtkb(</span>
+                                candidateMeterLocationNumber,
+                                relatedStatuses),
+                        &quot;svmstkrDataAccess.findByMtstNoAndRkkiKnrnJtkb(Long, List)&quot;);
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (dedicatedContract.isPresent()) {</span>
+<span class="fc" id="L134">                    return toOutput(true);</span>
+                }
+            }
+<span class="fc" id="L137">            previousMeterLocationNumber = candidateMeterLocationNumber;</span>
+<span class="fc" id="L138">        }</span>
+
+<span class="fc" id="L140">        return toOutput(false);</span>
+    }
+
+    private static ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput toOutput(
+            boolean snyKyktFlg) {
+<span class="fc" id="L145">        return new ComprehensiveOriginMeterDedicatedMeterInfoAcquisitionOutput(snyKyktFlg);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

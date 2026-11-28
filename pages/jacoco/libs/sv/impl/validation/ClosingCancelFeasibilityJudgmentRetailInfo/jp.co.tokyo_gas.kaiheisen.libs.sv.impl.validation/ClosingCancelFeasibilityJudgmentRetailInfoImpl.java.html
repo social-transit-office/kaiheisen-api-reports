@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClosingCancelFeasibilityJudgmentRetailInfoImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-validation-closingcancelfeasibilityjudgmentretailinfo</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation</a> &gt; <span class="el_source">ClosingCancelFeasibilityJudgmentRetailInfoImpl.java</span></div><h1>ClosingCancelFeasibilityJudgmentRetailInfoImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.validation;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.BusinessRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.gmtsetd.GmtsetdRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svckya.SvckyaRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.svmstkr.SvmstkrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessCallSpec;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentRetailInfo;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.ClosingCancelFeasibilityJudgmentRetailInfoOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GmtsetdInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.GmtsetdRelatedInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.KkytskrInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvckyaInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.validation.model.SvmstkrInf;
+
+/** SV-103 閉栓取消実施可否判定: 小売情報サービス実装. */
+public final class ClosingCancelFeasibilityJudgmentRetailInfoImpl
+        implements ClosingCancelFeasibilityJudgmentRetailInfo {
+
+        /** 将来サービス契約の返却上限件数. */
+    private static final int FUTURE_SERVICE_CONTRACT_LIMIT = 10;
+
+        /** 関連メーター処理の上限件数. */
+    private static final int RELATED_METER_PROCESS_LIMIT = 300;
+
+        /** サービス契約・メーター設置場所関連 DA. */
+    private final SvmstkrDataAccess svmstkrDataAccess;
+
+        /** サービス契約 DA. */
+    private final SvckyaDataAccess svckyaDataAccess;
+
+        /** ガスメーター設置場所＜導管＞ DA. */
+    private final GmtsetdDataAccess gmtsetdDataAccess;
+
+        /** 供給停止管理 DA. */
+    private final KkytskrDataAccess kkytskrDataAccess;
+
+        /** 直列ガスメーターの設置状態区分. */
+    private final String dedicatedGasMeterStatus;
+
+        /** 契約適用中のサービス契約状態区分. */
+    private final String underContractStatus;
+
+        /** 契約終了のサービス契約状態区分. */
+    private final String endOfContractStatus;
+
+        /** 無効のサービス契約状態区分. */
+    private final String invalidServiceContractStatus;
+
+        /** 無効の料金計算関連状態区分. */
+    private final String invalidChargeCalculationRelatedStatus;
+
+        /** 免税の消費税区分. */
+    private final String dutyFreeConsumptionTax;
+
+        /** 供給停止未払の供給停止支払状態区分. */
+    private final String supplyStopPaymentPending;
+
+        /** 供給停止の業務詳細コード. */
+    private final String supplyOutageWorkDetailCode;
+
+    /**
+     * 必須依存を受け取って初期化する.
+     *
+     * @param svmstkrDataAccessParam サービス契約・メーター設置場所関連 DA
+     * @param svckyaDataAccessParam サービス契約 DA
+     * @param gmtsetdDataAccessParam ガスメーター設置場所＜導管＞ DA
+     * @param kkytskrDataAccessParam 供給停止管理 DA
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public ClosingCancelFeasibilityJudgmentRetailInfoImpl(
+            final SvmstkrDataAccess svmstkrDataAccessParam,
+            final SvckyaDataAccess svckyaDataAccessParam,
+            final GmtsetdDataAccess gmtsetdDataAccessParam,
+            final KkytskrDataAccess kkytskrDataAccessParam,
+<span class="fc" id="L93">            final CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L94">        this.svmstkrDataAccess =</span>
+<span class="fc" id="L95">                Objects.requireNonNull(</span>
+                        svmstkrDataAccessParam,
+                        &quot;svmstkrDataAccess&quot;);
+<span class="fc" id="L98">        this.svckyaDataAccess =</span>
+<span class="fc" id="L99">                Objects.requireNonNull(</span>
+                        svckyaDataAccessParam,
+                        &quot;svckyaDataAccess&quot;);
+<span class="fc" id="L102">        this.gmtsetdDataAccess =</span>
+<span class="fc" id="L103">                Objects.requireNonNull(</span>
+                        gmtsetdDataAccessParam,
+                        &quot;gmtsetdDataAccess&quot;);
+<span class="fc" id="L106">        this.kkytskrDataAccess =</span>
+<span class="fc" id="L107">                Objects.requireNonNull(</span>
+                        kkytskrDataAccessParam,
+                        &quot;kkytskrDataAccess&quot;);
+<span class="fc" id="L110">        CiriusConstantService resolvedService =</span>
+<span class="fc" id="L111">                Objects.requireNonNull(</span>
+                        ciriusConstantService,
+                        &quot;ciriusConstantService&quot;);
+<span class="fc" id="L114">        this.dedicatedGasMeterStatus = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus
+                        .DEDICATED_GAS_METER);
+<span class="fc" id="L119">        this.underContractStatus = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus
+                        .UNDER_CONTRACT);
+<span class="fc" id="L124">        this.endOfContractStatus = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus
+                        .END_OF_CONTRACT);
+<span class="fc" id="L129">        this.invalidServiceContractStatus = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ServiceContractStatus.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStatus
+                        .INVALID);
+<span class="fc" id="L134">        this.invalidChargeCalculationRelatedStatus = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus.TYPE,
+                ConstantLookupKeys.Cirius.ChargeCalculationRelatedStatus
+                        .INVALID);
+<span class="fc" id="L139">        this.dutyFreeConsumptionTax = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.ConsumptionTax.TYPE,
+                ConstantLookupKeys.Cirius.ConsumptionTax
+                        .DUTY_FREE);
+<span class="fc" id="L144">        this.supplyStopPaymentPending = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus.TYPE,
+                ConstantLookupKeys.Cirius.SupplyStopPaymentStatus
+                        .SUPPLY_STOP_PAYMENT_PENDING);
+<span class="fc" id="L149">        this.supplyOutageWorkDetailCode = requireConstant(</span>
+                resolvedService,
+                ConstantLookupKeys.Cirius
+                        .TransferWorkHistoryWorkDetailsCodeConduit.TYPE,
+                ConstantLookupKeys.Cirius
+                        .TransferWorkHistoryWorkDetailsCodeConduit
+                        .SUPPLY_OUTAGE_CCJG1301);
+<span class="fc" id="L156">    }</span>
+
+    @Override
+    public ClosingCancelFeasibilityJudgmentRetailInfoOutput execute(
+            final LocalDate trkKnsYmd,
+            final GmtsetdInf gmtsetdInf,
+            final String duknIsrsCd) {
+<span class="fc" id="L163">        Long wkServiceContractNo =</span>
+<span class="fc" id="L164">                resolveServiceContractNo(gmtsetdInf, trkKnsYmd);</span>
+<span class="fc" id="L165">        SvckyaRecord activeServiceContract =</span>
+<span class="fc" id="L166">                requireActiveServiceContract(wkServiceContractNo, trkKnsYmd);</span>
+
+<span class="fc" id="L168">        List&lt;SvckyaInf&gt; serviceContracts = buildServiceContracts(</span>
+                wkServiceContractNo,
+                trkKnsYmd,
+                activeServiceContract);
+
+<span class="fc" id="L173">        RelatedMeterAggregation relatedMeters = aggregateRelatedMeters(</span>
+                wkServiceContractNo,
+                trkKnsYmd,
+                gmtsetdInf);
+<span class="fc" id="L177">        KkytskrInf supplyStopInfo =</span>
+<span class="fc" id="L178">                resolveSupplyStopInfo(</span>
+<span class="fc" id="L179">                        gmtsetdInf.gasMtstNo(),</span>
+                        trkKnsYmd,
+                        duknIsrsCd);
+
+<span class="fc" id="L183">        return new ClosingCancelFeasibilityJudgmentRetailInfoOutput(</span>
+                serviceContracts,
+<span class="fc" id="L185">                relatedMeters.svmstkrInfList(),</span>
+<span class="fc" id="L186">                relatedMeters.gmtsetdInfList(),</span>
+                supplyStopInfo);
+    }
+
+    private Long resolveServiceContractNo(
+            final GmtsetdInf gmtsetdInf,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L193">        Optional&lt;SvmstkrRecord&gt; directRecord =</span>
+<span class="fc" id="L194">                findServiceContractMeterRelation(</span>
+<span class="fc" id="L195">                        gmtsetdInf.gasMtstNo(),</span>
+                        trkKnsYmd);
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (directRecord.isPresent()) {</span>
+<span class="fc" id="L198">            return directRecord.get().svkyNo();</span>
+        }
+
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        if (!dedicatedGasMeterStatus.equals(gmtsetdInf.ckrtGmscJtkb())) {</span>
+<span class="nc" id="L202">            throw dataInconsistencyForSvmstkr(</span>
+<span class="nc" id="L203">                    gmtsetdInf.gasMtstNo(),</span>
+                    trkKnsYmd);
+        }
+
+<span class="fc" id="L207">        return findServiceContractMeterRelation(</span>
+<span class="fc" id="L208">                        gmtsetdInf.mtgMtstNo(),</span>
+                        trkKnsYmd)
+<span class="fc" id="L210">                .map(SvmstkrRecord::svkyNo)</span>
+<span class="fc" id="L211">                .orElseThrow(</span>
+                        () -&gt;
+<span class="fc" id="L213">                                dataInconsistencyForSvmstkr(</span>
+<span class="fc" id="L214">                                        gmtsetdInf.mtgMtstNo(),</span>
+                                        trkKnsYmd));
+    }
+
+    private Optional&lt;SvmstkrRecord&gt; findServiceContractMeterRelation(
+            final Long mtstNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L221">        return svmstkrDataAccess</span>
+<span class="fc" id="L222">                .findByMtstNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(</span>
+                        mtstNo,
+                        trkKnsYmd,
+                        invalidChargeCalculationRelatedStatus);
+    }
+
+    private SvckyaRecord requireActiveServiceContract(
+            final Long svkyNo,
+            final LocalDate trkKnsYmd) {
+<span class="fc" id="L231">        List&lt;String&gt; targetStatuses =</span>
+<span class="fc" id="L232">                List.of(underContractStatus, endOfContractStatus);</span>
+<span class="fc" id="L233">        List&lt;SvckyaRecord&gt; records =</span>
+<span class="fc" id="L234">                svckyaDataAccess.findAllBySvkyNoAtKnskKjnYmdAndSvkyJtkbList(</span>
+                        svkyNo,
+                        trkKnsYmd,
+                        targetStatuses);
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (records.isEmpty()) {</span>
+<span class="nc" id="L239">            throw dataInconsistencyForSvckyaActive(</span>
+                    svkyNo,
+                    trkKnsYmd,
+                    targetStatuses);
+        }
+<span class="fc" id="L244">        return records.get(0);</span>
+    }
+
+    private List&lt;SvckyaInf&gt; buildServiceContracts(
+            final Long svkyNo,
+            final LocalDate trkKnsYmd,
+            final SvckyaRecord activeServiceContract) {
+<span class="fc" id="L251">        List&lt;SvckyaRecord&gt; records = svckyaDataAccess</span>
+<span class="fc" id="L252">                .findAllBySvkyNoAndRkkiSttYmdAfterAndSvkyJtkbNotOrderByRkkiSttYmd(</span>
+                        svkyNo,
+                        trkKnsYmd,
+                        invalidServiceContractStatus);
+<span class="fc" id="L256">        List&lt;SvckyaInf&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L257">        result.add(mapSvckya(activeServiceContract));</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        for (SvckyaRecord record : records) {</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (!dutyFreeConsumptionTax.equals(activeServiceContract.sziKziKbn())</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">                    &amp;&amp; dutyFreeConsumptionTax.equals(record.sziKziKbn())) {</span>
+<span class="fc" id="L261">                throw new BusinessRuleException(</span>
+                        ErrorCodeConstants.ERROR_CODE_020000060);
+            }
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            if (result.size() &lt; FUTURE_SERVICE_CONTRACT_LIMIT) {</span>
+<span class="fc" id="L265">                result.add(mapSvckya(record));</span>
+            }
+<span class="fc" id="L267">        }</span>
+<span class="fc" id="L268">        return List.copyOf(result);</span>
+    }
+
+    private RelatedMeterAggregation aggregateRelatedMeters(
+            final Long svkyNo,
+            final LocalDate trkKnsYmd,
+            final GmtsetdInf inputMeter) {
+<span class="fc" id="L275">        List&lt;SvmstkrRecord&gt; records = svmstkrDataAccess</span>
+<span class="fc" id="L276">                .findAllBySvkyNoAndRkkiSttYmdAndRkkiEndYmdAndRkkiKnrnJtkb(</span>
+                        svkyNo,
+                        trkKnsYmd,
+                        invalidChargeCalculationRelatedStatus);
+<span class="fc" id="L280">        List&lt;SvmstkrInf&gt; svmstkrInfList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L281">        List&lt;GmtsetdRelatedInf&gt; gmtsetdInfList = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L282">        Long previousMtstNo = 0L;</span>
+<span class="fc" id="L283">        int processed = 0;</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        for (SvmstkrRecord record : records) {</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">            if (processed &gt;= RELATED_METER_PROCESS_LIMIT) {</span>
+<span class="nc" id="L286">                break;</span>
+            }
+<span class="fc" id="L288">            processed++;</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (!Objects.equals(record.mtstNo(), previousMtstNo)) {</span>
+<span class="fc" id="L290">                svmstkrInfList.add(mapSvmstkr(record));</span>
+<span class="fc" id="L291">                String seriesStatus = resolveSeriesStatus(</span>
+<span class="fc" id="L292">                        record.mtstNo(),</span>
+                        trkKnsYmd,
+                        inputMeter);
+<span class="fc" id="L295">                gmtsetdInfList.add(new GmtsetdRelatedInf(seriesStatus));</span>
+            }
+<span class="fc" id="L297">            previousMtstNo = record.mtstNo();</span>
+<span class="fc" id="L298">        }</span>
+<span class="fc" id="L299">        return new RelatedMeterAggregation(</span>
+<span class="fc" id="L300">                List.copyOf(svmstkrInfList),</span>
+<span class="fc" id="L301">                List.copyOf(gmtsetdInfList));</span>
+    }
+
+    private String resolveSeriesStatus(
+            final Long mtstNo,
+            final LocalDate trkKnsYmd,
+            final GmtsetdInf inputMeter) {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (Objects.equals(mtstNo, inputMeter.gasMtstNo())) {</span>
+<span class="fc" id="L309">            return inputMeter.ckrtGmscJtkb();</span>
+        }
+<span class="fc" id="L311">        GmtsetdRecord record =</span>
+                gmtsetdDataAccess
+<span class="fc" id="L313">                        .findByGasMtstNoAndTkysYmdAndTyenYmd(</span>
+                                mtstNo,
+                                trkKnsYmd)
+<span class="fc" id="L316">                        .orElseThrow(</span>
+<span class="nc" id="L317">                                () -&gt; dataInconsistencyForGmtsetd(</span>
+                                        mtstNo,
+                                        trkKnsYmd));
+<span class="fc" id="L320">        return record.ckrtGmscJtkb();</span>
+    }
+
+    private KkytskrInf resolveSupplyStopInfo(
+            final Long gasMtstNo,
+            final LocalDate trkKnsYmd,
+            final String duknIsrsCd) {
+<span class="fc" id="L327">        Optional&lt;KkytskrRecord&gt; record =</span>
+                kkytskrDataAccess
+<span class="fc" id="L329">                        .findByGasMtstNoAndHesnYmdAndKkysSisnJtkb(</span>
+                                gasMtstNo,
+                                trkKnsYmd,
+                                supplyStopPaymentPending);
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (record.isEmpty()) {</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">            if (supplyOutageWorkDetailCode.equals(duknIsrsCd)) {</span>
+<span class="fc" id="L335">                throw new BusinessRuleException(</span>
+                        ErrorCodeConstants.ERROR_CODE_020000023);
+            }
+<span class="fc" id="L338">            return null;</span>
+        }
+<span class="fc" id="L340">        return new KkytskrInf(record.get().gasMtstNo(), record.get().hesnYmd());</span>
+    }
+
+    private SvckyaInf mapSvckya(final SvckyaRecord record) {
+<span class="fc" id="L344">        return new SvckyaInf(</span>
+<span class="fc" id="L345">                record.svkyNo(),</span>
+<span class="fc" id="L346">                record.skno(),</span>
+<span class="fc" id="L347">                record.kyttSkno(),</span>
+<span class="fc" id="L348">                record.rkkiSttYmd(),</span>
+<span class="fc" id="L349">                record.rkkiEndYmd(),</span>
+<span class="fc" id="L350">                record.sqtiKiyNo(),</span>
+<span class="fc" id="L351">                record.syaKbn(),</span>
+<span class="fc" id="L352">                record.kkysSisnJtkb(),</span>
+<span class="fc" id="L353">                record.sziKziKbn());</span>
+    }
+
+    private SvmstkrInf mapSvmstkr(final SvmstkrRecord record) {
+<span class="fc" id="L357">        return new SvmstkrInf(</span>
+<span class="fc" id="L358">                record.mtstNo(),</span>
+<span class="fc" id="L359">                record.svkyNo(),</span>
+<span class="fc" id="L360">                record.skno(),</span>
+<span class="fc" id="L361">                record.rkkiEndYmd());</span>
+    }
+
+    private DataInconsistencyException dataInconsistencyForSvmstkr(
+            final Long mtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L367">        DataAccessCallSpec callSpec =</span>
+                SvmstkrDataAccess.CallSpecs
+                        .FIND_BY_MTST_NO_AND_RKKI_STT_YMD_AND_RKKI_END_YMD_AND_RKKI_KNRN_JTKB;
+<span class="fc" id="L370">        FlatJsonBuilder parameterBuilder = new FlatJsonBuilder()</span>
+<span class="fc" id="L371">                .put(&quot;mtstNo&quot;, mtstNo)</span>
+<span class="fc" id="L372">                .put(&quot;knskKjnYmd&quot;, knskKjnYmd)</span>
+<span class="fc" id="L373">                .put(</span>
+                        &quot;rkkiKnrnJtkb&quot;,
+                        invalidChargeCalculationRelatedStatus);
+<span class="fc" id="L376">        return dataInconsistency(</span>
+<span class="fc" id="L377">                svmstkrDataAccess.tableName(),</span>
+                callSpec,
+                parameterBuilder);
+    }
+
+    private DataInconsistencyException dataInconsistencyForSvckyaActive(
+            final Long svkyNo,
+            final LocalDate knskKjnYmd,
+            final List&lt;String&gt; svkyJtkbList) {
+<span class="nc" id="L386">        DataAccessCallSpec callSpec =</span>
+                SvckyaDataAccess.CallSpecs
+                        .FIND_ALL_BY_SVKY_NO_AT_KNSK_KJN_YMD_AND_SVKY_JTKB_LIST;
+<span class="nc" id="L389">        FlatJsonBuilder parameterBuilder = new FlatJsonBuilder()</span>
+<span class="nc" id="L390">                .put(&quot;svkyNo&quot;, svkyNo)</span>
+<span class="nc" id="L391">                .put(&quot;knskKjnYmd&quot;, knskKjnYmd)</span>
+<span class="nc" id="L392">                .put(</span>
+                        &quot;svkyJtkbList&quot;,
+                        svkyJtkbList);
+<span class="nc" id="L395">        return dataInconsistency(</span>
+<span class="nc" id="L396">                svckyaDataAccess.tableName(),</span>
+                callSpec,
+                parameterBuilder);
+    }
+
+    private DataInconsistencyException dataInconsistencyForGmtsetd(
+            final Long gasMtstNo,
+            final LocalDate knskKjnYmd) {
+<span class="nc" id="L404">        DataAccessCallSpec callSpec =</span>
+                GmtsetdDataAccess.CallSpecs
+                        .FIND_BY_GAS_MTST_NO_AND_TKYS_YMD_AND_TYEN_YMD;
+<span class="nc" id="L407">        FlatJsonBuilder parameterBuilder = new FlatJsonBuilder()</span>
+<span class="nc" id="L408">                .put(&quot;gasMtstNo&quot;, gasMtstNo)</span>
+<span class="nc" id="L409">                .put(&quot;knskKjnYmd&quot;, knskKjnYmd);</span>
+<span class="nc" id="L410">        return dataInconsistency(</span>
+<span class="nc" id="L411">                gmtsetdDataAccess.tableName(),</span>
+                callSpec,
+                parameterBuilder);
+    }
+
+    private static String requireConstant(
+            final CiriusConstantService ciriusConstantService,
+            final String type,
+            final String code) {
+<span class="fc" id="L420">        return RequiredConstantResolver.requireCiriusConstant(</span>
+                ciriusConstantService,
+                type,
+                code);
+    }
+
+    private DataInconsistencyException dataInconsistency(
+            final String tableName,
+            final DataAccessCallSpec callSpec,
+            final FlatJsonBuilder parameterBuilder) {
+<span class="fc" id="L430">        return DataInconsistencySupport.create(</span>
+                tableName,
+<span class="fc" id="L432">                callSpec.identifier(),</span>
+                parameterBuilder);
+    }
+
+<span class="fc" id="L436">    private record RelatedMeterAggregation(</span>
+            List&lt;SvmstkrInf&gt; svmstkrInfList,
+            List&lt;GmtsetdRelatedInf&gt; gmtsetdInfList) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

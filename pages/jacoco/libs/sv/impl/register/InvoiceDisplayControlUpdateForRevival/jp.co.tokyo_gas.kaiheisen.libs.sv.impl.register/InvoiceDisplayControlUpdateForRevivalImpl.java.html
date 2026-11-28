@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InvoiceDisplayControlUpdateForRevivalImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-register-invoicedisplaycontrolupdateforrevival</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register</a> &gt; <span class="el_source">InvoiceDisplayControlUpdateForRevivalImpl.java</span></div><h1>InvoiceDisplayControlUpdateForRevivalImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.register;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.KaiheisenConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.model.KaiheisenConstantItem;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencySupport;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.FlatJsonBuilder;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.validation.DataNotFoundException;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.SqshyjsRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsTkysYmdUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.sqshyjs.write.SqshyjsWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.register.InvoiceDisplayControlUpdateForRevival;
+
+/**
+ * SV-113（請求書表示制御情報更新（契約復活））のサービス実装.
+ * 主な仕様:
+ * - RequestContext のシステム日時を基準年月日に使用して請求書表示制御を取得する。
+ * - 取得した適用開始年月日を更新キーに使用し、適用終了年月日を最大日付へ更新する。
+ * - 更新件数が 0 件の場合はデータ不整合例外へ変換する。
+ * 既知の制約:
+ * - public メソッド引数の null 検証は追加しない。
+ * - 報告システム種別定数の存在確認はコンストラクタ初期化時に行う。
+ */
+public class InvoiceDisplayControlUpdateForRevivalImpl
+        implements InvoiceDisplayControlUpdateForRevival {
+
+        /** 監査更新で使用する固定の更新ユーザー ID. */
+    static final String SERVICE_USER_ID = &quot;KHSS113&quot;;
+
+        /** 契約復活で設定する適用終了年月日の最大日付. */
+<span class="fc" id="L39">    static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);</span>
+
+        /** SQSHYJS 更新を担当するデータアクセス. */
+    private final SqshyjsDataAccess sqshyjsDataAccess;
+
+        /** 実行時の監査・システム情報を保持するリクエストコンテキスト. */
+    private final RequestContext requestContext;
+
+        /** 報告元機能 ID の復号に使用する開閉栓定数サービス. */
+    private final KaiheisenConstantService kaiheisenConstantService;
+
+    /**
+     * SV-113 の依存オブジェクトを初期化する.
+     * 主な仕様:
+     * - SQSHYJS データアクセス、RequestContext、開閉栓定数サービスを保持する。
+     * - 報告システム種別定数が未定義の場合は初期化時点で失敗する。
+     * 既知の制約:
+     * - 依存オブジェクトが null の場合は初期化時点で NullPointerException を送出する。
+     * @param inputSqshyjsDataAccess SQSHYJS データアクセス
+     * @param inputRequestContext リクエストコンテキスト
+     * @param inputKaiheisenConstantService 開閉栓コンスタント取得サービス
+     */
+    public InvoiceDisplayControlUpdateForRevivalImpl(
+            final SqshyjsDataAccess inputSqshyjsDataAccess,
+            final RequestContext inputRequestContext,
+<span class="fc" id="L64">            final KaiheisenConstantService inputKaiheisenConstantService) {</span>
+<span class="fc" id="L65">        this.sqshyjsDataAccess = Objects.requireNonNull(</span>
+                inputSqshyjsDataAccess,
+                &quot;sqshyjsDataAccess&quot;);
+<span class="fc" id="L68">        this.requestContext = Objects.requireNonNull(</span>
+                inputRequestContext,
+                &quot;requestContext&quot;);
+<span class="fc" id="L71">        this.kaiheisenConstantService = Objects.requireNonNull(</span>
+                inputKaiheisenConstantService,
+                &quot;kaiheisenConstantService&quot;);
+<span class="fc" id="L74">        requireReportingSystemTypeConstants();</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * 契約復活対象の請求書表示制御を更新する.
+     * 主な仕様:
+     * - RequestContext の systemDatetime と hukkSysShbt を fail-fast で検証する。
+     * - 取得結果が 0 件の場合は処理対象データ無しエラーを送出する。
+     * - 更新件数が 0 件の場合はデータ不整合例外を送出する。
+     * @param skshHyjsKrno 請求書表示制御管理番号
+     */
+    @Override
+    public void execute(final Long skshHyjsKrno) {
+<span class="fc" id="L87">        final LocalDate knskKjnYmd = requireSystemDate();</span>
+<span class="fc" id="L88">        final String decodedOriginFunctionId = decodeOriginFunctionId();</span>
+<span class="fc" id="L89">        final SqshyjsRecord existingRecord = findExistingRecord(</span>
+                skshHyjsKrno,
+                knskKjnYmd);
+<span class="fc" id="L92">        updateExistingRecord(existingRecord, decodedOriginFunctionId);</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * 指定条件で有効な請求書表示制御を取得する.
+     * 主な仕様:
+     * - 請求書表示制御管理番号と基準年月日で有効レコードを 1 件取得する。
+     * - 取得結果が 0 件の場合は処理対象データ無しエラーを送出する。
+     * @param skshHyjsKrno 請求書表示制御管理番号
+     * @param knskKjnYmd 基準年月日
+     * @return 取得済み請求書表示制御
+     */
+    private SqshyjsRecord findExistingRecord(
+            final Long skshHyjsKrno,
+            final LocalDate knskKjnYmd) {
+<span class="fc" id="L107">        return sqshyjsDataAccess</span>
+<span class="fc" id="L108">                .findBySkshHyjsKrnoAndKnskKjnYmd(skshHyjsKrno, knskKjnYmd)</span>
+<span class="fc" id="L109">                .orElseThrow(() -&gt; new DataNotFoundException(</span>
+<span class="fc" id="L110">                        sqshyjsDataAccess.tableName()));</span>
+    }
+
+    /**
+     * 取得済み請求書表示制御を契約復活状態へ更新する.
+     * 主な仕様:
+     * - 適用終了年月日を最大日付へ更新する。
+     * - 更新件数が 0 件の場合はデータ不整合例外へ変換する。
+     * @param existingRecord 取得済み請求書表示制御
+     * @param decodedOriginFunctionId 報告元機能 ID
+     */
+    private void updateExistingRecord(
+            final SqshyjsRecord existingRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L124">        final int updatedCount =</span>
+<span class="fc" id="L125">                sqshyjsDataAccess.updateBySkshHyjsKrnoAndTkysYmd(</span>
+                        new SqshyjsWriteRecord(
+<span class="fc" id="L127">                        existingRecord.skshHyjsKrno(),</span>
+<span class="fc" id="L128">                        existingRecord.tkysYmd(),</span>
+                        MAX_DATE,
+                        SERVICE_USER_ID,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+<span class="fc" id="L140">                        Set.of(</span>
+                                SqshyjsColumn.TYEN_YMD,
+                                SqshyjsColumn.REG_USR_ID),
+                        new SqshyjsTkysYmdUpdateKey(
+<span class="fc" id="L144">                        existingRecord.skshHyjsKrno(),</span>
+<span class="fc" id="L145">                        existingRecord.tkysYmd()),</span>
+<span class="fc" id="L146">                        AuditContext.of(</span>
+                                SERVICE_USER_ID,
+                                decodedOriginFunctionId));
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (updatedCount == 0) {</span>
+<span class="fc" id="L150">            final String daIdentifier =</span>
+                    SqshyjsDataAccess.CallSpecs
+                            .UPDATE_BY_SKSH_HYJS_KRNO_AND_TKYS_YMD
+<span class="fc" id="L153">                            .identifier();</span>
+<span class="fc" id="L154">            throw DataInconsistencySupport.create(</span>
+<span class="fc" id="L155">                    sqshyjsDataAccess.tableName(),</span>
+                    daIdentifier,
+<span class="fc" id="L157">                    buildUpdateParameterJson(existingRecord,</span>
+                            decodedOriginFunctionId));
+        }
+<span class="fc" id="L160">    }</span>
+
+    /**
+     * データ不整合例外に含める更新パラメータ JSON を構築する.
+     * 主な仕様:
+     * - 更新キー、更新値、監査情報を FlatJsonBuilder へ定義順で格納する。
+     * @param existingRecord 取得済み請求書表示制御
+     * @param decodedOriginFunctionId 報告元機能 ID
+     * @return 更新パラメータ JSON ビルダー
+     */
+    private FlatJsonBuilder buildUpdateParameterJson(
+            final SqshyjsRecord existingRecord,
+            final String decodedOriginFunctionId) {
+<span class="fc" id="L173">        return new FlatJsonBuilder()</span>
+<span class="fc" id="L174">                .put(&quot;skshHyjsKrno&quot;, existingRecord.skshHyjsKrno())</span>
+<span class="fc" id="L175">                .put(&quot;tkysYmd&quot;, existingRecord.tkysYmd())</span>
+<span class="fc" id="L176">                .put(&quot;tyenYmd&quot;, MAX_DATE)</span>
+<span class="fc" id="L177">                .put(&quot;regUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L178">                .put(&quot;updUsrId&quot;, SERVICE_USER_ID)</span>
+<span class="fc" id="L179">                .put(&quot;updKtnKinoId&quot;, decodedOriginFunctionId);</span>
+    }
+
+    /**
+     * RequestContext のシステム日時を業務日付へ変換する.
+     * 主な仕様:
+     * - systemDatetime が未設定の場合は fail-fast する。
+     * @return 業務日付
+     */
+    private LocalDate requireSystemDate() {
+<span class="fc" id="L189">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L190">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;RequestContext.systemDatetime is required&quot;))
+<span class="fc" id="L192">                .toLocalDate();</span>
+    }
+
+    /**
+     * RequestContext の報告システム種別を監査用機能 ID へ変換する.
+     * 主な仕様:
+     * - hukkSysShbt が未設定の場合は fail-fast する。
+     * - 変換には開閉栓コンスタント取得サービスを使用する。
+     * @return 監査用機能 ID
+     */
+    private String decodeOriginFunctionId() {
+<span class="fc" id="L203">        return kaiheisenConstantService.findNameByTypeAndValue(</span>
+                ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE,
+<span class="fc" id="L205">                requestContext.getHukkSysShbt()</span>
+<span class="fc" id="L206">                        .orElseThrow(() -&gt; new IllegalStateException(</span>
+                                &quot;RequestContext.hukkSysShbt is required&quot;)));
+    }
+
+    /**
+     * 報告システム種別定数の存在を初期化時に検証する.
+     * 主な仕様:
+     * - 報告システム種別一覧が空の場合は fail-fast する。
+     */
+    private void requireReportingSystemTypeConstants() {
+<span class="fc" id="L216">        final List&lt;KaiheisenConstantItem&gt; reportingSystemTypes =</span>
+<span class="fc" id="L217">                kaiheisenConstantService.listActiveByType(</span>
+                        ConstantLookupKeys.Kaiheisen.ReportingSystemType.TYPE);
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (reportingSystemTypes.isEmpty()) {</span>
+<span class="fc" id="L220">            throw new IllegalStateException(</span>
+                    &quot;Kaiheisen reporting system type constants are required&quot;);
+        }
+<span class="fc" id="L223">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

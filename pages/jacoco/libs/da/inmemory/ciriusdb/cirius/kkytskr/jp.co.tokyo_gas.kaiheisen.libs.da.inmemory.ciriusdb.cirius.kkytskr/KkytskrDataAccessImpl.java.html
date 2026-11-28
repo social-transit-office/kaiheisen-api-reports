@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KkytskrDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-kkytskr</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kkytskr</a> &gt; <span class="el_source">KkytskrDataAccessImpl.java</span></div><h1>KkytskrDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kkytskr;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.KkytskrRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrHesnJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrHesnUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kkytskr.write.KkytskrWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/** DA-055（C001/D001/R001-R004/U001-U002）の SQL 振る舞いを模した KKYTSKR インメモリ実装。 */
+public class KkytskrDataAccessImpl extends DataAccessBase implements KkytskrDataAccess {
+
+<span class="fc" id="L37">    private static final DateTimeFormatter YMD_FORMAT = DateTimeFormatter.BASIC_ISO_DATE;</span>
+
+<span class="fc" id="L39">    private static final ReflectiveInMemoryRowMapper&lt;KkytskrColumn, KkytskrRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L40">            ReflectiveInMemoryRowMapper.create(KkytskrColumn.class, KkytskrRecord.class);</span>
+
+<span class="fc" id="L42">    private static final AutoNeutralValueResolver&lt;KkytskrColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L43">            AutoNeutralValueResolver.create(KkytskrColumn.class, KkytskrRecord.class);</span>
+
+<span class="fc" id="L45">    private final List&lt;EnumMap&lt;KkytskrColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;KkytskrWriteRecord, KkytskrColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KkytskrWriteRecord, KkytskrColumn&gt;
+            updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する。 */
+    public KkytskrDataAccessImpl() {
+<span class="fc" id="L58">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L59">    }</span>
+
+    KkytskrDataAccessImpl(SystemDateTimeProvider clock) {
+<span class="nc" id="L62">        this(clock, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L63">    }</span>
+
+    KkytskrDataAccessImpl(
+<span class="fc" id="L66">            SystemDateTimeProvider clock, CiriusAuditColumnAutoSetter auditColumnAutoSetter) {</span>
+<span class="fc" id="L67">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L68">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L69">                Objects.requireNonNull(auditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L70">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(
+                        KkytskrWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L73">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KkytskrWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * テスト用に行データを追加する。
+     *
+     * @param record 追加する行
+     * @return このインスタンス
+     */
+    public KkytskrDataAccessImpl addRow(KkytskrRecord record) {
+<span class="fc" id="L85">        EnumMap&lt;KkytskrColumn, Object&gt; values =</span>
+<span class="fc" id="L86">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L87">        NEUTRAL_VALUE_RESOLVER.complement(values, KkytskrWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L88">        rows.add(values);</span>
+<span class="fc" id="L89">        return this;</span>
+    }
+
+    @Override
+    public int insert(KkytskrWriteRecord record, AuditContext context) {
+<span class="nc" id="L94">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L95">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="nc" id="L97">        rows.add(</span>
+<span class="nc" id="L98">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="nc" id="L101">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                KkytskrColumn.class, values),
+                                        context,
+                                        clock)));
+<span class="nc" id="L106">        return 1;</span>
+    }
+
+    @Override
+    public int deleteByGasMtstNoAndHesnYmd(Long gasMtstNo, LocalDate hesnYmd, Integer recUpdJnjNo) {
+<span class="fc" id="L111">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+                row -&gt;
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                        Objects.equals(row.get(KkytskrColumn.GAS_MTST_NO), gasMtstNo)</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                                &amp;&amp; Objects.equals(row.get(KkytskrColumn.HESN_YMD), hesnYmd),</span>
+                KkytskrColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                KkytskrDataAccess.Identifiers.DELETE_BY_GAS_MTST_NO_AND_HESN_YMD,
+<span class="nc" id="L119">                () -&gt; new DataInconsistencyException(&quot;KKYTSKR&quot;, KkytskrDataAccess.Identifiers.DELETE_BY_GAS_MTST_NO_AND_HESN_YMD, &quot;{}&quot;),</span>
+                gasMtstNo,
+                hesnYmd);
+    }
+
+    @Override
+    public Optional&lt;KkytskrRecord&gt; findByGasMtstNo(Long gasMtstNo) {
+<span class="fc" id="L126">        return rows.stream()</span>
+<span class="fc" id="L127">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.GAS_MTST_NO), gasMtstNo))</span>
+<span class="fc" id="L128">                .sorted(</span>
+<span class="fc" id="L129">                        Comparator.&lt;EnumMap&lt;KkytskrColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L130">                                r -&gt; (LocalDate) r.get(KkytskrColumn.HESN_YMD),</span>
+<span class="fc" id="L131">                                Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L132">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L133">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;KkytskrRecord&gt; findByGasMtstNoAndHesnYmd(Long gasMtstNo, LocalDate hesnYmd) {
+<span class="fc" id="L138">        return rows.stream()</span>
+<span class="fc" id="L139">                .filter(</span>
+                        r -&gt;
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                                Objects.equals(r.get(KkytskrColumn.GAS_MTST_NO), gasMtstNo)</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                                        &amp;&amp; Objects.equals(r.get(KkytskrColumn.HESN_YMD), hesnYmd))</span>
+<span class="fc" id="L143">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L144">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;KkytskrRecord&gt; findByGasMtstNoAndKasYmdAndKkysSisnJtkb(
+            Long gasMtstNo, LocalDate kasYmd, String kkysSisnJtkb) {
+<span class="fc" id="L150">        int safeKasYmd = toYmdIntOrZero(kasYmd);</span>
+<span class="fc" id="L151">        return rows.stream()</span>
+<span class="fc" id="L152">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.GAS_MTST_NO), gasMtstNo))</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                .filter(r -&gt; toYmdIntOrZero((LocalDate) r.get(KkytskrColumn.KAS_YMD)) == safeKasYmd)</span>
+<span class="fc" id="L154">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.KKYS_SISN_JTKB), kkysSisnJtkb))</span>
+<span class="fc" id="L155">                .sorted(</span>
+<span class="fc" id="L156">                        Comparator.&lt;EnumMap&lt;KkytskrColumn, Object&gt;, LocalDate&gt;comparing(</span>
+<span class="fc" id="L157">                                r -&gt; (LocalDate) r.get(KkytskrColumn.HESN_YMD),</span>
+<span class="fc" id="L158">                                Comparator.nullsLast(Comparator.reverseOrder())))</span>
+<span class="fc" id="L159">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L160">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;KkytskrRecord&gt; findByGasMtstNoAndHesnYmdAndKkysSisnJtkb(
+            Long gasMtstNo, LocalDate hesnYmd, String kkysSisnJtkb) {
+<span class="fc" id="L166">        return rows.stream()</span>
+<span class="fc" id="L167">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.GAS_MTST_NO), gasMtstNo))</span>
+<span class="fc" id="L168">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.HESN_YMD), hesnYmd))</span>
+<span class="fc" id="L169">                .filter(r -&gt; Objects.equals(r.get(KkytskrColumn.KKYS_SISN_JTKB), kkysSisnJtkb))</span>
+<span class="fc" id="L170">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L171">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndHesnYmd(
+            KkytskrWriteRecord record,
+            Set&lt;KkytskrColumn&gt; targetColumns,
+            KkytskrHesnUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L180">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L181">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L182">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L184">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                row -&gt;
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                        Objects.equals(row.get(KkytskrColumn.GAS_MTST_NO), updateKey.gasMtstNo())</span>
+<span class="pc bnc" id="L188" title="All 2 branches missed.">                                &amp;&amp; Objects.equals(row.get(KkytskrColumn.HESN_YMD), updateKey.hesnYmd()),</span>
+                row -&gt;
+<span class="nc" id="L190">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="nc" id="L194">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        KkytskrColumn.class, values),
+                                                context,
+                                                clock,
+<span class="nc" id="L199">                                                (Integer) row.get(KkytskrColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L200">                updateSupport::apply,</span>
+                KkytskrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L202">                updateKey.recUpdJnjNo(),</span>
+                KkytskrDataAccess.Identifiers.UPDATE_BY_GAS_MTST_NO_AND_HESN_YMD,
+<span class="fc" id="L204">                updateKey.gasMtstNo(),</span>
+<span class="fc" id="L205">                updateKey.hesnYmd());</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndHesnYmdAndRecUpdJnjNo(
+            KkytskrWriteRecord record,
+            Set&lt;KkytskrColumn&gt; targetColumns,
+            KkytskrHesnJnjUpdateKey updateKey,
+            AuditContext context) {
+<span class="fc" id="L214">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L215">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L216">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L218">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+                row -&gt;
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                        Objects.equals(row.get(KkytskrColumn.GAS_MTST_NO), updateKey.gasMtstNo())</span>
+<span class="pc bnc" id="L222" title="All 2 branches missed.">                                &amp;&amp; Objects.equals(row.get(KkytskrColumn.HESN_YMD), updateKey.hesnYmd()),</span>
+                row -&gt;
+<span class="nc" id="L224">                        updateSupport.prepare(</span>
+                                record,
+                                targetColumns,
+                                values -&gt;
+<span class="nc" id="L228">                                        auditColumnAutoSetter.applyForUpdate(</span>
+                                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                                        KkytskrColumn.class, values),
+                                                context,
+                                                clock,
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                                                updateKey.recUpdJnjNo() == null</span>
+<span class="nc" id="L234">                                                        ? (Integer) row.get(KkytskrColumn.REC_UPD_JNJ_NO)</span>
+<span class="nc" id="L235">                                                        : updateKey.recUpdJnjNo())),</span>
+<span class="fc" id="L236">                updateSupport::apply,</span>
+                KkytskrColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L238">                updateKey.recUpdJnjNo(),</span>
+                KkytskrDataAccess.Identifiers.UPDATE_BY_GAS_MTST_NO_AND_HESN_YMD_AND_REC_UPD_JNJ_NO,
+<span class="fc" id="L240">                updateKey.gasMtstNo(),</span>
+<span class="fc" id="L241">                updateKey.hesnYmd());</span>
+    }
+
+    private static int toYmdIntOrZero(LocalDate value) {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L246">            return 0;</span>
+        }
+<span class="fc" id="L248">        return Integer.parseInt(value.format(YMD_FORMAT));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

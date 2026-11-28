@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JpaAuditColumnAccessBinder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-jpa-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core</a> &gt; <span class="el_source">JpaAuditColumnAccessBinder.java</span></div><h1>JpaAuditColumnAccessBinder.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.jpa.core;
+
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditColumnAccess;
+
+/**
+ * JPA エンティティを {@link AuditColumnAccess} として扱う binder。
+ *
+ * @param &lt;EntityT&gt; エンティティ型
+ */
+public final class JpaAuditColumnAccessBinder&lt;EntityT&gt; {
+
+    private final Map&lt;String, EntityColumnMetadataResolver.EntityColumnMetadata&gt;
+            metadataByColumnName;
+
+    /**
+     * binder を生成する。
+     *
+     * @param entityClass エンティティ型
+     */
+<span class="fc" id="L26">    public JpaAuditColumnAccessBinder(Class&lt;EntityT&gt; entityClass) {</span>
+<span class="fc" id="L27">        this.metadataByColumnName =</span>
+<span class="fc" id="L28">                EntityColumnMetadataResolver.resolve(</span>
+<span class="fc" id="L29">                        Objects.requireNonNull(entityClass, &quot;entityClass&quot;));</span>
+<span class="fc" id="L30">    }</span>
+
+    /**
+     * エンティティを監査列アクセスへ bind する。
+     *
+     * @param entity エンティティ
+     * @return 監査列アクセス
+     */
+    public AuditColumnAccess bind(EntityT entity) {
+<span class="fc" id="L39">        Objects.requireNonNull(entity, &quot;entity&quot;);</span>
+<span class="fc" id="L40">        return new AuditColumnAccess() {</span>
+            @Override
+            public boolean hasColumn(String columnName) {
+<span class="fc" id="L43">                return metadataByColumnName.containsKey(columnName);</span>
+            }
+
+            @Override
+            public void setValue(String columnName, Object value) {
+<span class="fc" id="L48">                EntityColumnMetadataResolver.EntityColumnMetadata metadata =</span>
+<span class="fc" id="L49">                        metadataByColumnName.get(columnName);</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                if (metadata == null) {</span>
+<span class="nc" id="L51">                    throw new IllegalArgumentException(&quot;Unknown column: &quot; + columnName);</span>
+                }
+<span class="fc" id="L53">                metadata.setValue(entity, convertValue(value, metadata.javaType()));</span>
+<span class="fc" id="L54">            }</span>
+        };
+    }
+
+    private static Object convertValue(Object value, Class&lt;?&gt; targetType) {
+<span class="fc" id="L59">        Objects.requireNonNull(targetType, &quot;targetType&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 4 branches missed.">        if (value == null || targetType.isInstance(value)) {</span>
+<span class="fc" id="L61">            return value;</span>
+        }
+<span class="pc bpc" id="L63" title="4 of 6 branches missed.">        return switch (value) {</span>
+<span class="fc" id="L64">            case LocalDate localDate -&gt; convertLocalDate(localDate, targetType);</span>
+<span class="nc" id="L65">            case LocalDateTime localDateTime -&gt; convertLocalDateTime(localDateTime, targetType);</span>
+<span class="fc" id="L66">            case Integer integer -&gt; convertInteger(integer, targetType);</span>
+<span class="nc" id="L67">            case Long longValue -&gt; convertLong(longValue, targetType);</span>
+<span class="nc" id="L68">            case String text -&gt; convertString(text, targetType);</span>
+<span class="nc" id="L69">            default -&gt; throw unsupported(value, targetType);</span>
+        };
+    }
+
+    private static Object convertLocalDate(LocalDate value, Class&lt;?&gt; targetType) {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (targetType == BigDecimal.class) {</span>
+<span class="fc" id="L75">            return JpaDbWriteValues.ymd(value);</span>
+        }
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (targetType == Integer.class) {</span>
+<span class="nc" id="L78">            return JpaDbWriteValues.ymdInt(value);</span>
+        }
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if (targetType == Long.class) {</span>
+<span class="nc" id="L81">            return JpaDbWriteValues.ymdLong(value);</span>
+        }
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (targetType == String.class) {</span>
+<span class="nc" id="L84">            return JpaDbWriteValues.ymdString(value);</span>
+        }
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (targetType == LocalDate.class) {</span>
+<span class="nc" id="L87">            return value;</span>
+        }
+<span class="nc" id="L89">        throw unsupported(value, targetType);</span>
+    }
+
+    private static Object convertLocalDateTime(LocalDateTime value, Class&lt;?&gt; targetType) {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (targetType == LocalDateTime.class) {</span>
+<span class="nc" id="L94">            return value;</span>
+        }
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (targetType == Timestamp.class) {</span>
+<span class="nc" id="L97">            return Timestamp.valueOf(value);</span>
+        }
+<span class="nc" id="L99">        throw unsupported(value, targetType);</span>
+    }
+
+    private static Object convertInteger(Integer value, Class&lt;?&gt; targetType) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (targetType == BigDecimal.class) {</span>
+<span class="fc" id="L104">            return JpaDbWriteValues.bigDecimal(value);</span>
+        }
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (targetType == Short.class) {</span>
+<span class="fc" id="L107">            return JpaDbWriteValues.smallInt(value);</span>
+        }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (targetType == Integer.class) {</span>
+<span class="nc" id="L110">            return value;</span>
+        }
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (targetType == Long.class) {</span>
+<span class="nc" id="L113">            return value.longValue();</span>
+        }
+<span class="nc" id="L115">        throw unsupported(value, targetType);</span>
+    }
+
+    private static Object convertLong(Long value, Class&lt;?&gt; targetType) {
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (targetType == BigDecimal.class) {</span>
+<span class="nc" id="L120">            return JpaDbWriteValues.bigDecimal(value);</span>
+        }
+<span class="nc bnc" id="L122" title="All 2 branches missed.">        if (targetType == Long.class) {</span>
+<span class="nc" id="L123">            return value;</span>
+        }
+<span class="nc" id="L125">        throw unsupported(value, targetType);</span>
+    }
+
+    private static Object convertString(String value, Class&lt;?&gt; targetType) {
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (targetType == String.class) {</span>
+<span class="nc" id="L130">            return value;</span>
+        }
+<span class="nc" id="L132">        throw unsupported(value, targetType);</span>
+    }
+
+    private static IllegalStateException unsupported(Object value, Class&lt;?&gt; targetType) {
+<span class="nc" id="L136">        return new IllegalStateException(</span>
+                &quot;Unsupported audit value conversion: valueType=&quot;
+<span class="nc" id="L138">                        + value.getClass().getName()</span>
+                        + &quot;, targetType=&quot;
+<span class="nc" id="L140">                        + targetType.getName());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

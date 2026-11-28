@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KuzfrkDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-kuzfrk</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kuzfrk</a> &gt; <span class="el_source">KuzfrkDataAccessImpl.java</span></div><h1>KuzfrkDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.kuzfrk;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.KuzfrkRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyJnjUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkSihKiyUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.kuzfrk.write.KuzfrkWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/**
+ * DA-070 の SQL 振る舞いを模した KUZFRK インメモリ実装。
+ */
+public class KuzfrkDataAccessImpl extends DataAccessBase implements KuzfrkDataAccess {
+
+<span class="fc" id="L36">    private static final ReflectiveInMemoryRowMapper&lt;KuzfrkColumn, KuzfrkRecord&gt; ROW_MAPPER =</span>
+<span class="fc" id="L37">            ReflectiveInMemoryRowMapper.create(KuzfrkColumn.class, KuzfrkRecord.class);</span>
+
+<span class="fc" id="L39">    private static final AutoNeutralValueResolver&lt;KuzfrkColumn&gt; NEUTRAL_VALUE_RESOLVER =</span>
+<span class="fc" id="L40">            AutoNeutralValueResolver.create(KuzfrkColumn.class, KuzfrkRecord.class);</span>
+
+<span class="fc" id="L42">    private final List&lt;EnumMap&lt;KuzfrkColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    private final SystemDateTimeProvider clock;
+
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    private final InMemoryInsertSupport&lt;KuzfrkWriteRecord, KuzfrkColumn&gt; insertSupport;
+
+    private final InMemoryTargetColumnUpdateSupport&lt;KuzfrkWriteRecord, KuzfrkColumn&gt; updateSupport;
+
+    /** デフォルト依存でインスタンスを生成する。 */
+    public KuzfrkDataAccessImpl() {
+<span class="nc" id="L54">        this(new DefaultSystemDateTimeProvider(), new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L55">    }</span>
+
+    /**
+     * テスト用に時刻依存を差し替えてインスタンスを生成する。
+     *
+     * @param systemClock システム時刻プロバイダ
+     */
+    KuzfrkDataAccessImpl(final SystemDateTimeProvider systemClock) {
+<span class="fc" id="L63">        this(systemClock, new CiriusAuditColumnAutoSetter());</span>
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * テスト用に依存を差し替えてインスタンスを生成する。
+     *
+     * @param systemClock システム時刻プロバイダ
+     * @param ciriusAuditColumnAutoSetter 監査項目自動設定
+     */
+    KuzfrkDataAccessImpl(
+            final SystemDateTimeProvider systemClock,
+<span class="fc" id="L74">            final CiriusAuditColumnAutoSetter ciriusAuditColumnAutoSetter) {</span>
+<span class="fc" id="L75">        this.clock = Objects.requireNonNull(systemClock, &quot;clock&quot;);</span>
+<span class="fc" id="L76">        this.auditColumnAutoSetter =</span>
+<span class="fc" id="L77">                Objects.requireNonNull(ciriusAuditColumnAutoSetter, &quot;auditColumnAutoSetter&quot;);</span>
+<span class="fc" id="L78">        this.insertSupport =</span>
+                new InMemoryInsertSupport&lt;&gt;(KuzfrkWriteDefinition.INSTANCE, NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L80">        this.updateSupport =</span>
+                new InMemoryTargetColumnUpdateSupport&lt;&gt;(
+                        KuzfrkWriteDefinition.INSTANCE,
+                        NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * テストデータを 1 行追加する。
+     *
+     * @param record 追加対象レコード
+     * @return このインスタンス
+     */
+    public KuzfrkDataAccessImpl addRow(final KuzfrkRecord record) {
+<span class="fc" id="L93">        EnumMap&lt;KuzfrkColumn, Object&gt; values =</span>
+<span class="fc" id="L94">                ROW_MAPPER.toRawValueMap(Objects.requireNonNull(record, &quot;record&quot;));</span>
+<span class="fc" id="L95">        NEUTRAL_VALUE_RESOLVER.complement(values, KuzfrkWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L96">        rows.add(values);</span>
+<span class="fc" id="L97">        return this;</span>
+    }
+
+    @Override
+    public int insert(final KuzfrkWriteRecord record, final AuditContext context) {
+<span class="fc" id="L102">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L103">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L104">        rows.add(</span>
+<span class="fc" id="L105">                insertSupport.prepare(</span>
+                        record,
+<span class="fc" id="L107">                        values -&gt; auditColumnAutoSetter.applyForInsert(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(KuzfrkColumn.class, values),
+                                context,
+                                clock)));
+<span class="fc" id="L111">        return 1;</span>
+    }
+
+    @Override
+    public int deleteBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo) {
+<span class="fc" id="L119">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L120">        Integer safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L121">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_NO), safeSihKiyNo)</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_SKNO), safeSihKiySkno),</span>
+                KuzfrkColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+<span class="fc" id="L127">                KuzfrkDataAccess.CallSpecs.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+<span class="nc" id="L128">                () -&gt; new DataInconsistencyException(</span>
+                        &quot;KUZFRK&quot;,
+<span class="nc" id="L130">                        KuzfrkDataAccess.CallSpecs.DELETE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier(),</span>
+                        &quot;{}&quot;),
+                safeSihKiyNo,
+                safeSihKiySkno);
+    }
+
+    @Override
+    public Optional&lt;KuzfrkRecord&gt; findBySihKiyNoAndSihKiySkno(
+            final Long sihKiyNo,
+            final Integer sihKiySkno) {
+<span class="fc" id="L140">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L141">        Integer safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L142">        return rows.stream()</span>
+<span class="fc" id="L143">                .filter(row -&gt; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_NO), safeSihKiyNo))</span>
+<span class="fc" id="L144">                .filter(row -&gt; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_SKNO), safeSihKiySkno))</span>
+<span class="fc" id="L145">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L146">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySkno(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final KuzfrkSihKiyUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L155">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L156">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L159">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L160">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L161">                updateKey.recUpdJnjNo(),</span>
+                context,
+<span class="fc" id="L163">                KuzfrkDataAccess.CallSpecs.UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO.identifier());</span>
+    }
+
+    @Override
+    public int updateBySihKiyNoAndSihKiySknoAndRecUpdJnjNo(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final KuzfrkSihKiyJnjUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L172">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L173">        return updateByKey(</span>
+                record,
+                targetColumns,
+<span class="fc" id="L176">                updateKey.sihKiyNo(),</span>
+<span class="fc" id="L177">                updateKey.sihKiySkno(),</span>
+<span class="fc" id="L178">                updateKey.recUpdJnjNo(),</span>
+                context,
+                KuzfrkDataAccess.CallSpecs
+                        .UPDATE_BY_SIH_KIY_NO_AND_SIH_KIY_SKNO_AND_REC_UPD_JNJ_NO
+<span class="fc" id="L182">                        .identifier());</span>
+    }
+
+    private int updateByKey(
+            final KuzfrkWriteRecord record,
+            final Set&lt;KuzfrkColumn&gt; targetColumns,
+            final Long sihKiyNo,
+            final Integer sihKiySkno,
+            final Integer recUpdJnjNo,
+            final AuditContext context,
+            final String dataAccessIdentifier) {
+<span class="fc" id="L193">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L194">        Objects.requireNonNull(targetColumns, &quot;targetColumns&quot;);</span>
+<span class="fc" id="L195">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L196">        Long safeSihKiyNo = safeLong(sihKiyNo, &quot;sihKiyNo&quot;);</span>
+<span class="fc" id="L197">        Integer safeSihKiySkno = safeInteger(sihKiySkno, &quot;sihKiySkno&quot;);</span>
+<span class="fc" id="L198">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc bfc" id="L200" title="All 2 branches covered.">                row -&gt; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_NO), safeSihKiyNo)</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                        &amp;&amp; Objects.equals(row.get(KuzfrkColumn.SIH_KIY_SKNO), safeSihKiySkno),</span>
+<span class="fc" id="L202">                row -&gt; updateSupport.prepare(</span>
+                        record,
+                        targetColumns,
+<span class="fc" id="L205">                        values -&gt; auditColumnAutoSetter.applyForUpdate(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(KuzfrkColumn.class, values),
+                                context,
+                                clock,
+<span class="fc" id="L209">                                (Integer) row.get(KuzfrkColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L210">                updateSupport::apply,</span>
+                KuzfrkColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                dataAccessIdentifier,
+                safeSihKiyNo,
+                safeSihKiySkno);
+    }
+
+    private static Long safeLong(final Long value, final String paramName) {
+<span class="fc" id="L219">        return WhereParamGuard.complement(value, paramName, 0L);</span>
+    }
+
+    private static Integer safeInteger(final Integer value, final String paramName) {
+<span class="fc" id="L223">        return WhereParamGuard.complement(value, paramName, 0);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

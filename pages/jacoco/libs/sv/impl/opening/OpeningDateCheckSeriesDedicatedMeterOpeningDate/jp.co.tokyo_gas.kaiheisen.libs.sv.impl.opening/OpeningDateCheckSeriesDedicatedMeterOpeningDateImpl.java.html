@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpeningDateCheckSeriesDedicatedMeterOpeningDateImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-openingdatecheckseriesdedicatedmeteropeningdate</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">OpeningDateCheckSeriesDedicatedMeterOpeningDateImpl.java</span></div><h1>OpeningDateCheckSeriesDedicatedMeterOpeningDateImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.OpeningDateCheckSeriesDedicatedMeterOpeningDate;
+
+/**
+ * 概要: SV-183（直列専用メーター開栓日判定）の実装クラス。
+ * 主な仕様:
+ * - 直列ガスメーター設置状態区分が J0244 の専用ガスメーターであるかを判定する。
+ * - 開栓作業年月日が開栓年月日を遡る場合は開栓共通エラー 020100018 を送出する。
+ * - 上記条件に該当しない場合は何も返さずに正常終了する。
+ * 既知の制約:
+ * - 本クラスは入力値の正規化や trim を行わず、呼び出し元から渡された値をそのまま判定する。
+ * - RequestContext は既存SV実装との依存整合のため保持するが、本ロジックでは参照しない。
+ */
+public class OpeningDateCheckSeriesDedicatedMeterOpeningDateImpl
+        implements OpeningDateCheckSeriesDedicatedMeterOpeningDate {
+
+    /**
+     * 概要: SV 実行時のリクエストコンテキスト。
+     * 主な仕様:
+     * - 既存のSV実装と同様の依存注入形を維持するためコンストラクタで受け取って保持する。
+     * - correlationId、hukkSysShbt、systemDatetime などの共通情報の受け渡し先となる。
+     * 既知の制約:
+     * - SV-183 の判定ロジック自体では本フィールドを参照しない。
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    private final RequestContext requestContext;
+
+    /**
+     * 概要: 直列専用メーター判定に使用する解決済み定数値。
+     * 主な仕様:
+     * - CIRIUS 定数 J0244 の「専用ガスメーター」をコンストラクタで解決した値を保持する。
+     * - 実行時判定では本フィールドとの一致判定を使用する。
+     * 既知の制約:
+     * - 定数未登録時はコンストラクタ内で例外送出となり、インスタンス生成に失敗する。
+     */
+    private final String dedicatedMeterStatus;
+
+    /**
+     * 概要: 依存する RequestContext を受け取ってインスタンスを初期化するコンストラクタ。
+     * 主な仕様:
+     * - 呼び出し元から受け取った RequestContext をそのままフィールドへ保持する。
+     * - 判定に必要な CIRIUS 定数 J0244 の専用ガスメーター値を必須解決して保持する。
+     * - 既存の opening 系SV実装と同じ依存注入形を維持する。
+     * 既知の制約:
+     * - RequestContext および CIRIUS 定数サービスの null は許容しない。
+     *
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     * @param requestContext リクエストコンテキスト
+     */
+    public OpeningDateCheckSeriesDedicatedMeterOpeningDateImpl(
+            CiriusConstantService ciriusConstantService,
+<span class="fc" id="L61">            RequestContext requestContext) {</span>
+<span class="fc" id="L62">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L63">        this.dedicatedMeterStatus = RequiredConstantResolver.requireCiriusConstant(</span>
+<span class="fc" id="L64">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;),</span>
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.TYPE,
+                ConstantLookupKeys.Cirius.SeriesGasMeterInstallationStatus.DEDICATED_GAS_METER);
+<span class="fc" id="L67">    }</span>
+
+    @Override
+    public void execute(
+            String ckrtGmscJtkb,
+            LocalDate kasYmd,
+            LocalDate kasgYmd) {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (isSeriesDedicatedMeter(dedicatedMeterStatus, ckrtGmscJtkb)</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                &amp;&amp; isOpeningWorkDateBeforeOpeningDate(kasYmd, kasgYmd)) {</span>
+<span class="fc" id="L76">            throw new KaisenRuleException(ErrorCodeConstants.ERROR_CODE_020100018);</span>
+        }
+
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * 概要: 入力された設置状態区分が直列専用メーターかを判定する。
+     * 主な仕様:
+     * - CIRIUS 定数サービスで解決済みの J0244 専用ガスメーター値と完全一致した場合に true を返却する。
+     * - 一致しない場合は false を返却する。
+     * 既知の制約:
+     * - 前後空白の除去やコード値の補正は行わない。
+     *
+     * @param dedicatedMeterStatus 解決済みの専用ガスメーター定数値
+     * @param ckrtGmscJtkb 直列ガスメーター設置状態区分
+     * @return 直列専用メーターの場合 true
+     */
+    private static boolean isSeriesDedicatedMeter(String dedicatedMeterStatus, String ckrtGmscJtkb) {
+<span class="fc" id="L94">        return dedicatedMeterStatus.equals(ckrtGmscJtkb);</span>
+    }
+
+    /**
+     * 概要: 開栓作業年月日が開栓年月日を遡るかを判定する。
+     * 主な仕様:
+     * - 開栓作業年月日が開栓年月日より前の場合に true を返却する。
+     * 既知の制約:
+     * - null 許可/不許可は上位バリデーション済み前提とし、本メソッドでは前後比較のみを行う。
+     *
+     * @param kasYmd 開栓年月日
+     * @param kasgYmd 開栓作業年月日
+     * @return 開栓作業年月日が開栓年月日より前の場合 true
+     */
+    private static boolean isOpeningWorkDateBeforeOpeningDate(
+            LocalDate kasYmd,
+            LocalDate kasgYmd) {
+<span class="fc" id="L111">        return kasgYmd.isBefore(kasYmd);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

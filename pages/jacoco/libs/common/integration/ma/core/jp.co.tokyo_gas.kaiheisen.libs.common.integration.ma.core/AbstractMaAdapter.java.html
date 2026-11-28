@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractMaAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-integration-ma-core</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.core</a> &gt; <span class="el_source">AbstractMaAdapter.java</span></div><h1>AbstractMaAdapter.java</h1><pre class="source lang-java linenums">/**
+ * @file AbstractMaAdapter.java
+ * 概要: MA API adapter の抽象基底クラスを定義する。
+ * 主な仕様:
+ * - MaEndpointContract と REST Client インスタンスを保持する。
+ * - RestClientInvoker による Request record → RestClient メソッド引数の自動マッピングを提供する。
+ * - サブクラスはコンストラクタのみで完結し、invoke メソッドの手動実装は不要。
+ * - 特殊ケース向けに手動 invoke(Supplier, String) も提供する。
+ * 既知の制限事項:
+ * - 自動マッピングは RestClient interface に非 default メソッドが 1 つの場合のみ対応する。
+ * 型: Javaソース
+ */
+
+package jp.co.tokyo_gas.kaiheisen.libs.common.integration.ma.core;
+
+import java.util.function.Supplier;
+import jp.co.tokyo_gas.kaiheisen.contracts.ma.v1.core.endpoint.MaEndpointContract;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.core.RequestInfo;
+
+/**
+ * MA API adapter の抽象基底クラス。
+ *
+ * &lt;p&gt;{@link MaEndpointContract} と REST Client インスタンスを保持し、
+ * {@link RestClientInvoker} による Request record → RestClient メソッド引数の
+ * 自動マッピング付き {@link #invoke(Record)} を提供する。
+ * サブクラスはコンストラクタのみで完結し、invoke メソッドの手動実装は不要。&lt;/p&gt;
+ *
+ * &lt;p&gt;特殊ケース（複数メソッド等）向けに手動 {@link #invoke(Supplier, String)} も提供する。&lt;/p&gt;
+ *
+ * @param &lt;C&gt; MicroProfile REST Client インターフェースの型
+ * @param &lt;REQ&gt; リクエスト型（Record）
+ * @param &lt;RES&gt; レスポンス型
+ */
+public abstract class AbstractMaAdapter&lt;C, REQ extends Record, RES&gt; {
+
+    /**
+     * MA エンドポイント契約。
+     */
+    private final MaEndpointContract&lt;REQ, RES&gt; contract;
+
+    /**
+     * REST Client インスタンス。
+     */
+    private final C restClient;
+
+    /**
+     * Request record → RestClient メソッド引数の自動マッピングユーティリティ。
+     */
+    private final RestClientInvoker invoker;
+
+    /**
+     * CDI プロキシ生成用の no-args コンストラクタ。
+     * アプリケーションコードからは使用しないこと。
+     */
+<span class="nc" id="L55">    protected AbstractMaAdapter() {</span>
+<span class="nc" id="L56">        this.contract = null;</span>
+<span class="nc" id="L57">        this.restClient = null;</span>
+<span class="nc" id="L58">        this.invoker = null;</span>
+<span class="nc" id="L59">    }</span>
+
+    /**
+     * コンストラクタ。
+     *
+     * &lt;p&gt;{@link MaEndpointContract} から MA 識別子と型情報を取得し、
+     * {@link RestClientInvoker} で自動マッピングを構築する。&lt;/p&gt;
+     *
+     * @param contract MA エンドポイント契約。型: MaEndpointContract
+     * @param restClient REST Client インスタンス。型: C
+     */
+<span class="nc" id="L70">    protected AbstractMaAdapter(MaEndpointContract&lt;REQ, RES&gt; contract, C restClient) {</span>
+<span class="nc" id="L71">        this.contract = contract;</span>
+<span class="nc" id="L72">        this.restClient = restClient;</span>
+<span class="nc" id="L73">        this.invoker = new RestClientInvoker(</span>
+<span class="nc" id="L74">                RestClientInvoker.findRestClientInterface(restClient), contract.requestType());</span>
+<span class="nc" id="L75">    }</span>
+
+    /**
+     * REST Client インスタンスを返す。
+     *
+     * @return REST Client インスタンス。型: C
+     */
+    protected C restClient() {
+<span class="nc" id="L83">        return restClient;</span>
+    }
+
+    /**
+     * MA API 呼び出しを実行する（自動マッピング版）。
+     *
+     * &lt;p&gt;Request record の {@code @QueryParam} 付きコンポーネントを RestClient メソッドの
+     * パラメータに自動マッピングし、例外を MaApiException に変換する。&lt;/p&gt;
+     *
+     * @param request リクエスト。型: REQ
+     * @return レスポンス。型: RES
+     */
+    public RES invoke(REQ request) {
+<span class="nc" id="L96">        return invoke(</span>
+<span class="nc" id="L97">                () -&gt; invoker.invoke(restClient, request),</span>
+<span class="nc" id="L98">                RequestInfo.of(contract.path(), request));</span>
+    }
+
+    /**
+     * MA API 呼び出しを実行し、例外を MaApiException に変換する（手動版）。
+     *
+     * &lt;p&gt;自動マッピングが不適切な特殊ケース向け。&lt;/p&gt;
+     *
+     * @param &lt;T&gt; レスポンス型
+     * @param call 呼び出し処理。型: Supplier
+     * @param requestInfo リクエスト情報（パラメータ等）。型: String
+     * @return 呼び出し結果。型: T
+     */
+    protected &lt;T&gt; T invoke(Supplier&lt;T&gt; call, String requestInfo) {
+<span class="nc" id="L112">        return MaRestClientSupport.invoke(call, contract.maId(), requestInfo);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

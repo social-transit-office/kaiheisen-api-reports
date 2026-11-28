@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DktksryDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-dktksry</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.dktksry</a> &gt; <span class="el_source">DktksryDataAccessImpl.java</span></div><h1>DktksryDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.dktksry;
+
+import static java.time.format.DateTimeFormatter.BASIC_ISO_DATE;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.database.DataInconsistencyException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.DefaultSystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.time.SystemDateTimeProvider;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.DktksryRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryColumn;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryUpdateKey;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryWriteDefinition;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.dktksry.write.DktksryWriteRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.AuditContext;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.CiriusAuditColumnAutoSetter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.MapBackedAuditColumnAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.AutoNeutralValueResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryInsertSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticDeleteSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryOptimisticUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.InMemoryTargetColumnUpdateSupport;
+import jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.core.ReflectiveInMemoryRowMapper;
+
+/**
+ * DA-089（C001/D001/R001-R005/U001）の SQL 振る舞いを模した
+ * DKTKSRY インメモリ実装.
+ */
+public class DktksryDataAccessImpl extends DataAccessBase
+        implements DktksryDataAccess {
+
+    /** KNKK_SKSI_JYSB の固定長. */
+    private static final int KNKK_SKSI_JYSB_LENGTH = 3;
+
+    /** レコードから raw 値マップへ変換する mapper. */
+    private static final ReflectiveInMemoryRowMapper&lt;
+                    DktksryColumn,
+                    DktksryRecord&gt;
+<span class="fc" id="L47">            ROW_MAPPER = ReflectiveInMemoryRowMapper.create(</span>
+                    DktksryColumn.class,
+                    DktksryRecord.class);
+
+    /** neutral 値を補完する resolver. */
+    private static final AutoNeutralValueResolver&lt;DktksryColumn&gt;
+<span class="fc" id="L53">            NEUTRAL_VALUE_RESOLVER = AutoNeutralValueResolver.create(</span>
+                    DktksryColumn.class,
+                    DktksryRecord.class);
+
+    /** テスト用に保持する row 一覧. */
+<span class="fc" id="L58">    private final List&lt;EnumMap&lt;DktksryColumn, Object&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /** システム日時の取得元. */
+    private final SystemDateTimeProvider clock;
+
+    /** 監査項目の自動設定ロジック. */
+    private final CiriusAuditColumnAutoSetter auditColumnAutoSetter;
+
+    /** insert 用の値補完サポート. */
+    private final InMemoryInsertSupport&lt;
+                    DktksryWriteRecord,
+                    DktksryColumn&gt;
+            insertSupport;
+
+    /** update 用の値補完サポート. */
+    private final InMemoryTargetColumnUpdateSupport&lt;
+                    DktksryWriteRecord,
+                    DktksryColumn&gt;
+            updateSupport;
+
+    /** システム日付プロバイダのデフォルト実装で初期化する. */
+    public DktksryDataAccessImpl() {
+<span class="fc" id="L80">        this(</span>
+                new DefaultSystemDateTimeProvider(),
+                new CiriusAuditColumnAutoSetter());
+<span class="fc" id="L83">    }</span>
+
+    DktksryDataAccessImpl(final SystemDateTimeProvider systemDateTimeProvider) {
+<span class="nc" id="L86">        this(systemDateTimeProvider, new CiriusAuditColumnAutoSetter());</span>
+<span class="nc" id="L87">    }</span>
+
+    DktksryDataAccessImpl(
+            final SystemDateTimeProvider systemDateTimeProvider,
+<span class="fc" id="L91">            final CiriusAuditColumnAutoSetter ciriusAuditColumnAutoSetter) {</span>
+<span class="fc" id="L92">        this.clock = Objects.requireNonNull(</span>
+                systemDateTimeProvider,
+                &quot;systemDateTimeProvider&quot;);
+<span class="fc" id="L95">        this.auditColumnAutoSetter = Objects.requireNonNull(</span>
+                ciriusAuditColumnAutoSetter,
+                &quot;ciriusAuditColumnAutoSetter&quot;);
+<span class="fc" id="L98">        this.insertSupport = new InMemoryInsertSupport&lt;&gt;(</span>
+                DktksryWriteDefinition.INSTANCE,
+                NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L101">        this.updateSupport = new InMemoryTargetColumnUpdateSupport&lt;&gt;(</span>
+                DktksryWriteDefinition.INSTANCE,
+                NEUTRAL_VALUE_RESOLVER);
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * テスト用の初期データを追加する.
+     *
+     * @param row 追加する行
+     * @return このインスタンス
+     */
+    public DktksryDataAccessImpl addRow(final DktksryRecord row) {
+<span class="fc" id="L113">        EnumMap&lt;DktksryColumn, Object&gt; values = ROW_MAPPER.toRawValueMap(</span>
+<span class="fc" id="L114">                Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L115">        NEUTRAL_VALUE_RESOLVER.complement(</span>
+                values,
+<span class="fc" id="L117">                DktksryWriteDefinition.INSTANCE.columnOrder());</span>
+<span class="fc" id="L118">        rows.add(values);</span>
+<span class="fc" id="L119">        return this;</span>
+    }
+
+    /**
+     * テスト用に保持している登録済みレコードを返す.
+     *
+     * @return 登録済みレコード一覧
+     */
+    public List&lt;DktksryRecord&gt; getRows() {
+<span class="fc" id="L128">        return rows.stream().map(ROW_MAPPER::toRecord).toList();</span>
+    }
+
+    @Override
+    public int insert(
+            final DktksryWriteRecord record,
+            final AuditContext context) {
+<span class="nc" id="L135">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="nc" id="L136">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="nc" id="L138">        rows.add(</span>
+<span class="nc" id="L139">                insertSupport.prepare(</span>
+                        record,
+                        values -&gt;
+<span class="nc" id="L142">                                auditColumnAutoSetter.applyForInsert(</span>
+                                        new MapBackedAuditColumnAccess&lt;&gt;(
+                                                DktksryColumn.class,
+                                                values),
+                                        context,
+                                        clock)));
+<span class="nc" id="L148">        return 1;</span>
+    }
+
+    @Override
+    public int deleteByGasMtstNoAndKnsYmdAndKnsKkaTsno(
+            final Long gasMtstNo,
+            final LocalDate knsYmd,
+            final Integer knsKkaTsno,
+            final Integer recUpdJnjNo) {
+<span class="fc" id="L157">        return InMemoryOptimisticDeleteSupport.delete(</span>
+                rows,
+<span class="fc" id="L159">                row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                                == safeLong(gasMtstNo)</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                        &amp;&amp; sameComplementedYmd(</span>
+<span class="fc" id="L162">                                row.get(DktksryColumn.KNS_YMD),</span>
+                                knsYmd)
+<span class="fc" id="L164">                        &amp;&amp; safeInt(row.get(DktksryColumn.KNS_KKA_TSNO))</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                                == safeInt(knsKkaTsno),</span>
+                DktksryColumn.REC_UPD_JNJ_NO,
+                recUpdJnjNo,
+                DktksryDataAccess.CallSpecs
+                        .DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO
+<span class="fc" id="L170">                        .identifier(),</span>
+<span class="nc" id="L171">                () -&gt; new DataInconsistencyException(</span>
+                        &quot;DKTKSRY&quot;,
+<span class="nc" id="L173">                        deleteCallIdentifier(),</span>
+                        &quot;{}&quot;),
+                gasMtstNo,
+                knsYmd,
+                knsKkaTsno);
+    }
+
+    @Override
+    public List&lt;DktksryRecord&gt; findAll(
+            final Long gasMtstNo,
+            final LocalDate knsYmd,
+            final Integer knsKkaTsno) {
+<span class="fc" id="L185">        return rows.stream()</span>
+<span class="fc" id="L186">                .filter(row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                        == safeLong(gasMtstNo))</span>
+<span class="fc" id="L188">                .filter(row -&gt; sameComplementedYmd(</span>
+<span class="fc" id="L189">                        row.get(DktksryColumn.KNS_YMD),</span>
+                        knsYmd))
+<span class="fc" id="L191">                .filter(row -&gt; safeInt(row.get(DktksryColumn.KNS_KKA_TSNO))</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                        == safeInt(knsKkaTsno))</span>
+<span class="fc" id="L193">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L194">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;DktksryRecord&gt; findByGasMtstNoAndKnsYmd(
+            final Long gasMtstNo,
+            final LocalDate knsYmd) {
+<span class="fc" id="L201">        return rows.stream()</span>
+<span class="fc" id="L202">                .filter(row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">                        == safeLong(gasMtstNo))</span>
+<span class="pc" id="L204">                .filter(row -&gt; isNotBefore(</span>
+                        row,
+                        DktksryColumn.KNS_YMD,
+                        knsYmd))
+<span class="fc" id="L208">                .sorted(knsYmdDescComparator())</span>
+<span class="fc" id="L209">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L210">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;DktksryRecord&gt; findByGasMtstNoAndKnsYmdAndKnkkSksiJysb(
+            final Long gasMtstNo,
+            final LocalDate knsYmd,
+            final String knkkSksiJysb) {
+<span class="fc" id="L218">        return rows.stream()</span>
+<span class="fc" id="L219">                .filter(row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">                        == safeLong(gasMtstNo))</span>
+<span class="pc" id="L221">                .filter(row -&gt; sameComplementedYmd(</span>
+<span class="nc" id="L222">                        row.get(DktksryColumn.KNS_YMD),</span>
+                        knsYmd))
+<span class="pc" id="L224">                .filter(row -&gt; Objects.equals(</span>
+<span class="nc" id="L225">                        complementKnkkSksiJysb(</span>
+<span class="nc" id="L226">                                row.get(DktksryColumn.KNKK_SKSI_JYSB)),</span>
+<span class="nc" id="L227">                        complementKnkkSksiJysb(knkkSksiJysb)))</span>
+<span class="fc" id="L228">                .sorted(knsKkaTsnoDescComparator())</span>
+<span class="fc" id="L229">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L230">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;DktksryRecord&gt; findByGasMtstNoAndKnsYmdRange(
+            final Long gasMtstNo,
+            final LocalDate knsYmdFrom,
+            final LocalDate knsYmdTo) {
+<span class="fc" id="L238">        return rows.stream()</span>
+<span class="fc" id="L239">                .filter(row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">                        == safeLong(gasMtstNo))</span>
+<span class="fc" id="L241">                .filter(row -&gt; isNotBefore(</span>
+                        row,
+                        DktksryColumn.KNS_YMD,
+                        knsYmdFrom))
+<span class="fc" id="L245">                .filter(row -&gt; isNotAfter(</span>
+                        row,
+                        DktksryColumn.KNS_YMD,
+                        knsYmdTo))
+<span class="fc" id="L249">                .sorted(knsYmdAndTsnoDescComparator())</span>
+<span class="fc" id="L250">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L251">                .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;DktksryRecord&gt; findByGasMtstNoAndKnsYmdRangeAndKnkkSksiJysb(
+            final Long gasMtstNo,
+            final LocalDate knsYmdFrom,
+            final LocalDate knsYmdTo,
+            final String knkkSksiJysb) {
+<span class="fc" id="L260">        return rows.stream()</span>
+<span class="fc" id="L261">                .filter(row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                        == safeLong(gasMtstNo))</span>
+<span class="pc" id="L263">                .filter(row -&gt; isNotBefore(</span>
+                        row,
+                        DktksryColumn.KNS_YMD,
+                        knsYmdFrom))
+<span class="pc" id="L267">                .filter(row -&gt; isNotAfter(</span>
+                        row,
+                        DktksryColumn.KNS_YMD,
+                        knsYmdTo))
+<span class="pc" id="L271">                .filter(row -&gt; Objects.equals(</span>
+<span class="nc" id="L272">                        complementKnkkSksiJysb(</span>
+<span class="nc" id="L273">                                row.get(DktksryColumn.KNKK_SKSI_JYSB)),</span>
+<span class="nc" id="L274">                        complementKnkkSksiJysb(knkkSksiJysb)))</span>
+<span class="fc" id="L275">                .sorted(knsYmdAndTsnoDescComparator())</span>
+<span class="fc" id="L276">                .map(ROW_MAPPER::toRecord)</span>
+<span class="fc" id="L277">                .findFirst();</span>
+    }
+
+    @Override
+    public int updateByGasMtstNoAndKnsYmdAndKnsKkaTsno(
+            final DktksryWriteRecord record,
+            final Set&lt;DktksryColumn&gt; targetColumns,
+            final DktksryUpdateKey updateKey,
+            final AuditContext context) {
+<span class="fc" id="L286">        Objects.requireNonNull(record, &quot;record&quot;);</span>
+<span class="fc" id="L287">        Objects.requireNonNull(updateKey, &quot;updateKey&quot;);</span>
+<span class="fc" id="L288">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+
+<span class="fc" id="L290">        return InMemoryOptimisticUpdateSupport.update(</span>
+                rows,
+<span class="fc" id="L292">                row -&gt; safeLong(row.get(DktksryColumn.GAS_MTST_NO))</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                                == safeLong(updateKey.gasMtstNo())</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">                        &amp;&amp; sameComplementedYmd(</span>
+<span class="fc" id="L295">                                row.get(DktksryColumn.KNS_YMD),</span>
+<span class="fc" id="L296">                                updateKey.knsYmd())</span>
+<span class="fc" id="L297">                        &amp;&amp; safeInt(row.get(DktksryColumn.KNS_KKA_TSNO))</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">                                == safeInt(updateKey.knsKkaTsno()),</span>
+<span class="fc" id="L299">                row -&gt; updateSupport.prepare(</span>
+                        record,
+                        targetColumns,
+<span class="fc" id="L302">                        values -&gt; auditColumnAutoSetter.applyForUpdate(</span>
+                                new MapBackedAuditColumnAccess&lt;&gt;(
+                                        DktksryColumn.class,
+                                        values),
+                                context,
+                                clock,
+                                (Integer)
+<span class="fc" id="L309">                                        row.get(DktksryColumn.REC_UPD_JNJ_NO))),</span>
+<span class="fc" id="L310">                updateSupport::apply,</span>
+                DktksryColumn.REC_UPD_JNJ_NO,
+<span class="fc" id="L312">                updateKey.recUpdJnjNo(),</span>
+                DktksryDataAccess.CallSpecs
+                        .UPDATE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO
+<span class="fc" id="L315">                        .identifier(),</span>
+<span class="fc" id="L316">                updateKey.gasMtstNo(),</span>
+<span class="fc" id="L317">                updateKey.knsYmd(),</span>
+<span class="fc" id="L318">                updateKey.knsKkaTsno());</span>
+    }
+
+    private static boolean isNotAfter(
+            final EnumMap&lt;DktksryColumn, Object&gt; row,
+            final DktksryColumn column,
+            final LocalDate value) {
+<span class="fc" id="L325">        return complementedYmdValue((LocalDate) row.get(column))</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">                &lt;= complementedYmdValue(value);</span>
+    }
+
+    private static boolean isNotBefore(
+            final EnumMap&lt;DktksryColumn, Object&gt; row,
+            final DktksryColumn column,
+            final LocalDate value) {
+<span class="fc" id="L333">        return complementedYmdValue((LocalDate) row.get(column))</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                &gt;= complementedYmdValue(value);</span>
+    }
+
+    private static boolean sameComplementedYmd(
+            final Object left,
+            final LocalDate right) {
+<span class="fc" id="L340">        return complementedYmdValue((LocalDate) left)</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">                == complementedYmdValue(right);</span>
+    }
+
+    private static String deleteCallIdentifier() {
+<span class="nc" id="L345">        return DktksryDataAccess.CallSpecs</span>
+                .DELETE_BY_GAS_MTST_NO_AND_KNS_YMD_AND_KNS_KKA_TSNO
+<span class="nc" id="L347">                .identifier();</span>
+    }
+
+    private static Integer knsKkaTsnoValue(
+            final EnumMap&lt;DktksryColumn, Object&gt; row) {
+<span class="fc" id="L352">        return (Integer) row.get(DktksryColumn.KNS_KKA_TSNO);</span>
+    }
+
+    private static Comparator&lt;EnumMap&lt;DktksryColumn, Object&gt;&gt;
+            knsYmdDescComparator() {
+<span class="fc" id="L357">        return Comparator.comparing(</span>
+                DktksryDataAccessImpl::knsYmdValue,
+<span class="fc" id="L359">                Comparator.nullsLast(Comparator.reverseOrder()));</span>
+    }
+
+    private static Comparator&lt;EnumMap&lt;DktksryColumn, Object&gt;&gt;
+            knsKkaTsnoDescComparator() {
+<span class="fc" id="L364">        return Comparator.comparing(</span>
+                DktksryDataAccessImpl::knsKkaTsnoValue,
+<span class="fc" id="L366">                Comparator.nullsLast(Comparator.reverseOrder()));</span>
+    }
+
+    private static Comparator&lt;EnumMap&lt;DktksryColumn, Object&gt;&gt;
+            knsYmdAndTsnoDescComparator() {
+<span class="fc" id="L371">        return knsYmdDescComparator()</span>
+<span class="fc" id="L372">                .thenComparing(knsKkaTsnoDescComparator());</span>
+    }
+
+    private static LocalDate knsYmdValue(
+            final EnumMap&lt;DktksryColumn, Object&gt; row) {
+<span class="fc" id="L377">        return (LocalDate) row.get(DktksryColumn.KNS_YMD);</span>
+    }
+
+    private static int complementedYmdValue(final LocalDate value) {
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L382">            return 0;</span>
+        }
+<span class="fc" id="L384">        return Integer.parseInt(value.format(BASIC_ISO_DATE));</span>
+    }
+
+    private static long safeLong(final Object value) {
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L389">            return number.longValue();</span>
+        }
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="fc" id="L392">            return 0L;</span>
+        }
+<span class="nc" id="L394">        return Long.parseLong(value.toString());</span>
+    }
+
+    private static int safeInt(final Object value) {
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L399">            return number.intValue();</span>
+        }
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="fc" id="L402">            return 0;</span>
+        }
+<span class="nc" id="L404">        return Integer.parseInt(value.toString());</span>
+    }
+
+    private static String complementKnkkSksiJysb(final Object value) {
+<span class="nc" id="L408">        return WhereParamGuard.fixedLengthNotNull(</span>
+                (String) value,
+                &quot;knkkSksiJysb&quot;,
+                KNKK_SKSI_JYSB_LENGTH);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

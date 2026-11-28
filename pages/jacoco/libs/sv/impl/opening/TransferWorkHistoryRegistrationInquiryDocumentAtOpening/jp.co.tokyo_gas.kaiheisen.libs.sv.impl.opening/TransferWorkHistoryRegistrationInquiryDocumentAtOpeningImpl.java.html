@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TransferWorkHistoryRegistrationInquiryDocumentAtOpeningImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-sv-impl-opening-transferworkhistoryregistrationinquirydocumentatopening</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening</a> &gt; <span class="el_source">TransferWorkHistoryRegistrationInquiryDocumentAtOpeningImpl.java</span></div><h1>TransferWorkHistoryRegistrationInquiryDocumentAtOpeningImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.sv.impl.opening;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.CiriusConstantService;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.ConstantLookupKeys;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.constant.RequiredConstantResolver;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.context.RequestContext;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.business.KaisenRuleException;
+import jp.co.tokyo_gas.kaiheisen.libs.common.core.exception.catalog.ErrorCodeConstants;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouCiriusAdapter;
+import jp.co.tokyo_gas.kaiheisen.libs.common.integration.cirius.retail_sc.idousagyourireki_kouri_jouhou.IdousagyourirekiKouriJouhouRequest;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryCommonRetailEditAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryCommonRetailEditAtOpeningOutput;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.TransferWorkHistoryRegistrationInquiryDocumentAtOpening;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.IsrkkInsInf;
+import jp.co.tokyo_gas.kaiheisen.libs.sv.api.opening.model.TransferWorkHistoryInquirySvckyaKktInf;
+
+/**
+ * 概要: SV-245（開栓時異動・作業履歴登録（照会文書用））の実装。
+ * 主な仕様:
+ * - 処理対象条件を満たす場合のみ SV-247 を呼び出し、一般契約適用の異動・作業履歴＜小売＞登録を行う。
+ * - サービス契約開始事由種別が新規または前契約継続でない場合は開栓共通エラーを送出する。
+ * - step 1.a.3 の補助ソース定義に従い、他-004 リクエストは SV-247 戻り値と固定値を合成して組み立てる。
+ * 既知の制約:
+ * - public メソッド引数の null 判定や、下位 SV 戻り値 DTO に対する設計外の null 判定は追加しない。
+ */
+public final class TransferWorkHistoryRegistrationInquiryDocumentAtOpeningImpl
+        implements TransferWorkHistoryRegistrationInquiryDocumentAtOpening {
+
+    private static final String INVALID_SERVICE_CONTRACT_START_REASON_ERROR_CODE =
+            ErrorCodeConstants.ERROR_CODE_020100041;
+
+    private static final String EMPTY_STRING = &quot;&quot;;
+
+    private final TransferWorkHistoryCommonRetailEditAtOpening commonRetailEditAtOpening;
+
+    private final IdousagyourirekiKouriJouhouCiriusAdapter ciriusAdapter;
+
+    private final RequestContext requestContext;
+
+    private final String continuedUseOpeningReason;
+
+    private final String newServiceContractStartReason;
+
+    private final String continuationOfPreviousContract;
+
+    private final String generalContractApplicable;
+
+    private final String newOpeningDetailCode;
+
+    private final String previousContractContinuationDetailCode;
+
+    private final String transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable;
+
+    private final String customerInfoAcquisitionPossible;
+
+    /**
+     * 概要: SV-245 実行に必要な依存と定数を初期化する。
+     * 主な仕様:
+     * - SV-247、他-004 adapter、RequestContext を必須依存として保持する。
+     * - 分岐判定と固定値設定に必要な CIRIUS 定数をコンストラクタ初期化時に fail-fast で解決する。
+     *
+     * @param commonRetailEditAtOpening SV-247
+     * @param ciriusAdapter 他-004 adapter
+     * @param requestContext リクエストコンテキスト
+     * @param ciriusConstantService CIRIUS 定数取得サービス
+     */
+    public TransferWorkHistoryRegistrationInquiryDocumentAtOpeningImpl(
+            TransferWorkHistoryCommonRetailEditAtOpening commonRetailEditAtOpening,
+            IdousagyourirekiKouriJouhouCiriusAdapter ciriusAdapter,
+            RequestContext requestContext,
+<span class="fc" id="L75">            CiriusConstantService ciriusConstantService) {</span>
+<span class="fc" id="L76">        this.commonRetailEditAtOpening = Objects.requireNonNull(</span>
+                commonRetailEditAtOpening,
+                &quot;commonRetailEditAtOpening&quot;);
+<span class="fc" id="L79">        this.ciriusAdapter = Objects.requireNonNull(ciriusAdapter, &quot;ciriusAdapter&quot;);</span>
+<span class="fc" id="L80">        this.requestContext = Objects.requireNonNull(requestContext, &quot;requestContext&quot;);</span>
+<span class="fc" id="L81">        CiriusConstantService resolvedCiriusConstantService =</span>
+<span class="fc" id="L82">                Objects.requireNonNull(ciriusConstantService, &quot;ciriusConstantService&quot;);</span>
+<span class="fc" id="L83">        this.continuedUseOpeningReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.OpeningReasonType.TYPE,
+                ConstantLookupKeys.Cirius.OpeningReasonType.CONTINUED_USE);
+<span class="fc" id="L87">        this.newServiceContractStartReason = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.NEW);
+<span class="fc" id="L91">        this.continuationOfPreviousContract = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.TYPE,
+                ConstantLookupKeys.Cirius.ServiceContractStartReasonType.CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L95">        this.generalContractApplicable = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryBusinessCodeRetail.GENERAL_CONTRACT_APPLICABLE);
+<span class="fc" id="L99">        this.newOpeningDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.NEW_CCBG5101);
+<span class="fc" id="L103">        this.previousContractContinuationDetailCode = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryWorkDetailCodeRetail.CONTINUATION_OF_PREVIOUS_CONTRACT);
+<span class="fc" id="L107">        this.transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.TYPE,
+                ConstantLookupKeys.Cirius.TransferWorkHistoryInquiryCode.NOT_APPLICABLE_TO_DETAILS_ONLY);
+<span class="fc" id="L111">        this.customerInfoAcquisitionPossible = RequiredConstantResolver.requireCiriusConstant(</span>
+                resolvedCiriusConstantService,
+                ConstantLookupKeys.Cirius.PossibilityFlag.TYPE,
+                ConstantLookupKeys.Cirius.PossibilityFlag.POSSIBLE);
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void execute(
+            String isrrHkkrKbn,
+            String hukkUsrId,
+            String hukkUnmKj,
+            String tgTkurKbn,
+            Long gasMtstNo,
+            LocalDate kasgYmd,
+            String kasJysb,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg,
+            TransferWorkHistoryInquirySvckyaKktInf svckyaKktInf) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!isRegistrationTarget(kasJysb, digwrHntFlg, syoriHnt4XFlg, syoriHntFkktFlg)) {</span>
+<span class="fc" id="L134">            return;</span>
+        }
+<span class="fc" id="L136">        requireSystemDatetime();</span>
+<span class="fc" id="L137">        TransferWorkHistoryCommonRetailEditAtOpeningOutput commonEditOutput = commonRetailEditAtOpening.execute(</span>
+                gasMtstNo,
+                kasgYmd,
+                hukkUsrId,
+                hukkUnmKj,
+                tgTkurKbn);
+<span class="fc" id="L143">        String detailCode = resolveDetailCode(svckyaKktInf.svkySttJysb());</span>
+<span class="fc" id="L144">        ciriusAdapter.register(toRequest(commonEditOutput.isrkkInsInf(), detailCode, isrrHkkrKbn));</span>
+<span class="fc" id="L145">    }</span>
+
+    /**
+     * 概要: 処理対象かどうかを判定する。
+     *
+     * @param kasJysb 開栓事由種別
+     * @param digwrHntFlg 代替判定結果フラグ
+     * @param syoriHnt4XFlg 処理判定_4x_フラグ
+     * @param syoriHntFkktFlg 処理判定_復活_フラグ
+     * @return 処理対象の場合 true
+     */
+    private boolean isRegistrationTarget(
+            String kasJysb,
+            Boolean digwrHntFlg,
+            Boolean syoriHnt4XFlg,
+            Boolean syoriHntFkktFlg) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        return Boolean.TRUE.equals(digwrHntFlg)</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                || (continuedUseOpeningReason.equals(kasJysb)</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">                &amp;&amp; Boolean.TRUE.equals(syoriHnt4XFlg)</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                &amp;&amp; Boolean.TRUE.equals(syoriHntFkktFlg));</span>
+    }
+
+    /**
+     * 概要: サービス契約開始事由種別から異動・作業履歴業務詳細コードを解決する。
+     *
+     * @param svkySttJysb サービス契約開始事由種別
+     * @return 異動・作業履歴業務詳細コード
+     */
+    private String resolveDetailCode(String svkySttJysb) {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (newServiceContractStartReason.equals(svkySttJysb)) {</span>
+<span class="fc" id="L175">            return newOpeningDetailCode;</span>
+        }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (continuationOfPreviousContract.equals(svkySttJysb)) {</span>
+<span class="fc" id="L178">            return previousContractContinuationDetailCode;</span>
+        }
+<span class="fc" id="L180">        throw new KaisenRuleException(INVALID_SERVICE_CONTRACT_START_REASON_ERROR_CODE);</span>
+    }
+
+        /**
+         * 概要: SV-247 の戻り値と固定値から他-004 リクエストを生成する。
+         *
+         * @param commonEditResult SV-247 の編集結果
+         * @param detailCode 異動・作業履歴業務詳細コード
+         * @param isrrHkkrKbn 異動・作業履歴報告経路区分
+         * @return 他-004 リクエスト
+         */
+    private IdousagyourirekiKouriJouhouRequest toRequest(
+            IsrkkInsInf commonEditResult,
+            String detailCode,
+            String isrrHkkrKbn) {
+<span class="fc" id="L195">        return new IdousagyourirekiKouriJouhouRequest(</span>
+                new IdousagyourirekiKouriJouhouRequest.IdousagyourirekiKouriJouhouRenkei(
+                        new IdousagyourirekiKouriJouhouRequest.IdousagyourirekigyoumuKyoutsuuKouri(
+<span class="fc" id="L198">                                formatCustomerNumber(commonEditResult.artyCstNo()),</span>
+<span class="fc" id="L199">                                commonEditResult.akrkKbn(),</span>
+<span class="fc" id="L200">                                commonEditResult.akrkTrskShbt(),</span>
+                                generalContractApplicable,
+                                detailCode,
+                                isrrHkkrKbn,
+                                transferWorkHistoryInquiryCodeDetailsOnlyNotApplicable,
+<span class="fc" id="L205">                                toDateText(commonEditResult.isrrTriYmd()),</span>
+<span class="fc" id="L206">                                toTimeText(commonEditResult.isrrTriHms()),</span>
+<span class="fc" id="L207">                                toDateText(commonEditResult.idsgYmd()),</span>
+<span class="fc" id="L208">                                emptyIfNull(commonEditResult.isrrHusrId()),</span>
+<span class="fc" id="L209">                                emptyIfNull(commonEditResult.isrrHkunKj()),</span>
+                                EMPTY_STRING),
+<span class="fc" id="L211">                        List.of(),</span>
+                        customerInfoAcquisitionPossible,
+                        EMPTY_STRING,
+                        EMPTY_STRING));
+    }
+
+    /**
+     * 概要: RequestContext から必須のシステム日時を取得する。
+     *
+     * @return RequestContext の必須システム日時
+     */
+    private LocalDateTime requireSystemDatetime() {
+<span class="fc" id="L223">        return requestContext.getSystemDatetime()</span>
+<span class="fc" id="L224">                .orElseThrow(() -&gt; new IllegalStateException(&quot;RequestContext.systemDatetime is required&quot;));</span>
+    }
+
+    /**
+     * 概要: 登録依頼用お客さま番号を 11 桁文字列へ変換する。
+     *
+     * @param customerNumber 登録依頼用お客さま番号
+     * @return 11 桁文字列。null の場合は null
+     */
+    private String formatCustomerNumber(final Long customerNumber) {
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        if (customerNumber == null) {</span>
+<span class="nc" id="L235">            return null;</span>
+        }
+<span class="fc" id="L237">        return &quot;%011d&quot;.formatted(customerNumber);</span>
+    }
+
+    /**
+     * 概要: LocalDate を yyyyMMdd 文字列へ変換する。
+     *
+     * @param date 日付
+     * @return yyyyMMdd 文字列。null の場合は null
+     */
+    private String toDateText(LocalDate date) {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        return date == null ? null : date.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);</span>
+    }
+
+    /**
+     * 概要: HHmmss 整数を 6 桁文字列へ変換する。
+     *
+     * @param hhmmss HHmmss 整数
+     * @return 6 桁文字列。null の場合は null
+     */
+    private String toTimeText(Integer hhmmss) {
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        return hhmmss == null ? null : &quot;%06d&quot;.formatted(hhmmss);</span>
+    }
+
+    /**
+     * 概要: null を空文字へ補正する。
+     *
+     * @param value 入力文字列
+     * @return null の場合は空文字、それ以外は入力値
+     */
+    private String emptyIfNull(String value) {
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        return value == null ? EMPTY_STRING : value;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

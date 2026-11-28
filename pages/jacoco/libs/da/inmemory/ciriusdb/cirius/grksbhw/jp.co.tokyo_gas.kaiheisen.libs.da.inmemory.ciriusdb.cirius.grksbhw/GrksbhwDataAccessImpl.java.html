@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GrksbhwDataAccessImpl.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">kaiheisen-dataaccess-inmemory-ciriusdb-cirius-grksbhw</a> &gt; <a href="index.source.html" class="el_package">jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.grksbhw</a> &gt; <span class="el_source">GrksbhwDataAccessImpl.java</span></div><h1>GrksbhwDataAccessImpl.java</h1><pre class="source lang-java linenums">package jp.co.tokyo_gas.kaiheisen.libs.da.inmemory.ciriusdb.cirius.grksbhw;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.grksbhw.GrksbhwDataAccess;
+import jp.co.tokyo_gas.kaiheisen.libs.da.api.ciriusdb.cirius.grksbhw.GrksbhwRecord;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.DataAccessBase;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.FixedLengthFormatter;
+import jp.co.tokyo_gas.kaiheisen.libs.da.core.WhereParamGuard;
+
+/** DA-161 の SQL をインメモリで再現する実装。 */
+<span class="fc" id="L16">public class GrksbhwDataAccessImpl extends DataAccessBase implements GrksbhwDataAccess {</span>
+
+    private static final int GRK_KSB_HWSB_LENGTH = 4;
+
+    private static final int GRK_KIY_SHBT_LENGTH = 5;
+
+    private static final int RKN_CHK_CD_LENGTH = 1;
+
+<span class="fc" id="L24">    private static final LocalDate COMPLEMENT_YMD = LocalDate.MIN;</span>
+
+<span class="fc" id="L26">    private static final Comparator&lt;GrksbhwRecord&gt; ORDER_BY_R001 =</span>
+<span class="fc" id="L27">            Comparator.comparing(</span>
+<span class="fc" id="L28">                            (GrksbhwRecord row) -&gt; normalizeFixed(row.grkKsbHwsb(), GRK_KSB_HWSB_LENGTH))</span>
+<span class="fc" id="L29">                    .thenComparing(row -&gt; normalizeFixed(row.grkKiyShbt(), GRK_KIY_SHBT_LENGTH))</span>
+<span class="fc" id="L30">                    .thenComparing(row -&gt; normalizeFixed(row.rknChkCd(), RKN_CHK_CD_LENGTH))</span>
+<span class="fc" id="L31">                    .thenComparing(</span>
+<span class="nc" id="L32">                            (GrksbhwRecord row) -&gt; normalizeDate(row.tkysYmd()),</span>
+<span class="fc" id="L33">                            Comparator.reverseOrder());</span>
+
+<span class="fc" id="L35">    private static final Comparator&lt;GrksbhwRecord&gt; ORDER_BY_TKYS_YMD_DESC =</span>
+<span class="fc" id="L36">            Comparator.comparing(</span>
+<span class="fc" id="L37">                    (GrksbhwRecord row) -&gt; normalizeDate(row.tkysYmd()),</span>
+<span class="fc" id="L38">                    Comparator.reverseOrder());</span>
+
+<span class="fc" id="L40">    private final List&lt;GrksbhwRecord&gt; rows = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * テスト用の行データを追加する。
+     *
+     * @param row 追加する行
+     * @return このインスタンス
+     */
+    public GrksbhwDataAccessImpl addRow(GrksbhwRecord row) {
+<span class="fc" id="L49">        rows.add(Objects.requireNonNull(row, &quot;row&quot;));</span>
+<span class="fc" id="L50">        return this;</span>
+    }
+
+    @Override
+    public List&lt;GrksbhwRecord&gt; findAllByGrkKsbHwsbListAndGrkKiyShbtAndKnskKjnYmd(
+            List&lt;String&gt; grkKsbHwsbList,
+            String grkKiyShbt,
+            LocalDate knskKjnYmd) {
+<span class="fc" id="L58">        List&lt;String&gt; safeGrkKsbHwsbList = normalizeGrkKsbHwsbList(grkKsbHwsbList);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (safeGrkKsbHwsbList.isEmpty()) {</span>
+<span class="fc" id="L60">            return List.of();</span>
+        }
+<span class="fc" id="L62">        String safeGrkKiyShbt = safeGrkKiyShbt(grkKiyShbt, &quot;grkKiyShbt&quot;);</span>
+<span class="fc" id="L63">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+
+<span class="fc" id="L65">        return rows.stream()</span>
+<span class="fc" id="L66">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L68">                                safeGrkKsbHwsbList.contains(</span>
+<span class="fc" id="L69">                                        normalizeFixed(</span>
+<span class="fc" id="L70">                                                row.grkKsbHwsb(), GRK_KSB_HWSB_LENGTH)))</span>
+<span class="fc" id="L71">                .filter(</span>
+                        row -&gt;
+<span class="fc" id="L73">                                normalizeFixed(row.grkKiyShbt(), GRK_KIY_SHBT_LENGTH)</span>
+<span class="fc" id="L74">                                        .equals(safeGrkKiyShbt))</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                .filter(row -&gt; !normalizeDate(row.tkysYmd()).isAfter(safeKnskKjnYmd))</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                .filter(row -&gt; !normalizeDate(row.tyenYmd()).isBefore(safeKnskKjnYmd))</span>
+<span class="fc" id="L77">                .sorted(ORDER_BY_R001)</span>
+<span class="fc" id="L78">                .map(GrksbhwDataAccessImpl::normalizeRecord)</span>
+<span class="fc" id="L79">                .toList();</span>
+    }
+
+    @Override
+    public Optional&lt;GrksbhwRecord&gt; findByGrkKiyShbtAndGrkKsbHwsbAndRknChkCdAndKnskKjnYmdOrderByTkysYmdDesc(
+            String grkKiyShbt,
+            String grkKsbHwsb,
+            String rknChkCd,
+            LocalDate knskKjnYmd) {
+<span class="fc" id="L88">        String safeGrkKiyShbt = safeGrkKiyShbt(grkKiyShbt, &quot;grkKiyShbt&quot;);</span>
+<span class="fc" id="L89">        String safeGrkKsbHwsb = safeGrkKsbHwsb(grkKsbHwsb, &quot;grkKsbHwsb&quot;);</span>
+<span class="fc" id="L90">        String safeRknChkCd = safeRknChkCd(rknChkCd, &quot;rknChkCd&quot;);</span>
+<span class="fc" id="L91">        LocalDate safeKnskKjnYmd = safeYmd(knskKjnYmd, &quot;knskKjnYmd&quot;);</span>
+
+<span class="fc" id="L93">        return rows.stream()</span>
+<span class="fc" id="L94">            .filter(row -&gt;</span>
+<span class="fc" id="L95">                normalizeFixed(row.grkKiyShbt(), GRK_KIY_SHBT_LENGTH)</span>
+<span class="fc" id="L96">                    .equals(safeGrkKiyShbt)</span>
+            )
+<span class="fc" id="L98">            .filter(row -&gt;</span>
+<span class="fc" id="L99">                normalizeFixed(row.grkKsbHwsb(), GRK_KSB_HWSB_LENGTH)</span>
+<span class="fc" id="L100">                    .equals(safeGrkKsbHwsb)</span>
+            )
+<span class="fc" id="L102">            .filter(row -&gt;</span>
+<span class="fc" id="L103">                normalizeFixed(row.rknChkCd(), RKN_CHK_CD_LENGTH)</span>
+<span class="fc" id="L104">                    .equals(safeRknChkCd)</span>
+            )
+<span class="fc" id="L106">            .filter(row -&gt;</span>
+<span class="fc" id="L107">                !normalizeDate(row.tkysYmd())</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                    .isAfter(safeKnskKjnYmd)</span>
+            )
+<span class="fc" id="L110">            .filter(row -&gt;</span>
+<span class="fc" id="L111">                !normalizeDate(row.tyenYmd())</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                    .isBefore(safeKnskKjnYmd)</span>
+            )
+<span class="fc" id="L114">            .sorted(ORDER_BY_TKYS_YMD_DESC)</span>
+<span class="fc" id="L115">            .map(GrksbhwDataAccessImpl::normalizeRecord)</span>
+<span class="fc" id="L116">            .findFirst();</span>
+    }
+
+    @Override
+    public Optional&lt;GrksbhwRecord&gt; findByPK(
+            String grkKsbHwsb,
+            String grkKiyShbt,
+            String rknChkCd,
+            LocalDate tkysYmd) {
+<span class="fc" id="L125">        String safeGrkKsbHwsb = safeGrkKsbHwsb(grkKsbHwsb, &quot;grkKsbHwsb&quot;);</span>
+<span class="fc" id="L126">        String safeGrkKiyShbt = safeGrkKiyShbt(grkKiyShbt, &quot;grkKiyShbt&quot;);</span>
+<span class="fc" id="L127">        String safeRknChkCd = safeRknChkCd(rknChkCd, &quot;rknChkCd&quot;);</span>
+<span class="fc" id="L128">        LocalDate safeTkysYmd = safeYmd(tkysYmd, &quot;tkysYmd&quot;);</span>
+
+<span class="fc" id="L130">        return rows.stream()</span>
+<span class="fc" id="L131">                .filter(row -&gt; normalizeFixed(row.grkKsbHwsb(), GRK_KSB_HWSB_LENGTH).equals(safeGrkKsbHwsb))</span>
+<span class="fc" id="L132">                .filter(row -&gt; normalizeFixed(row.grkKiyShbt(), GRK_KIY_SHBT_LENGTH).equals(safeGrkKiyShbt))</span>
+<span class="fc" id="L133">                .filter(row -&gt; normalizeFixed(row.rknChkCd(), RKN_CHK_CD_LENGTH).equals(safeRknChkCd))</span>
+<span class="fc" id="L134">                .filter(row -&gt; normalizeDate(row.tkysYmd()).equals(safeTkysYmd))</span>
+<span class="fc" id="L135">                .map(GrksbhwDataAccessImpl::normalizeRecord)</span>
+<span class="fc" id="L136">                .findFirst();</span>
+    }
+
+    private static String safeGrkKsbHwsb(String value, String paramName) {
+<span class="fc" id="L140">        return WhereParamGuard.fixedLengthNotNull(value, paramName, GRK_KSB_HWSB_LENGTH);</span>
+    }
+
+    private static String safeGrkKiyShbt(String value, String paramName) {
+<span class="fc" id="L144">        return WhereParamGuard.fixedLengthNotNull(value, paramName, GRK_KIY_SHBT_LENGTH);</span>
+    }
+
+    private static String safeRknChkCd(String value, String paramName) {
+<span class="fc" id="L148">        return WhereParamGuard.fixedLengthNotNull(value, paramName, RKN_CHK_CD_LENGTH);</span>
+    }
+
+    private static List&lt;String&gt; normalizeGrkKsbHwsbList(List&lt;String&gt; grkKsbHwsbList) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (grkKsbHwsbList == null) {</span>
+<span class="fc" id="L153">            throw new IllegalArgumentException(&quot;grkKsbHwsbList must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (grkKsbHwsbList.isEmpty()) {</span>
+<span class="fc" id="L156">            return List.of();</span>
+        }
+<span class="fc" id="L158">        return grkKsbHwsbList.stream().map(GrksbhwDataAccessImpl::normalizeInGrkKsbHwsb).toList();</span>
+    }
+
+    private static String normalizeInGrkKsbHwsb(String value) {
+<span class="pc bpc" id="L162" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L163">            throw new IllegalArgumentException(</span>
+                    &quot;grkKsbHwsbList must not contain null or blank-only&quot;);
+        }
+<span class="fc" id="L166">        return WhereParamGuard.fixedLengthNotNull(value, &quot;grkKsbHwsbList&quot;, GRK_KSB_HWSB_LENGTH);</span>
+    }
+
+    private static LocalDate safeYmd(LocalDate value, String paramName) {
+<span class="fc" id="L170">        return WhereParamGuard.complement(value, paramName, COMPLEMENT_YMD);</span>
+    }
+
+    private static String normalizeFixed(String value, int length) {
+<span class="fc" id="L174">        return WhereParamGuard.fixedLengthNotNull(value, &quot;value&quot;, length);</span>
+    }
+
+    private static LocalDate normalizeDate(LocalDate value) {
+<span class="fc" id="L178">        return WhereParamGuard.complement(value, &quot;value&quot;, COMPLEMENT_YMD);</span>
+    }
+
+    private static GrksbhwRecord normalizeRecord(GrksbhwRecord row) {
+<span class="fc" id="L182">        return new GrksbhwRecord(</span>
+<span class="fc" id="L183">                normalizeResultText(row.grkKsbHwsb()),</span>
+<span class="fc" id="L184">                normalizeResultText(row.grkKiyShbt()),</span>
+<span class="fc" id="L185">                normalizeResultText(row.rknChkCd()),</span>
+<span class="fc" id="L186">                normalizeResultDate(row.tkysYmd()),</span>
+<span class="fc" id="L187">                normalizeResultDate(row.tyenYmd()),</span>
+<span class="fc" id="L188">                normalizeResultText(row.grkKsbHnsb()),</span>
+<span class="fc" id="L189">                row.regTsmp(),</span>
+<span class="fc" id="L190">                normalizeResultText(row.regUsrId()),</span>
+<span class="fc" id="L191">                row.updTsmp(),</span>
+<span class="fc" id="L192">                normalizeResultText(row.updUsrId()),</span>
+<span class="fc" id="L193">                normalizeResultText(row.updKtnKinoId()),</span>
+<span class="fc" id="L194">                normalizeResultInteger(row.recUpdJnjNo()));</span>
+    }
+
+    private static String normalizeResultText(String value) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L199">            return null;</span>
+        }
+<span class="fc" id="L201">        return FixedLengthFormatter.suppressSpace(value);</span>
+    }
+
+    private static LocalDate normalizeResultDate(LocalDate value) {
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">        if (value == null || COMPLEMENT_YMD.equals(value)) {</span>
+<span class="fc" id="L206">            return null;</span>
+        }
+<span class="fc" id="L208">        return value;</span>
+    }
+
+    private static Integer normalizeResultInteger(Integer value) {
+<span class="pc bpc" id="L212" title="1 of 4 branches missed.">        if (value == null || value == 0) {</span>
+<span class="fc" id="L213">            return null;</span>
+        }
+<span class="fc" id="L215">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
